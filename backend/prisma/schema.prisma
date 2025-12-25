@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ... (Giữ nguyên generator và datasource)
+
+// 1. Bảng User sửa lại: Thay field 'role' string bằng quan hệ sang bảng Role
+model User {
+  id           String     @id // "NV001"
+  email        String     @unique
+  password     String
+  fullName     String
+  isActive     Boolean    @default(true)
+  
+  // Liên kết với Role
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id])
+
+  // Liên kết phòng ban
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  
+  posts        Post[]
+}
+
+// 2. Bảng Role (Vai trò): Ví dụ ID="ADMIN", "ACC_MGR" (Trưởng phòng kế toán)
+model Role {
+  id          String       @id // Tự đặt mã: "ADMIN", "SALE_STAFF"
+  name        String       // Tên hiển thị: "Quản trị viên", "Nhân viên kinh doanh"
+  description String?
+  
+  users       User[]       // 1 Role có nhiều User
+  permissions RolePermission[] // 1 Role có nhiều Quyền
+}
+
+// 3. Bảng Permission (Quyền hạn chi tiết): Ví dụ ID="USER_CREATE", "ORDER_VIEW"
+model Permission {
+  id          String           @id // Mã quyền: "USER_READ", "POST_DELETE"
+  name        String           // "Xem danh sách user", "Xóa bài viết"
+  module      String           // Gom nhóm: "SYSTEM", "CONTENT", "SALES"
+  
+  roles       RolePermission[] 
+}
+
+// 4. Bảng trung gian (Many-to-Many giữa Role và Permission)
+model RolePermission {
+  roleId       String
+  permissionId String
+  
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId]) // Khóa chính phức hợp
+}
+
+// ... (Các bảng Department, Menu, Post... giữ nguyên như cũ)
+model Department {
+  id            String   @id             
+  name          String
+  code          String   @unique         
+  users         User[]
+  targetedPosts PostDepartment[]
+}
+// ... (Copy tiếp các model Post, Menu... vào đây)
+model Post {
+    id String @id
+    // ... nội dung cũ
+    departmentId String? // Nếu cần
+    menuId Int
+    authorId String
+    // ...
+    menu      Menu     @relation(fields: [menuId], references: [id])
+    author    User     @relation(fields: [authorId], references: [id])
+    targets   PostDepartment[]
+}
+
+model Menu {
+    id Int @id @default(autoincrement())
+    // ... nội dung cũ
+    posts Post[]
+    // ...
+    parentId  Int?
+    parent    Menu?   @relation("MenuHierarchy", fields: [parentId], references: [id])
+    children  Menu[]  @relation("MenuHierarchy")
+}
+
+model PostDepartment {
+  postId       String
+  departmentId String
+  post         Post       @relation(fields: [postId], references: [id])
+  department   Department @relation(fields: [departmentId], references: [id])
+  @@id([postId, departmentId])
+}

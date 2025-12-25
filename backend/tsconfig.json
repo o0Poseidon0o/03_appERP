@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    /* 1. Cấu hình môi trường */
+    "target": "es2020",
+    "module": "nodenext",
+    /* QUAN TRỌNG: React chạy trên trình duyệt nên cần thêm "dom" và "dom.iterable" */
+    "lib": ["es6", "dom", "dom.iterable"], 
+    "allowJs": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "removeComments": true,
+
+    /* QUAN TRỌNG: Cấu hình để hiểu cú pháp JSX của React */
+    "jsx": "react-jsx",
+
+    /* 2. Cấu hình module resolution */
+    "moduleResolution": "nodenext",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    /* 3. Kiểm soát lỗi (Strict Mode) */
+    "strict": true,
+    "noImplicitAny": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "**/*.spec.ts"]
+}
