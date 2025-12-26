@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Button, Dropdown, Avatar, Badge, List, Popover, theme as antTheme, Switch } from 'antd';
+import { Layout, Menu, Button, Dropdown, Avatar, Badge, List, Popover, theme as antTheme, Switch, Drawer } from 'antd';
 import { 
   MenuFoldOutlined, MenuUnfoldOutlined, 
   UserOutlined, DashboardOutlined, 
@@ -11,25 +11,30 @@ import {
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext'; // Import Theme Context
+import { useTheme } from '../contexts/ThemeContext';
 import axiosClient from '../api/axiosClient';
+import useMediaQuery from '../hooks/useMediaQuery'; // Hook kiểm tra màn hình (xem code bên dưới)
 
 const { Header, Sider, Content } = Layout;
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // State cho Mobile Drawer
   const { user, logout } = useAuth();
-  const { isDarkMode, toggleTheme } = useTheme(); // Lấy theme
+  const { isDarkMode, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const { token } = antTheme.useToken();
   
+  // Custom hook kiểm tra màn hình mobile (< 768px)
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
   // State dữ liệu
   const [dynamicMenus, setDynamicMenus] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // 1. Fetch Menu từ Database
+  // 1. Fetch Menu
   useEffect(() => {
     const fetchMenus = async () => {
         try {
@@ -40,7 +45,7 @@ const MainLayout: React.FC = () => {
     fetchMenus();
   }, []);
 
-  // 2. Fetch Thông báo (Polling 30s)
+  // 2. Fetch Thông báo
   const fetchNoti = async () => {
       try {
           const res = await axiosClient.get('/notifications');
@@ -63,41 +68,25 @@ const MainLayout: React.FC = () => {
       }
   };
 
-  // 3. Cấu hình Menu Sidebar (Quan trọng)
+  // 3. Cấu hình Menu Sidebar
   const userRoleId = user?.role?.id || 'ROLE-USER';
   
   const menuItems = [
-    // --- DASHBOARD (Admin/Manager) ---
     ...(['ROLE-ADMIN', 'ROLE-MANAGER'].includes(userRoleId) ? [
         { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
     ] : []),
-
-    // --- TIN TỨC (Ai cũng thấy) ---
     { 
-        key: '/posts', 
-        icon: <ReadOutlined />, 
-        label: 'Tin tức & Thông báo',
+        key: '/posts', icon: <ReadOutlined />, label: 'Tin tức & Thông báo',
         children: [
             { key: '/posts', label: 'Tất cả tin tức' }, 
-            // Menu động từ DB load vào đây
-            ...dynamicMenus.map(m => ({
-                key: `/posts?menuId=${m.id}`, 
-                label: m.title,
-                icon: <FileTextOutlined />
-            }))
+            ...dynamicMenus.map(m => ({ key: `/posts?menuId=${m.id}`, label: m.title, icon: <FileTextOutlined /> }))
         ]
     },
-
-    // --- NHÂN SỰ (Admin/Manager/User đều thấy - Quyền nút bấm xử lý bên trong trang) ---
     { key: '/admin/users', icon: <TeamOutlined />, label: 'Nhân sự' },
-
-    // --- HỆ THỐNG (Chỉ Admin) ---
     ...(userRoleId === 'ROLE-ADMIN' ? [
        { type: 'divider' },
        { 
-           key: 'grp-system', 
-           label: 'HỆ THỐNG', 
-           type: 'group',
+           key: 'grp-system', label: 'HỆ THỐNG', type: 'group',
            children: [
                { key: '/admin/departments', icon: <ApartmentOutlined />, label: 'Phòng ban' },
                { key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Phân quyền' },
@@ -107,19 +96,38 @@ const MainLayout: React.FC = () => {
     ] : [])
   ];
 
-  // Nội dung Popover Thông báo
+  const handleMenuClick = (e: any) => {
+      navigate(e.key);
+      if (isMobile) setMobileMenuOpen(false); // Đóng menu mobile khi click
+  };
+
+  // Render Menu Component (Dùng chung cho cả Sider và Drawer)
+  const MenuComponent = () => (
+      <>
+        <div className="h-16 flex items-center justify-center border-b border-gray-700/50 bg-[#001529]">
+            <div className={`text-xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent transition-all duration-300 ${collapsed && !isMobile ? 'scale-0' : 'scale-100'}`}>
+                TOWA ERP
+            </div>
+            {collapsed && !isMobile && <div className="text-white font-bold text-xl absolute">T</div>}
+        </div>
+        <Menu 
+            theme="dark" 
+            mode="inline" 
+            selectedKeys={[location.pathname]} 
+            items={menuItems} 
+            onClick={handleMenuClick}
+            className="bg-transparent mt-2 border-r-0" 
+        />
+      </>
+  );
+
   const notiContent = (
       <div className="w-80 max-h-96 overflow-y-auto">
           <List dataSource={notifications} renderItem={item => (
               <List.Item className={`p-2 hover:bg-gray-50 cursor-pointer ${!item.isRead ? 'bg-blue-50' : ''}`} onClick={() => navigate('/posts')}>
                   <List.Item.Meta 
                       title={<span className="text-sm font-semibold">{item.title}</span>}
-                      description={
-                        <div>
-                            <div className="text-xs text-gray-600">{item.message}</div>
-                            <div className="text-[10px] text-gray-400 mt-1">{new Date(item.createdAt).toLocaleString()}</div>
-                        </div>
-                      }
+                      description={<div className="text-xs text-gray-600">{item.message}</div>}
                   />
               </List.Item>
           )} />
@@ -127,84 +135,82 @@ const MainLayout: React.FC = () => {
       </div>
   );
 
-  // Menu Dropdown User
   const userDropdown = {
     items: [
-        { 
-          key: 'info', 
-          label: (
-            <div className="flex flex-col min-w-[120px]">
-               <span className="font-semibold">{user?.fullName}</span>
-               <span className="text-xs text-gray-400">{user?.role?.name}</span>
-            </div>
-          ), disabled: true 
-        },
+        { key: 'info', label: <span className="font-semibold">{user?.fullName}</span>, disabled: true },
         { type: 'divider' },
-        { key: 'profile', icon: <UserOutlined />, label: 'Hồ sơ cá nhân', onClick: () => navigate('/profile') },
+        { key: 'profile', icon: <UserOutlined />, label: 'Hồ sơ', onClick: () => navigate('/profile') },
         { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', danger: true, onClick: logout },
     ]
   };
 
   return (
     <Layout className="h-screen overflow-hidden">
-      <Sider 
-        trigger={null} collapsible collapsed={collapsed} width={250}
-        style={{ background: isDarkMode ? '#111827' : '#001529' }}
-        className="shadow-xl z-20"
+      {/* 1. SIDER CHO DESKTOP */}
+      {!isMobile && (
+          <Sider 
+            trigger={null} collapsible collapsed={collapsed} width={250}
+            style={{ background: isDarkMode ? '#111827' : '#001529' }}
+            className="shadow-xl z-20"
+          >
+            <MenuComponent />
+          </Sider>
+      )}
+
+      {/* 2. DRAWER CHO MOBILE */}
+      <Drawer
+        placement="left"
+        onClose={() => setMobileMenuOpen(false)}
+        open={mobileMenuOpen}
+        styles={{ body: { padding: 0, background: '#001529' } }}
+        width={260}
+        closable={false}
       >
-        <div className="h-16 flex items-center justify-center border-b border-gray-700/50">
-           <div className={`text-xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent transition-all duration-300 ${collapsed ? 'scale-0' : 'scale-100'}`}>
-            TOWA ERP
-           </div>
-           {collapsed && <div className="text-white font-bold text-xl">T</div>}
-        </div>
-        <Menu 
-            theme="dark" 
-            mode="inline" 
-            selectedKeys={[location.pathname]} 
-            items={menuItems} 
-            onClick={(e) => navigate(e.key)}
-            className="bg-transparent mt-2" 
-        />
-      </Sider>
+         <MenuComponent />
+      </Drawer>
       
       <Layout>
         <Header 
             style={{ 
                 background: isDarkMode ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)', 
                 borderBottom: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb',
-                padding: '0 24px'
+                padding: '0 16px' // Giảm padding trên mobile
             }} 
             className="flex justify-between items-center sticky top-0 z-10"
         >
-           <div className="flex items-center">
-               <Button type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed(!collapsed)} style={{ color: token.colorText }} />
-               <h2 className="ml-4 text-lg font-semibold text-gray-500 hidden md:block">Hệ thống quản trị</h2>
-           </div>
-           
-           <div className="flex items-center gap-6">
-               <Switch checkedChildren={<MoonOutlined />} unCheckedChildren={<SunOutlined />} checked={isDarkMode} onChange={toggleTheme} className="bg-gray-400" />
+            <div className="flex items-center">
+                {/* Nút Menu Toggle: Trên Mobile mở Drawer, trên Desktop thu nhỏ Sider */}
+                <Button 
+                    type="text" 
+                    icon={collapsed || isMobile ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} 
+                    onClick={() => isMobile ? setMobileMenuOpen(true) : setCollapsed(!collapsed)} 
+                    style={{ color: token.colorText, fontSize: '18px' }} 
+                />
+                {!isMobile && <h2 className="ml-4 text-lg font-semibold text-gray-500">Hệ thống quản trị</h2>}
+            </div>
+            
+            <div className="flex items-center gap-4 md:gap-6">
+                <Switch checkedChildren={<MoonOutlined />} unCheckedChildren={<SunOutlined />} checked={isDarkMode} onChange={toggleTheme} className="bg-gray-400" />
 
-               {/* Nút Thông báo */}
-               <Popover content={notiContent} title="Thông báo" trigger="click" onOpenChange={handleReadNoti} placement="bottomRight">
-                   <Badge count={unreadCount} size="small" className="cursor-pointer flex items-center">
-                       <BellOutlined style={{ fontSize: 20, color: token.colorText }} />
-                   </Badge>
-               </Popover>
+                <Popover content={notiContent} title="Thông báo" trigger="click" onOpenChange={handleReadNoti} placement="bottomRight">
+                    <Badge count={unreadCount} size="small" className="cursor-pointer flex items-center">
+                        <BellOutlined style={{ fontSize: 20, color: token.colorText }} />
+                    </Badge>
+                </Popover>
 
-               {/* User Info */}
-               <Dropdown menu={userDropdown} trigger={['click']}>
-                   <div className="flex items-center gap-3 cursor-pointer hover:bg-gray-200/20 p-2 rounded-lg transition-all">
-                       <Avatar style={{ backgroundColor: token.colorPrimary }} icon={<UserOutlined />} src={`https://ui-avatars.com/api/?name=${user?.fullName}&background=random`} />
-                       <span className="font-medium hidden md:block" style={{ color: token.colorText }}>{user?.fullName}</span>
-                   </div>
-               </Dropdown>
-           </div>
+                <Dropdown menu={userDropdown} trigger={['click']}>
+                    <div className="flex items-center gap-2 cursor-pointer hover:bg-gray-200/20 p-1.5 rounded-lg transition-all">
+                        <Avatar style={{ backgroundColor: token.colorPrimary }} icon={<UserOutlined />} src={`https://ui-avatars.com/api/?name=${user?.fullName}&background=random`} />
+                        <span className="font-medium hidden md:block" style={{ color: token.colorText }}>{user?.fullName}</span>
+                    </div>
+                </Dropdown>
+            </div>
         </Header>
         
         <Content 
             style={{ 
-                margin: '24px', padding: 24, 
+                margin: isMobile ? '12px' : '24px', 
+                padding: isMobile ? 12 : 24, 
                 background: token.colorBgContainer, 
                 borderRadius: token.borderRadiusLG,
                 overflowY: 'auto'
