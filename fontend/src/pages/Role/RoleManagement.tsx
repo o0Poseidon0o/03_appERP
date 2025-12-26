@@ -1,78 +1,93 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Card, List, Checkbox, Button, Typography, 
-  App as AntdApp, Skeleton, Empty, 
-  Tag, Modal, Form, Input, Popconfirm 
+  Card, List, Checkbox, Button, 
+  App as AntdApp, Empty, 
+  Tag, Modal, Form, Input 
 } from 'antd';
 import { 
   SafetyCertificateOutlined, PlusOutlined, 
-  SaveOutlined, DeleteOutlined
+  SaveOutlined
 } from '@ant-design/icons';
-// --- HÃY KIỂM TRA KỸ ĐƯỜNG DẪN NÀY ---
 import axiosClient from '../../api/axiosClient'; 
 
-const { Title, Text } = Typography;
-const { TextArea } = Input;
+// 1. Định nghĩa các Interface cụ thể để thay thế 'any'
+interface Permission {
+  id: string;
+  name: string;
+  module: string;
+}
+
+// Cấu trúc quan hệ lồng nhau từ API trả về
+interface RolePermissionRelation {
+  permission: {
+    id: string;
+    name?: string;
+    module?: string;
+  };
+}
+
+interface Role {
+  id: string;
+  name: string;
+  description?: string;
+  // Dùng cấu trúc cụ thể thay cho any[]
+  permissions: RolePermissionRelation[]; 
+  permissionIds: string[];
+  userCount: number;
+}
+
+// Interface cho dữ liệu thô từ API
+interface RoleApiResponse {
+  id: string;
+  name: string;
+  description?: string;
+  permissions: RolePermissionRelation[];
+  _count?: { users: number };
+}
 
 const RoleManagement: React.FC = () => {
-  // Dùng try-catch cho hook để tránh lỗi crash app nếu chưa bọc Provider
-  let messageApi: any;
+  // Sửa lỗi 'any' cho messageApi bằng cách dùng unknown và type casting
+  let messageApi: { success: (content: string) => void; error: (content: string) => void } | null = null;
   try {
      const app = AntdApp.useApp();
      messageApi = app.message;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (e) {
      console.warn("Chưa bọc <App> của Antd, dùng console.log thay thế");
   }
 
   const showMsg = (type: 'success' | 'error', content: string) => {
-      if(messageApi) messageApi[type](content);
+      if(messageApi && messageApi[type]) messageApi[type](content);
       else console.log(`[${type.toUpperCase()}] ${content}`);
   };
   
-  const [roles, setRoles] = useState<any[]>([]);
-  const [allPermissions, setAllPermissions] = useState<any[]>([]);
-  const [selectedRole, setSelectedRole] = useState<any | null>(null);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [form] = Form.useForm();
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      console.log("--- BẮT ĐẦU GỌI API ---");
-      
-      // 1. Gọi API
       const [rolesRes, permsRes] = await Promise.all([
         axiosClient.get('/roles'),
         axiosClient.get('/roles/permissions') 
       ]);
 
-      console.log("1. Raw Roles Response:", rolesRes);
-      console.log("2. Raw Permissions Response:", permsRes);
-
-      // 2. Xử lý Permission
-      // Kiểm tra kỹ xem data nằm ở .data hay .data.data
       const rawPerms = permsRes.data?.data || permsRes.data || [];
-      if (!Array.isArray(rawPerms)) {
-          console.error("LỖI: Permissions không phải là mảng!", rawPerms);
-          setAllPermissions([]);
-      } else {
-          setAllPermissions(rawPerms);
-      }
+      setAllPermissions(Array.isArray(rawPerms) ? rawPerms : []);
 
-      // 3. Xử lý Roles
       const rawRoles = rolesRes.data?.data || rolesRes.data || [];
-      if (!Array.isArray(rawRoles)) {
-          console.error("LỖI: Roles không phải là mảng!", rawRoles);
-          setRoles([]);
-      } else {
-          // Map dữ liệu an toàn
-          const safeRoles = rawRoles.map((r: any) => {
-              // Xử lý permissionIds an toàn tuyệt đối
+      if (Array.isArray(rawRoles)) {
+          // GIỮ NGUYÊN LOGIC MAP DỮ LIỆU CỦA BẠN
+          const safeRoles = rawRoles.map((r: RoleApiResponse) => {
               let pIds: string[] = [];
               if (Array.isArray(r.permissions)) {
-                  pIds = r.permissions.map((p: any) => p?.permission?.id).filter((id: any) => !!id);
+                  pIds = r.permissions
+                    .map((p) => p?.permission?.id)
+                    .filter((id): id is string => !!id); // Type guard để lọc id
               }
               return {
                   ...r,
@@ -82,15 +97,13 @@ const RoleManagement: React.FC = () => {
           });
           setRoles(safeRoles);
 
-          // Chọn role đầu tiên nếu chưa chọn
           if (safeRoles.length > 0 && !selectedRole) {
               setSelectedRole(safeRoles[0]);
           }
       }
-
-    } catch (error: any) {
+    } catch (error) {
       console.error("--- LỖI FETCH DATA ---", error);
-      showMsg('error', 'Lỗi tải dữ liệu (Xem Console F12)');
+      showMsg('error', 'Lỗi tải dữ liệu');
     } finally {
       setLoading(false);
     }
@@ -98,22 +111,23 @@ const RoleManagement: React.FC = () => {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- LOGIC GOM NHÓM AN TOÀN ---
   const groupedPermissions = allPermissions.reduce((acc, curr) => {
     if (!curr) return acc;
     const mod = curr.module || 'KHÁC';
     if (!acc[mod]) acc[mod] = [];
     acc[mod].push(curr);
     return acc;
-  }, {} as Record<string, any[]>);
+  }, {} as Record<string, Permission[]>);
 
-  const handleSelectRole = (role: any) => setSelectedRole(role);
+  const handleSelectRole = (role: Role) => setSelectedRole(role);
 
-  const handlePermissionChange = (checkedValues: any[]) => {
+  // Thay any[] bằng (string | number | boolean)[] - kiểu mặc định của Checkbox.Group Antd
+  const handlePermissionChange = (checkedValues: (string | number | boolean)[]) => {
     if (!selectedRole) return;
-    const updated = { ...selectedRole, permissionIds: checkedValues };
+    const updated = { ...selectedRole, permissionIds: checkedValues as string[] };
     setSelectedRole(updated);
     setRoles(prev => prev.map(r => r.id === updated.id ? updated : r));
   };
@@ -136,7 +150,7 @@ const RoleManagement: React.FC = () => {
     }
   };
 
-  const handleCreateRole = async (values: any) => {
+  const handleCreateRole = async (values: { id: string, name: string }) => {
       try {
           await axiosClient.post('/roles', { ...values, permissionIds: [] });
           showMsg('success', 'Tạo thành công');
@@ -145,25 +159,34 @@ const RoleManagement: React.FC = () => {
       } catch (err) { console.error(err); }
   };
 
-  // --- RENDER AN TOÀN ---
   return (
     <div style={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ marginBottom: 16 }}>
         <h2 className="text-2xl font-bold flex items-center gap-2">
-            <SafetyCertificateOutlined /> Phân quyền hệ thống
+            <SafetyCertificateOutlined /> Phân quyền hệ thống {loading && "(Đang tải...)"}
         </h2>
       </div>
 
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
         {/* CỘT TRÁI */}
         <div style={{ width: '25%', display: 'flex', flexDirection: 'column' }}>
-          <Card title="Vai trò" extra={<Button onClick={() => setIsModalOpen(true)} icon={<PlusOutlined />}>Thêm</Button>} style={{ height: '100%' }} styles={{ body: { overflowY: 'auto' } }}>
+          <Card 
+            title="Vai trò" 
+            extra={<Button onClick={() => setIsModalOpen(true)} icon={<PlusOutlined />}>Thêm</Button>} 
+            style={{ height: '100%' }} 
+            styles={{ body: { overflowY: 'auto' } }}
+          >
              <List
                 dataSource={roles}
                 renderItem={(item) => (
                     <List.Item 
                         onClick={() => handleSelectRole(item)}
-                        style={{ cursor: 'pointer', background: selectedRole?.id === item.id ? '#e6f7ff' : 'transparent', padding: 10 }}
+                        style={{ 
+                            cursor: 'pointer', 
+                            background: selectedRole?.id === item.id ? '#e6f7ff' : 'transparent', 
+                            padding: 10,
+                            borderRadius: 4
+                        }}
                     >
                         <div style={{ width: '100%' }}>
                             <div style={{ fontWeight: 'bold' }}>{item.name}</div>
@@ -177,7 +200,22 @@ const RoleManagement: React.FC = () => {
 
         {/* CỘT PHẢI */}
         <div style={{ width: '75%', display: 'flex', flexDirection: 'column' }}>
-          <Card title={selectedRole ? `Quyền hạn: ${selectedRole.name}` : 'Chi tiết'} extra={<Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={handleSave} disabled={selectedRole?.id === 'ROLE-ADMIN'}>Lưu</Button>} style={{ height: '100%' }} styles={{ body: { overflowY: 'auto' } }}>
+          <Card 
+            title={selectedRole ? `Quyền hạn: ${selectedRole.name}` : 'Chi tiết'} 
+            extra={
+                <Button 
+                    type="primary" 
+                    icon={<SaveOutlined />} 
+                    loading={saving} 
+                    onClick={handleSave} 
+                    disabled={!selectedRole || selectedRole.id === 'ROLE-ADMIN'}
+                >
+                    Lưu
+                </Button>
+            } 
+            style={{ height: '100%' }} 
+            styles={{ body: { overflowY: 'auto' } }}
+          >
              {!selectedRole ? <Empty description="Chọn vai trò" /> : (
                  <div>
                      {Object.keys(groupedPermissions).length === 0 && <Empty description="Không có dữ liệu quyền" />}
@@ -189,7 +227,7 @@ const RoleManagement: React.FC = () => {
                                 onChange={handlePermissionChange}
                                 style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}
                              >
-                                 {perms.map(p => (
+                                 {perms.map((p: Permission) => (
                                      <Checkbox key={p.id} value={p.id}>{p.name}</Checkbox>
                                  ))}
                              </Checkbox.Group>
@@ -201,7 +239,6 @@ const RoleManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* MODAL ĐƠN GIẢN */}
       <Modal open={isModalOpen} onCancel={() => setIsModalOpen(false)} footer={null} title="Thêm Role" destroyOnClose>
           <Form onFinish={handleCreateRole} layout="vertical">
               <Form.Item name="id" label="Mã ID" rules={[{required: true}]}><Input placeholder="ROLE_TEST" /></Form.Item>

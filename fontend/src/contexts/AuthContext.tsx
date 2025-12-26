@@ -1,11 +1,19 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-interface User {
+// --- CẬP NHẬT INTERFACE USER ---
+export interface User {
   id: string;
   fullName: string;
   email: string;
-  role: { id: string; name: string };
+  isActive: boolean;
+  role: { 
+    id: string; 
+    name: string; 
+    permissions?: PermissionItem[]; // THÊM DÒNG NÀY VÀO ĐÂY
+  };
   department: { id: string; name: string };
+  phone?: string;
+  avatar?: string;
 }
 
 interface AuthContextType {
@@ -15,7 +23,12 @@ interface AuthContextType {
   logout: () => void;
   isLoading: boolean;
 }
-
+export interface PermissionItem {
+  permission: {
+    id: string;
+    name: string;
+  };
+}
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -31,7 +44,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (storedToken && storedUser) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+          setUser(JSON.parse(storedUser));
+      } catch (e) {
+          console.error("Lỗi parse user từ storage", e);
+          localStorage.clear();
+      }
     }
     setIsLoading(false);
   }, []);

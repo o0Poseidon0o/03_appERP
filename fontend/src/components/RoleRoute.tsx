@@ -15,8 +15,10 @@ const RoleRoute: React.FC<RoleRouteProps> = ({ allowedRoles }) => {
     return <Navigate to="/login" replace />;
   }
 
-  // 2. Lấy Role ID an toàn (Ưu tiên role.id từ object, fallback về roleId string)
-  const userRole = user.role?.id || user.roleId || 'ROLE-USER'; 
+  // 2. Lấy Role ID an toàn
+  // SỬA Ở ĐÂY: Bỏ 'user.roleId' đi nếu Interface chưa khai báo nó.
+  // Chỉ cần lấy từ 'user.role?.id' là đủ và chuẩn nhất.
+  const userRole = user.role?.id || 'ROLE-USER'; 
 
   // 3. Kiểm tra quyền vào cửa
   if (!allowedRoles.includes(userRole)) {

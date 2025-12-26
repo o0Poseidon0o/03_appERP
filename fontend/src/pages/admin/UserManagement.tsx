@@ -6,11 +6,19 @@ import {
 } from 'antd';
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
-  DeleteOutlined, ReloadOutlined, UserOutlined 
+  DeleteOutlined, ReloadOutlined 
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import axiosClient from '../../api/axiosClient';
 import { useAuth } from '../../contexts/AuthContext';
+
+// 1. CẬP NHẬT INTERFACE ĐỂ FIX LỖI Property 'permissions' does not exist
+interface PermissionItem {
+  permission: {
+    id: string;
+    name: string;
+  };
+}
 
 interface User {
   id: string;
@@ -19,7 +27,11 @@ interface User {
   isActive: boolean;
   roleId: string;
   departmentId: string;
-  role?: { name: string };
+  role?: { 
+    id: string;
+    name: string; 
+    permissions?: PermissionItem[]; // Đã thêm để fix lỗi dòng 37
+  };
   department?: { name: string };
 }
 
@@ -32,12 +44,13 @@ const UserManagement: React.FC = () => {
   const { message } = AntdApp.useApp();
   const { user } = useAuth();
   
-  // --- 1. LOGIC PHÂN QUYỀN ---
+  // --- 1. LOGIC PHÂN QUYỀN (GIỮ NGUYÊN) ---
   const isAdmin = user?.role?.id === 'ROLE-ADMIN';
-  const myPermissions = user?.role?.permissions?.map((p: any) => p.permission.id) || [];
+  
+  // Sửa lỗi 'any' bằng cách định nghĩa kiểu cho p trong map
+  const myPermissions = user?.role?.permissions?.map((p: PermissionItem) => p.permission.id) || [];
 
-  // Logic: Admin thì full quyền, User thường thì check theo list
-  const canCreate = isAdmin; // Chỉ Admin được tạo (theo yêu cầu của bạn)
+  const canCreate = isAdmin; 
   const canUpdate = isAdmin || myPermissions.includes('USER_UPDATE');
   const canDelete = isAdmin || myPermissions.includes('USER_DELETE');
   // -----------------------------
@@ -56,8 +69,6 @@ const UserManagement: React.FC = () => {
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      // Gọi API lấy User, Role, Department
-      // (Lỗi 403 sẽ hết sau khi bạn sửa Backend ở Bước 1)
       const [usersRes, rolesRes, deptsRes] = await Promise.all([
         axiosClient.get('/users'),
         axiosClient.get('/roles'),
@@ -68,10 +79,10 @@ const UserManagement: React.FC = () => {
       setRolesList(rolesRes.data.data || rolesRes.data || []); 
       setDeptList(deptsRes.data.data || deptsRes.data || []);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      // Nếu vẫn lỗi 403 (do chưa sửa backend kịp), không crash app
-      if (error.response?.status === 403) {
+      const err = error as { response?: { status?: number } };
+      if (err.response?.status === 403) {
          message.error('Bạn không có quyền xem dữ liệu này (Lỗi 403)');
       } else {
          message.error('Lỗi kết nối server.');
@@ -95,11 +106,12 @@ const UserManagement: React.FC = () => {
 
   useEffect(() => {
     fetchAllData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAddNew = () => {
     setEditingUser(null);
-    form.resetFields(); // Reset form trước khi mở
+    form.resetFields();
     form.setFieldsValue({
       isActive: true,
       roleId: rolesList.length > 0 ? rolesList[0].id : undefined, 
@@ -110,7 +122,7 @@ const UserManagement: React.FC = () => {
 
   const handleEdit = (record: User) => {
     setEditingUser(record);
-    form.resetFields(); // Reset để tránh dính dữ liệu cũ
+    form.resetFields(); 
     form.setFieldsValue({
       id: record.id,
       fullName: record.fullName,
@@ -124,10 +136,11 @@ const UserManagement: React.FC = () => {
 
   const handleCancel = () => {
     setIsModalOpen(false);
-    form.resetFields(); // Reset form khi đóng để thay thế destroyOnClose
+    form.resetFields(); 
   };
 
-  const handleSubmit = async (values: any) => {
+  // Sửa lỗi any cho values bằng interface cụ thể
+  const handleSubmit = async (values: Record<string, unknown>) => {
     try {
       if (editingUser) {
         await axiosClient.patch(`/users/${editingUser.id}`, values);
@@ -139,8 +152,9 @@ const UserManagement: React.FC = () => {
       setIsModalOpen(false);
       form.resetFields();
       refreshUsers();
-    } catch (error: any) {
-      const msg = error.response?.data?.message || 'Có lỗi xảy ra';
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      const msg = err.response?.data?.message || 'Có lỗi xảy ra';
       message.error(msg);
     }
   };
@@ -150,8 +164,9 @@ const UserManagement: React.FC = () => {
       await axiosClient.delete(`/users/${id}`);
       message.success('Đã xóa nhân sự');
       refreshUsers();
-    } catch (error: any) {
-      const msg = error.response?.data?.message || 'Không thể xóa';
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      const msg = err.response?.data?.message || 'Không thể xóa';
       message.error(msg);
     }
   };
@@ -191,7 +206,7 @@ const UserManagement: React.FC = () => {
       title: 'Vai trò',
       dataIndex: ['role', 'name'],
       key: 'role',
-      render: (text) => {
+      render: (text: string) => {
         const color = text?.toLowerCase().includes('admin') ? 'geekblue' : 'green';
         return <Tag color={color}>{text || 'User'}</Tag>;
       }
@@ -200,7 +215,7 @@ const UserManagement: React.FC = () => {
       title: 'Trạng thái',
       dataIndex: 'isActive',
       key: 'isActive',
-      render: (active) => (
+      render: (active: boolean) => (
         <Tag color={active ? 'success' : 'error'}>
             {active ? 'Hoạt động' : 'Đã khóa'}
         </Tag>
@@ -255,9 +270,8 @@ const UserManagement: React.FC = () => {
       <Modal
         title={editingUser ? `Cập nhật: ${editingUser.fullName}` : "Thêm nhân viên mới"}
         open={isModalOpen}
-        onCancel={handleCancel} // Sử dụng hàm cancel mới
+        onCancel={handleCancel}
         footer={null}
-        // destroyOnClose={true} <-- ĐÃ XÓA DÒNG NÀY ĐỂ HẾT WARNING
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <div className="grid grid-cols-2 gap-4">

@@ -18,6 +18,7 @@ import RoleManagement from './pages/Role/RoleManagement';
 import MenuManagement from './pages/admin/MenuManagement';
 // Import Security
 import RoleRoute from './components/RoleRoute';
+import type { JSX } from 'react/jsx-dev-runtime';
 
 const PrivateRoute = ({ children }: { children: JSX.Element }) => {
   const { token, isLoading } = useAuth();
