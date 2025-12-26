@@ -197,22 +197,23 @@ export const updatePost = async (
 // - Xóa DB
 // - Xóa sạch file đính kèm trên ổ cứng
 // ==============================================================================
-export const deletePost = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+export const deletePost = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
-    // 1. Tìm bài viết trước khi xóa để lấy danh sách file
+    // 1. Kiểm tra bài viết tồn tại
     const post = await prisma.post.findUnique({ where: { id } });
     if (!post) return next(new AppError("Bài viết không tồn tại", 404));
 
-    // 2. Xóa trong Database
-    await prisma.post.delete({ where: { id } });
+    // 2. Sử dụng Transaction để đảm bảo xóa sạch dữ liệu liên quan
+    await prisma.$transaction([
+      // Xóa các liên kết với phòng ban trước
+      prisma.postDepartment.deleteMany({ where: { postId: id } }),
+      // Sau đó mới xóa bài viết chính
+      prisma.post.delete({ where: { id } }),
+    ]);
 
-    // 3. Xóa tất cả file đính kèm trên ổ cứng
+    // 3. Xóa file đính kèm trên ổ cứng (giữ nguyên logic cũ của bạn)
     const attachments = post.attachments as any[];
     if (attachments && Array.isArray(attachments)) {
       attachments.forEach((file: any) => {
@@ -222,9 +223,7 @@ export const deletePost = async (
       });
     }
 
-    res
-      .status(200)
-      .json({ status: "success", message: "Đã xóa bài viết và dọn dẹp file" });
+    res.status(200).json({ status: "success", message: "Đã xóa bài viết thành công" });
   } catch (error) {
     next(error);
   }

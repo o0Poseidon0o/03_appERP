@@ -107,11 +107,12 @@ model Menu {
 }
 
 model PostDepartment {
+  id           String     @id @default(uuid())
   postId       String
   departmentId String
-  post         Post       @relation(fields: [postId], references: [id])
+  // Sửa dòng dưới đây:
+  post         Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
   department   Department @relation(fields: [departmentId], references: [id])
-  @@id([postId, departmentId])
 }
 
 model Notification {

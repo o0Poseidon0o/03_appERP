@@ -77,10 +77,11 @@ CREATE TABLE "menus" (
 
 -- CreateTable
 CREATE TABLE "PostDepartment" (
+    "id" TEXT NOT NULL,
     "postId" TEXT NOT NULL,
     "departmentId" TEXT NOT NULL,
 
-    CONSTRAINT "PostDepartment_pkey" PRIMARY KEY ("postId","departmentId")
+    CONSTRAINT "PostDepartment_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -124,7 +125,7 @@ ALTER TABLE "posts" ADD CONSTRAINT "posts_authorId_fkey" FOREIGN KEY ("authorId"
 ALTER TABLE "menus" ADD CONSTRAINT "menus_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "menus"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PostDepartment" ADD CONSTRAINT "PostDepartment_postId_fkey" FOREIGN KEY ("postId") REFERENCES "posts"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PostDepartment" ADD CONSTRAINT "PostDepartment_postId_fkey" FOREIGN KEY ("postId") REFERENCES "posts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "PostDepartment" ADD CONSTRAINT "PostDepartment_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
