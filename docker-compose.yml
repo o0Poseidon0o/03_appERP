@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # 1. DATABASE (Tự tạo Postgres trong Docker)
@@ -22,20 +22,20 @@ services:
     restart: always
     ports:
       - "3000:3000"
-    
+
     # Load toàn bộ biến từ file .env của bạn (JWT, MAIL...)
     env_file:
       - ./backend/.env
-      
+
     # GHI ĐÈ các biến môi trường cần thiết cho Docker
     environment:
       # Quan trọng: Trỏ host về 'db' thay vì '192.168.20.17' để 2 container nhìn thấy nhau
       DATABASE_URL: "postgresql://myadmin:P@ssw0rd@192.168.20.17:5432/towaERP?schema=public"
-      
+
       # Frontend chạy port 90, nên link trong email phải là port 90
       # Thay IP_CUA_SERVER_LINUX bằng IP thật (VD: 192.168.1.100)
-      FRONTEND_URL: "http://192.168.20.17:90" 
-      
+      FRONTEND_URL: "http://192.168.20.17:90"
+
     volumes:
       - ./backend/uploads:/app/uploads
     depends_on:
@@ -45,11 +45,11 @@ services:
 
   # 3. FRONTEND (React + Nginx)
   frontend:
-    build: ./fontend  # <--- Đã sửa đúng tên thư mục của bạn
+    build: ./fontend # <--- Đã sửa đúng tên thư mục của bạn
     container_name: towa_fontend
     restart: always
     ports:
-      - "90:80" # <--- Sửa lại: Ngoài 90 -> Trong 80 (Nginx mặc định port 80)
+      - "90:90" # <--- Sửa lại: Ngoài 90 -> Trong 80 (Nginx mặc định port 80)
     depends_on:
       - backend
     networks:
