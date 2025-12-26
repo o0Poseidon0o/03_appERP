@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # 1. DATABASE (PostgreSQL)
+  db:
+    image: postgres:15-alpine
+    container_name: towa_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mysecretpassword # Đặt pass tùy ý
+      POSTGRES_DB: towaERP
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Lưu dữ liệu để không mất khi tắt container
+    networks:
+      - towa-network
+
+  # 2. BACKEND (NodeJS)
+  backend:
+    build: ./backend
+    container_name: towa_backend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgresql://postgres:mysecretpassword@db:5432/towaERP?schema=public"
+      JWT_SECRET: "bi_mat_khong_bat_mi"
+      MAIL_USER: "email_cua_ban@gmail.com"
+      MAIL_PASS: "pass_ung_dung"
+      # FRONTEND_URL dùng để gắn link trong email
+      FRONTEND_URL: "http://IP_CUA_SERVER_LINUX" 
+    volumes:
+      - ./backend/uploads:/app/uploads # Map folder uploads ra ngoài để không mất ảnh
+    depends_on:
+      - db
+    networks:
+      - towa-network
+
+  # 3. FRONTEND (React + Nginx)
+  frontend:
+    build: ./frontend
+    container_name: towa_frontend
+    restart: always
+    ports:
+      - "90:90" # Chạy port 80 (Web mặc định)
+    depends_on:
+      - backend
+    networks:
+      - towa-network
+
+volumes:
+  postgres_data:
+
+networks:
+  towa-network:
+    driver: bridge
