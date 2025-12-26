@@ -46,7 +46,7 @@ services:
   # 3. FRONTEND (React + Nginx)
   frontend:
     build: ./fontend  # <--- Đã sửa đúng tên thư mục của bạn
-    container_name: towa_frontend
+    container_name: towa_fontend
     restart: always
     ports:
       - "90:80" # <--- Sửa lại: Ngoài 90 -> Trong 80 (Nginx mặc định port 80)
