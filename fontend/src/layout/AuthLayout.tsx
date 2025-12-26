@@ -41,7 +41,7 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle }) =>
             alt="Towa Factory" 
             className="absolute inset-0 w-full h-full object-cover scale-105 opacity-80"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-900/90 to-blue-950/85" />
+        <div className="absolute inset-0 bg-linear-to-r from-slate-950/95 via-slate-900/90 to-blue-950/85" />
         <div className="absolute inset-0 opacity-[0.15] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] pointer-events-none mix-blend-overlay"></div>
 
         <div className="relative z-10 p-16 text-white max-w-2xl flex flex-col h-full justify-center">
@@ -80,7 +80,7 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle }) =>
       <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 sm:p-12 relative">
         
         {/* Container cho form */}
-        <div className={`w-full max-w-[420px] p-8 rounded-2xl transition-all duration-300 ${formCardBg} ${formCardShadow}`}>
+        <div className={`w-full max-w-105 p-8 rounded-2xl transition-all duration-300 ${formCardBg} ${formCardShadow}`}>
            <div className="mb-8 text-center">
              <Title level={2} style={{ 
                  margin: 0, 

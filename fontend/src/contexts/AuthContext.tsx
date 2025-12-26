@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 interface User {
   id: string;
@@ -30,6 +29,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const storedUser = localStorage.getItem('user');
 
     if (storedToken && storedUser) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setToken(storedToken);
       setUser(JSON.parse(storedUser));
     }
@@ -57,6 +57,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error('useAuth must be used within AuthProvider');

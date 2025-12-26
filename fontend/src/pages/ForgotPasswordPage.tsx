@@ -5,30 +5,36 @@ import { Link, useNavigate } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
 import AuthLayout from '../layout/AuthLayout';
 
+// Định nghĩa kiểu dữ liệu cho form values
+interface ForgotPasswordFormValues {
+  userId: string;
+}
+
 const ForgotPasswordPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false); // Trạng thái đã gửi mail thành công
+  const [isSuccess, setIsSuccess] = useState(false);
   const navigate = useNavigate();
 
-  const onFinish = async (values: any) => {
+  // Thay 'any' bằng interface đã định nghĩa
+  const onFinish = async (values: ForgotPasswordFormValues) => {
     setLoading(true);
     try {
-      // Backend nhận vào 'id' (Mã nhân viên) để tìm email và gửi pass tạm
       await axiosClient.post('/auth/forgot-password', {
         id: values.userId,
       });
 
       setIsSuccess(true);
       message.success('Đã gửi mật khẩu tạm thời thành công!');
-    } catch (error: any) {
-      const msg = error.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại.';
+    } catch (error: unknown) { // Dùng unknown thay vì any để an toàn hơn
+      // Ép kiểu error để lấy message
+      const err = error as { response?: { data?: { message?: string } } };
+      const msg = err.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại.';
       message.error(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  // Nếu gửi thành công thì hiển thị màn hình thông báo
   if (isSuccess) {
     return (
       <AuthLayout 
@@ -60,7 +66,6 @@ const ForgotPasswordPage: React.FC = () => {
     );
   }
 
-  // Màn hình Form nhập ID
   return (
     <AuthLayout 
       title="Khôi phục mật khẩu" 

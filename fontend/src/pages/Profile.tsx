@@ -2,20 +2,30 @@
 import React, { useState } from 'react';
 import { 
   Card, Avatar, Tabs, Form, Input, Button, 
-  Row, Col, Tag, theme, App // Import App để dùng hook useApp
+  Row, Col, Tag, theme, App 
 } from 'antd';
 import { 
   UserOutlined, LockOutlined, MailOutlined, 
   PhoneOutlined, SaveOutlined 
 } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
-import axiosClient from '../api/axiosClient'; // Đảm bảo đường dẫn đúng tới file axiosClient của bạn
+import axiosClient from '../api/axiosClient';
+
+// 1. Định nghĩa kiểu dữ liệu cho Form cập nhật thông tin
+interface ProfileInfoValues {
+  fullName: string;
+  phone?: string;
+}
+
+// 2. Định nghĩa kiểu dữ liệu cho Form đổi mật khẩu
+interface ChangePasswordValues {
+  currentPassword: string;
+  newPassword: string;
+}
 
 const Profile: React.FC = () => {
   const { user } = useAuth();
   const { token } = theme.useToken();
-  
-  // Dùng hook này để gọi message, fix lỗi warning
   const { message } = App.useApp(); 
 
   const [loading, setLoading] = useState(false);
@@ -23,22 +33,21 @@ const Profile: React.FC = () => {
   const [formPassword] = Form.useForm();
 
   // --- 1. Xử lý cập nhật thông tin ---
-  const handleUpdateInfo = async (values: any) => {
+  // Thay 'any' bằng 'ProfileInfoValues'
+  const handleUpdateInfo = async (values: ProfileInfoValues) => {
     setLoading(true);
     try {
-      // Gọi API: axiosClient đã có baseURL rồi, chỉ cần endpoint
-      // Ví dụ endpoint backend là: PUT /api/users/profile
-      const response = await axiosClient.put('/users/profile', {
+      await axiosClient.put('/users/profile', {
         fullName: values.fullName,
         phone: values.phone
       });
       
       message.success('Cập nhật thông tin thành công!');
-      console.log('Update success:', response.data);
-      // Lưu ý: Bạn có thể cần update lại state user trong AuthContext để hiển thị tên mới ngay lập tức
-    } catch (error: any) {
-      // Lấy lỗi từ response backend trả về
-      const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra khi cập nhật';
+      // Bạn có thể cần gọi hàm refreshUser() từ context nếu có
+    } catch (error: unknown) { // Dùng 'unknown' thay vì 'any'
+      // Ép kiểu error để lấy message an toàn
+      const err = error as { response?: { data?: { message?: string } } };
+      const errorMsg = err.response?.data?.message || 'Có lỗi xảy ra khi cập nhật';
       message.error(errorMsg);
     } finally {
       setLoading(false);
@@ -46,10 +55,10 @@ const Profile: React.FC = () => {
   };
 
   // --- 2. Xử lý đổi mật khẩu ---
-  const handleChangePassword = async (values: any) => {
+  // Thay 'any' bằng 'ChangePasswordValues'
+  const handleChangePassword = async (values: ChangePasswordValues) => {
     setLoading(true);
     try {
-      // Gọi API: POST /api/auth/change-password
       await axiosClient.post('/auth/change-password', {
         currentPassword: values.currentPassword,
         newPassword: values.newPassword
@@ -57,15 +66,15 @@ const Profile: React.FC = () => {
 
       message.success('Đổi mật khẩu thành công! Vui lòng đăng nhập lại.');
       formPassword.resetFields();
-    } catch (error: any) {
-      const errorMsg = error.response?.data?.message || 'Đổi mật khẩu thất bại';
+    } catch (error: unknown) { // Dùng 'unknown' thay vì 'any'
+      const err = error as { response?: { data?: { message?: string } } };
+      const errorMsg = err.response?.data?.message || 'Đổi mật khẩu thất bại';
       message.error(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
-  // ... (Phần code giao diện Tabs và Form bên dưới GIỮ NGUYÊN như cũ)
   const items = [
     {
       key: '1',

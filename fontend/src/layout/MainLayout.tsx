@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Button, Dropdown, Avatar, Badge, List, Popover, theme as antTheme, Switch, Drawer } from 'antd';
+import React, { useState, useEffect, useCallback } from 'react'; // 1. Thêm useCallback
+import { Layout, Menu, Button, Dropdown, Avatar, Badge, List, Popover, theme as antTheme, Switch, Drawer, type MenuProps } from 'antd';
 import { 
   MenuFoldOutlined, MenuUnfoldOutlined, 
   UserOutlined, DashboardOutlined, 
@@ -13,24 +13,52 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import axiosClient from '../api/axiosClient';
-import useMediaQuery from '../hooks/useMediaQuery'; // Hook kiểm tra màn hình (xem code bên dưới)
+import useMediaQuery from '../hooks/useMediaQuery';
 
 const { Header, Sider, Content } = Layout;
 
+// --- MENU COMPONENT (Giữ nguyên phần tách code này) ---
+interface SideMenuProps {
+    collapsed: boolean;
+    isMobile: boolean;
+    locationPath: string;
+    menuItems: MenuProps['items'];
+    onMenuClick: MenuProps['onClick'];
+}
+
+const SideMenu: React.FC<SideMenuProps> = ({ collapsed, isMobile, locationPath, menuItems, onMenuClick }) => (
+    <>
+      <div className="h-16 flex items-center justify-center border-b border-gray-700/50 bg-[#001529]">
+          <div className={`text-xl font-bold bg-linear-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent transition-all duration-300 ${collapsed && !isMobile ? 'scale-0' : 'scale-100'}`}>
+              TOWA ERP
+          </div>
+          {collapsed && !isMobile && <div className="text-white font-bold text-xl absolute">T</div>}
+      </div>
+      <Menu 
+          theme="dark" 
+          mode="inline" 
+          selectedKeys={[locationPath]} 
+          items={menuItems} 
+          onClick={onMenuClick}
+          className="bg-transparent mt-2 border-r-0" 
+      />
+    </>
+);
+
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // State cho Mobile Drawer
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const { token } = antTheme.useToken();
   
-  // Custom hook kiểm tra màn hình mobile (< 768px)
   const isMobile = useMediaQuery('(max-width: 768px)');
 
-  // State dữ liệu
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dynamicMenus, setDynamicMenus] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -45,33 +73,41 @@ const MainLayout: React.FC = () => {
     fetchMenus();
   }, []);
 
-  // 2. Fetch Thông báo
-  const fetchNoti = async () => {
+  // --- 2. FETCH THÔNG BÁO (SỬA Ở ĐÂY) ---
+  // Sử dụng useCallback để hàm này không bị tạo lại mỗi lần render
+  const fetchNoti = useCallback(async () => {
       try {
           const res = await axiosClient.get('/notifications');
           setNotifications(res.data.data.notifications);
           setUnreadCount(res.data.data.unreadCount);
-      } catch (e) { }
-  };
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (e) { 
+          // console.error(e); 
+      }
+  }, []); // Dependency rỗng vì axiosClient là tĩnh
 
   useEffect(() => {
-      fetchNoti();
-      const interval = setInterval(fetchNoti, 30000); 
-      return () => clearInterval(interval);
-  }, []);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchNoti(); // Gọi lần đầu
+      const interval = setInterval(fetchNoti, 30000); // Gọi định kỳ
+      return () => clearInterval(interval); // Dọn dẹp
+  }, [fetchNoti]); // Thêm fetchNoti vào dependency
 
   const handleReadNoti = async (open: boolean) => {
       if (open && unreadCount > 0) {
-          await axiosClient.patch('/notifications/read-all');
-          setUnreadCount(0);
-          fetchNoti();
+          try {
+            await axiosClient.patch('/notifications/read-all');
+            setUnreadCount(0);
+            fetchNoti(); // Gọi lại hàm đã được cache
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          } catch(e) { /* empty */ }
       }
   };
 
   // 3. Cấu hình Menu Sidebar
   const userRoleId = user?.role?.id || 'ROLE-USER';
   
-  const menuItems = [
+  const menuItems: MenuProps['items'] = [
     ...(['ROLE-ADMIN', 'ROLE-MANAGER'].includes(userRoleId) ? [
         { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
     ] : []),
@@ -84,9 +120,9 @@ const MainLayout: React.FC = () => {
     },
     { key: '/admin/users', icon: <TeamOutlined />, label: 'Nhân sự' },
     ...(userRoleId === 'ROLE-ADMIN' ? [
-       { type: 'divider' },
+       { type: 'divider' as const },
        { 
-           key: 'grp-system', label: 'HỆ THỐNG', type: 'group',
+           key: 'grp-system', label: 'HỆ THỐNG', type: 'group' as const,
            children: [
                { key: '/admin/departments', icon: <ApartmentOutlined />, label: 'Phòng ban' },
                { key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Phân quyền' },
@@ -96,30 +132,10 @@ const MainLayout: React.FC = () => {
     ] : [])
   ];
 
-  const handleMenuClick = (e: any) => {
+  const handleMenuClick: MenuProps['onClick'] = (e) => {
       navigate(e.key);
-      if (isMobile) setMobileMenuOpen(false); // Đóng menu mobile khi click
+      if (isMobile) setMobileMenuOpen(false);
   };
-
-  // Render Menu Component (Dùng chung cho cả Sider và Drawer)
-  const MenuComponent = () => (
-      <>
-        <div className="h-16 flex items-center justify-center border-b border-gray-700/50 bg-[#001529]">
-            <div className={`text-xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent transition-all duration-300 ${collapsed && !isMobile ? 'scale-0' : 'scale-100'}`}>
-                TOWA ERP
-            </div>
-            {collapsed && !isMobile && <div className="text-white font-bold text-xl absolute">T</div>}
-        </div>
-        <Menu 
-            theme="dark" 
-            mode="inline" 
-            selectedKeys={[location.pathname]} 
-            items={menuItems} 
-            onClick={handleMenuClick}
-            className="bg-transparent mt-2 border-r-0" 
-        />
-      </>
-  );
 
   const notiContent = (
       <div className="w-80 max-h-96 overflow-y-auto">
@@ -127,7 +143,12 @@ const MainLayout: React.FC = () => {
               <List.Item className={`p-2 hover:bg-gray-50 cursor-pointer ${!item.isRead ? 'bg-blue-50' : ''}`} onClick={() => navigate('/posts')}>
                   <List.Item.Meta 
                       title={<span className="text-sm font-semibold">{item.title}</span>}
-                      description={<div className="text-xs text-gray-600">{item.message}</div>}
+                      description={
+                        <div>
+                            <div className="text-xs text-gray-600">{item.message}</div>
+                            <div className="text-[10px] text-gray-400 mt-1">{new Date(item.createdAt).toLocaleString()}</div>
+                        </div>
+                      }
                   />
               </List.Item>
           )} />
@@ -135,7 +156,7 @@ const MainLayout: React.FC = () => {
       </div>
   );
 
-  const userDropdown = {
+  const userDropdown: MenuProps = {
     items: [
         { key: 'info', label: <span className="font-semibold">{user?.fullName}</span>, disabled: true },
         { type: 'divider' },
@@ -146,27 +167,21 @@ const MainLayout: React.FC = () => {
 
   return (
     <Layout className="h-screen overflow-hidden">
-      {/* 1. SIDER CHO DESKTOP */}
       {!isMobile && (
           <Sider 
             trigger={null} collapsible collapsed={collapsed} width={250}
             style={{ background: isDarkMode ? '#111827' : '#001529' }}
             className="shadow-xl z-20"
           >
-            <MenuComponent />
+            <SideMenu collapsed={collapsed} isMobile={false} locationPath={location.pathname} menuItems={menuItems} onMenuClick={handleMenuClick} />
           </Sider>
       )}
 
-      {/* 2. DRAWER CHO MOBILE */}
       <Drawer
-        placement="left"
-        onClose={() => setMobileMenuOpen(false)}
-        open={mobileMenuOpen}
-        styles={{ body: { padding: 0, background: '#001529' } }}
-        width={260}
-        closable={false}
+        placement="left" onClose={() => setMobileMenuOpen(false)} open={mobileMenuOpen}
+        styles={{ body: { padding: 0, background: '#001529' } }} width={260} closable={false}
       >
-         <MenuComponent />
+         <SideMenu collapsed={false} isMobile={true} locationPath={location.pathname} menuItems={menuItems} onMenuClick={handleMenuClick} />
       </Drawer>
       
       <Layout>
@@ -174,12 +189,11 @@ const MainLayout: React.FC = () => {
             style={{ 
                 background: isDarkMode ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)', 
                 borderBottom: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb',
-                padding: '0 16px' // Giảm padding trên mobile
+                padding: '0 16px' 
             }} 
             className="flex justify-between items-center sticky top-0 z-10"
         >
             <div className="flex items-center">
-                {/* Nút Menu Toggle: Trên Mobile mở Drawer, trên Desktop thu nhỏ Sider */}
                 <Button 
                     type="text" 
                     icon={collapsed || isMobile ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} 
@@ -191,13 +205,11 @@ const MainLayout: React.FC = () => {
             
             <div className="flex items-center gap-4 md:gap-6">
                 <Switch checkedChildren={<MoonOutlined />} unCheckedChildren={<SunOutlined />} checked={isDarkMode} onChange={toggleTheme} className="bg-gray-400" />
-
                 <Popover content={notiContent} title="Thông báo" trigger="click" onOpenChange={handleReadNoti} placement="bottomRight">
                     <Badge count={unreadCount} size="small" className="cursor-pointer flex items-center">
                         <BellOutlined style={{ fontSize: 20, color: token.colorText }} />
                     </Badge>
                 </Popover>
-
                 <Dropdown menu={userDropdown} trigger={['click']}>
                     <div className="flex items-center gap-2 cursor-pointer hover:bg-gray-200/20 p-1.5 rounded-lg transition-all">
                         <Avatar style={{ backgroundColor: token.colorPrimary }} icon={<UserOutlined />} src={`https://ui-avatars.com/api/?name=${user?.fullName}&background=random`} />

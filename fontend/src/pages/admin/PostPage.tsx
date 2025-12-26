@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { 
-  Card, List, Input, Tag, Image, Tabs, Empty, Space 
+  Card, List, Input, Tag, Image, Tabs, Empty
 } from 'antd';
 import { 
   UserOutlined, SearchOutlined, GlobalOutlined, 
-  PaperClipOutlined, FilePdfOutlined, FileImageOutlined 
+  PaperClipOutlined, FilePdfOutlined
 } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 import { useSearchParams } from 'react-router-dom';
@@ -14,10 +14,31 @@ const { Search } = Input;
 // Cấu hình URL cho ảnh
 const SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+// --- 1. ĐỊNH NGHĨA KIỂU DỮ LIỆU (INTERFACE) ---
 interface Attachment {
     name: string;
     path: string;
     type: string;
+}
+
+interface Author {
+    fullName: string;
+}
+
+interface MenuType {
+    id: number | string;
+    title: string;
+}
+
+// Interface chính cho Bài viết
+interface Post {
+    id: string;
+    title: string;
+    content: string;
+    createdAt: string;
+    menu?: MenuType;
+    author?: Author;
+    attachments?: Attachment[];
 }
 
 const PostPage: React.FC = () => {
@@ -25,16 +46,16 @@ const PostPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const menuIdParam = searchParams.get('menuId');
 
-  // --- STATE ---
-  const [posts, setPosts] = useState<any[]>([]);
-  const [menus, setMenus] = useState<any[]>([]);
+  // --- 2. SỬA STATE: Dùng Interface thay vì 'unknown' ---
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [menus, setMenus] = useState<MenuType[]>([]);
   const [loading, setLoading] = useState(false);
   
   // State tìm kiếm & Lọc
   const [searchText, setSearchText] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string>(menuIdParam || 'all');
 
-  // --- 1. CALL API ---
+  // --- CALL API ---
   const fetchMenus = async () => {
       try {
           const res = await axiosClient.get('/menus');
@@ -69,7 +90,7 @@ const PostPage: React.FC = () => {
     else setSearchParams({ menuId: activeMenuId });
   }, [activeMenuId]);
 
-  // --- 2. XỬ LÝ SEARCH CLIENT-SIDE ---
+  // --- XỬ LÝ SEARCH CLIENT-SIDE ---
   const filteredPosts = useMemo(() => {
       if (!searchText) return posts;
       const lowerText = searchText.toLowerCase();
@@ -79,7 +100,7 @@ const PostPage: React.FC = () => {
       );
   }, [posts, searchText]);
 
-  // --- 3. HELPER: HIỂN THỊ FILE ĐÍNH KÈM ---
+  // --- HELPER: HIỂN THỊ FILE ĐÍNH KÈM ---
   const getFullUrl = (path: string) => {
       if (!path) return '';
       return path.startsWith('http') ? path : `${SERVER_URL}${path}`;
@@ -170,6 +191,7 @@ const PostPage: React.FC = () => {
               <List
                   grid={{ gutter: 24, xs: 1, sm: 1, md: 1, lg: 1, xl: 1, xxl: 1 }}
                   dataSource={filteredPosts}
+                  // --- 3. TYPE SẼ ĐƯỢC TỰ ĐỘNG HIỂU LÀ 'Post' ---
                   renderItem={(item) => (
                     <List.Item>
                       <Card 
