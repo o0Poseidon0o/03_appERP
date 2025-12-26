@@ -27,16 +27,21 @@ export const getAllDepartments = async (req: Request, res: Response, next: NextF
 // 2. Tạo phòng ban mới
 export const createDepartment = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id, name, code } = req.body; // ID String tự nhập (VD: "DEPT-IT")
+    const { id, name, code } = req.body;
 
-    // Check trùng ID
+    // Kiểm tra trùng ID
     const existDept = await prisma.department.findUnique({ where: { id } });
     if (existDept) {
       return next(new AppError('Mã ID phòng ban này đã tồn tại!', 400));
     }
 
     const newDept = await prisma.department.create({
-      data: { id, name, code }
+      data: { 
+        id, 
+        name, 
+        // Nếu code gửi lên bị trống, lấy id làm code để tránh lỗi Prisma
+        code: code || id 
+      }
     });
 
     res.status(201).json({

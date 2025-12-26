@@ -6,16 +6,32 @@ import {
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
   DeleteOutlined, ReloadOutlined 
-} from '@ant-design/icons'; // ĐÃ XÓA UsergroupAddOutlined TẠI ĐÂY
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import axiosClient from '../../api/axiosClient';
 
-// Định nghĩa Interface để tránh lỗi any
+// Interface cho dữ liệu
 interface Department {
   id: string;
   name: string;
+  code: string;
   _count?: {
     users: number;
+  };
+}
+
+// Interface cho giá trị Form
+interface FormValues {
+  id: string;
+  name: string;
+}
+
+// Interface cho lỗi
+interface ApiError {
+  response?: {
+    data?: {
+      message?: string;
+    };
   };
 }
 
@@ -26,15 +42,17 @@ const DepartmentManagement: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [searchText, setSearchText] = useState('');
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<FormValues>();
 
   const fetchDepts = async () => {
     setLoading(true);
     try {
       const res = await axiosClient.get('/departments');
-      setDepts(res.data.data || res.data || []);
+      // Đảm bảo dữ liệu nhận vào đúng cấu trúc
+      const data = res.data.data || res.data || [];
+      setDepts(data);
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
+      const err = error as ApiError;
       message.error(err.response?.data?.message || 'Lỗi tải dữ liệu');
     } finally {
       setLoading(false);
@@ -43,23 +61,26 @@ const DepartmentManagement: React.FC = () => {
 
   useEffect(() => {
     fetchDepts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSubmit = async (values: { id: string; name: string }) => {
+  const handleSubmit = async (values: FormValues) => {
+    setLoading(true);
     try {
+      const payload = { ...values, code: values.id };
       if (editingDept) {
-        await axiosClient.patch(`/departments/${editingDept.id}`, values);
+        await axiosClient.patch(`/departments/${editingDept.id}`, payload);
         message.success('Cập nhật thành công');
       } else {
-        await axiosClient.post('/departments', values);
+        await axiosClient.post('/departments', payload);
         message.success('Thêm mới thành công');
       }
       setIsModalOpen(false);
       fetchDepts();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
+      const err = error as ApiError;
       message.error(err.response?.data?.message || 'Có lỗi xảy ra');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -89,13 +110,21 @@ const DepartmentManagement: React.FC = () => {
             type="text" 
             danger 
             icon={<DeleteOutlined />} 
-            onClick={async () => {
-                try {
+            onClick={() => {
+              Modal.confirm({
+                title: 'Xác nhận xóa',
+                content: `Bạn có chắc muốn xóa phòng ${record.name}?`,
+                onOk: async () => {
+                  try {
                     await axiosClient.delete(`/departments/${record.id}`);
                     message.success('Đã xóa');
                     fetchDepts();
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                } catch(e) { message.error('Không thể xóa'); }
+                  } catch (error: unknown) {
+                    const err = error as ApiError;
+                    message.error(err.response?.data?.message || 'Lỗi xóa dữ liệu');
+                  }
+                }
+              });
             }}
           />
         </Space>
@@ -108,15 +137,15 @@ const DepartmentManagement: React.FC = () => {
       <div className="flex justify-between mb-4">
         <h2 className="text-2xl font-bold">Quản lý Phòng ban</h2>
         <Button 
-            type="primary" 
-            icon={<PlusOutlined />} 
-            onClick={() => {
-                setEditingDept(null);
-                form.resetFields();
-                setIsModalOpen(true);
-            }}
+          type="primary" 
+          icon={<PlusOutlined />} 
+          onClick={() => {
+            setEditingDept(null);
+            form.resetFields();
+            setIsModalOpen(true);
+          }}
         >
-            Thêm phòng ban
+          Thêm phòng ban
         </Button>
       </div>
 
@@ -145,8 +174,12 @@ const DepartmentManagement: React.FC = () => {
         footer={null}
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
-          <Form.Item name="id" label="Mã phòng" rules={[{ required: true }]}><Input disabled={!!editingDept} /></Form.Item>
-          <Form.Item name="name" label="Tên phòng" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="id" label="Mã phòng" rules={[{ required: true, message: 'Nhập mã phòng' }]}>
+            <Input disabled={!!editingDept} />
+          </Form.Item>
+          <Form.Item name="name" label="Tên phòng" rules={[{ required: true, message: 'Nhập tên phòng' }]}>
+            <Input />
+          </Form.Item>
           <Button type="primary" htmlType="submit" block loading={loading}>Lưu</Button>
         </Form>
       </Modal>
