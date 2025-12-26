@@ -11,21 +11,22 @@ datasource db {
 
 // 1. Bảng User sửa lại: Thay field 'role' string bằng quan hệ sang bảng Role
 model User {
-  id           String     @id // "NV001"
-  email        String     @unique
-  password     String
-  fullName     String
-  isActive     Boolean    @default(true)
+  id        String   @id // "NV001"
+  email     String   @unique
+  password  String
+  fullName  String
+  isActive  Boolean  @default(true)
   
-  // Liên kết với Role
+  // ... (các trường cũ giữ nguyên)
   roleId       String
   role         Role       @relation(fields: [roleId], references: [id])
-
-  // Liên kết phòng ban
   departmentId String
   department   Department @relation(fields: [departmentId], references: [id])
+  mustChangePassword Boolean @default(false)
+  posts        Post[]     // Đã có từ trước
   
-  posts        Post[]
+  // --- THÊM DÒNG NÀY ---
+  notifications Notification[] 
 }
 
 // 2. Bảng Role (Vai trò): Ví dụ ID="ADMIN", "ACC_MGR" (Trưởng phòng kế toán)
@@ -68,25 +69,41 @@ model Department {
 }
 // ... (Copy tiếp các model Post, Menu... vào đây)
 model Post {
-    id String @id
-    // ... nội dung cũ
-    departmentId String? // Nếu cần
-    menuId Int
-    authorId String
-    // ...
-    menu      Menu     @relation(fields: [menuId], references: [id])
-    author    User     @relation(fields: [authorId], references: [id])
-    targets   PostDepartment[]
+  id           String   @id @default(uuid())
+  title        String
+  content      String   @db.Text
+  attachments  Json?
+  
+  // --- THÊM DÒNG NÀY VÀO ---
+  published    Boolean  @default(true) 
+  // -------------------------
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  menuId       Int
+  menu         Menu     @relation(fields: [menuId], references: [id])
+  authorId     String
+  author       User     @relation(fields: [authorId], references: [id])
+  departmentId String?
+  targets      PostDepartment[]
+  
+  @@map("posts")
 }
 
 model Menu {
-    id Int @id @default(autoincrement())
-    // ... nội dung cũ
-    posts Post[]
-    // ...
-    parentId  Int?
-    parent    Menu?   @relation("MenuHierarchy", fields: [parentId], references: [id])
-    children  Menu[]  @relation("MenuHierarchy")
+  id        Int      @id @default(autoincrement())
+  title     String
+  slug      String?  // Đường dẫn tĩnh (VD: /thong-bao)
+  order     Int      @default(0) // Sắp xếp thứ tự
+  isVisible Boolean  @default(true) // Ẩn/Hiện
+
+  parentId  Int?
+  parent    Menu?    @relation("MenuHierarchy", fields: [parentId], references: [id])
+  children  Menu[]   @relation("MenuHierarchy")
+
+  posts     Post[]   // Quan hệ với bài viết
+  
+  @@map("menus")
 }
 
 model PostDepartment {
@@ -95,4 +112,20 @@ model PostDepartment {
   post         Post       @relation(fields: [postId], references: [id])
   department   Department @relation(fields: [departmentId], references: [id])
   @@id([postId, departmentId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   // Người nhận
+  
+  // Quan hệ ngược về User
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  link      String?  // Link tùy chọn (nếu có)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
 }

@@ -17,7 +17,9 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
+    "@types/multer": "^2.0.0",
     "@types/node": "^22.19.3",
+    "@types/nodemailer": "^7.0.4",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "prisma": "5.10.2",
@@ -32,7 +34,9 @@
     "express": "^4.22.1",
     "helmet": "^7.2.0",
     "jsonwebtoken": "^9.0.3",
-    "morgan": "^1.10.1"
+    "morgan": "^1.10.1",
+    "multer": "^2.0.2",
+    "nodemailer": "^7.0.12"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

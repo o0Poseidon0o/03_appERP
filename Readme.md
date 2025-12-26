@@ -65,3 +65,9 @@ fontend/
 ├── package.json
 ├── tsconfig.json
 └── vite.config.ts
+
+
+Khi xóa thư mục migrations
+hãy chạy 
+npx prisma migrate dev --name init_full_db
+npx prisma migrate reset
