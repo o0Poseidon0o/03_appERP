@@ -6,13 +6,12 @@ import {
 } from 'antd';
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
-  DeleteOutlined, ReloadOutlined 
-} from '@ant-design/icons';
+  DeleteOutlined, ReloadOutlined} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import axiosClient from '../../api/axiosClient';
 import { useAuth } from '../../contexts/AuthContext';
 
-// 1. CẬP NHẬT INTERFACE ĐỂ FIX LỖI Property 'permissions' does not exist
+// --- INTERFACE ---
 interface PermissionItem {
   permission: {
     id: string;
@@ -30,7 +29,7 @@ interface User {
   role?: { 
     id: string;
     name: string; 
-    permissions?: PermissionItem[]; // Đã thêm để fix lỗi dòng 37
+    permissions?: PermissionItem[];
   };
   department?: { name: string };
 }
@@ -44,21 +43,18 @@ const UserManagement: React.FC = () => {
   const { message } = AntdApp.useApp();
   const { user } = useAuth();
   
-  // --- 1. LOGIC PHÂN QUYỀN (GIỮ NGUYÊN) ---
+  // --- 1. LOGIC PHÂN QUYỀN ---
   const isAdmin = user?.role?.id === 'ROLE-ADMIN';
-  
-  // Sửa lỗi 'any' bằng cách định nghĩa kiểu cho p trong map
   const myPermissions = user?.role?.permissions?.map((p: PermissionItem) => p.permission.id) || [];
 
   const canCreate = isAdmin; 
   const canUpdate = isAdmin || myPermissions.includes('USER_UPDATE');
   const canDelete = isAdmin || myPermissions.includes('USER_DELETE');
-  // -----------------------------
 
+  // --- STATE ---
   const [users, setUsers] = useState<User[]>([]);
   const [rolesList, setRolesList] = useState<OptionItem[]>([]); 
   const [deptList, setDeptList] = useState<OptionItem[]>([]);
-  
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -66,6 +62,7 @@ const UserManagement: React.FC = () => {
   
   const [form] = Form.useForm();
 
+  // --- API CALLS ---
   const fetchAllData = async () => {
     setLoading(true);
     try {
@@ -74,19 +71,12 @@ const UserManagement: React.FC = () => {
         axiosClient.get('/roles'),
         axiosClient.get('/departments')
       ]);
-
       setUsers(usersRes.data.data || usersRes.data || []);
       setRolesList(rolesRes.data.data || rolesRes.data || []); 
       setDeptList(deptsRes.data.data || deptsRes.data || []);
-
-    } catch (error: unknown) {
-      console.error(error);
-      const err = error as { response?: { status?: number } };
-      if (err.response?.status === 403) {
-         message.error('Bạn không có quyền xem dữ liệu này (Lỗi 403)');
-      } else {
-         message.error('Lỗi kết nối server.');
-      }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (error: any) {
+      message.error('Lỗi kết nối server.');
     } finally {
       setLoading(false);
     }
@@ -106,9 +96,9 @@ const UserManagement: React.FC = () => {
 
   useEffect(() => {
     fetchAllData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- HANDLERS ---
   const handleAddNew = () => {
     setEditingUser(null);
     form.resetFields();
@@ -129,7 +119,8 @@ const UserManagement: React.FC = () => {
       email: record.email,
       roleId: record.roleId, 
       departmentId: record.departmentId,
-      isActive: record.isActive
+      isActive: record.isActive,
+      password: '' // Luôn để trống password khi mở modal edit
     });
     setIsModalOpen(true);
   };
@@ -139,23 +130,30 @@ const UserManagement: React.FC = () => {
     form.resetFields(); 
   };
 
-  // Sửa lỗi any cho values bằng interface cụ thể
-  const handleSubmit = async (values: Record<string, unknown>) => {
+  const handleSubmit = async (values: Record<string, any>) => {
+    setLoading(true);
     try {
+      // Xử lý giá trị password: nếu edit và password trống thì xóa khỏi payload để backend không update
+      const payload = { ...values };
+      if (editingUser && (!payload.password || payload.password.trim() === '')) {
+        delete payload.password;
+      }
+
       if (editingUser) {
-        await axiosClient.patch(`/users/${editingUser.id}`, values);
-        message.success('Cập nhật thành công!');
+        await axiosClient.patch(`/users/${editingUser.id}`, payload);
+        message.success('Cập nhật thông tin nhân sự thành công!');
       } else {
-        await axiosClient.post('/users', values);
+        await axiosClient.post('/users', payload);
         message.success('Thêm nhân sự mới thành công!');
       }
       setIsModalOpen(false);
       form.resetFields();
       refreshUsers();
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
-      const msg = err.response?.data?.message || 'Có lỗi xảy ra';
+    } catch (error: any) {
+      const msg = error.response?.data?.message || 'Có lỗi xảy ra';
       message.error(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -164,13 +162,13 @@ const UserManagement: React.FC = () => {
       await axiosClient.delete(`/users/${id}`);
       message.success('Đã xóa nhân sự');
       refreshUsers();
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
-      const msg = err.response?.data?.message || 'Không thể xóa';
+    } catch (error: any) {
+      const msg = error.response?.data?.message || 'Không thể xóa';
       message.error(msg);
     }
   };
 
+  // --- TABLE COLUMNS ---
   const columns: ColumnsType<User> = [
     {
       title: 'Mã NV',
@@ -227,12 +225,12 @@ const UserManagement: React.FC = () => {
       render: (_, record) => (
         <Space>
           {canUpdate ? (
-             <Tooltip title="Chỉnh sửa">
+             <Tooltip title="Chỉnh sửa & Đổi mật khẩu">
                 <Button type="text" icon={<EditOutlined className="text-indigo-600" />} onClick={() => handleEdit(record)} />
              </Tooltip>
           ) : <Button type="text" disabled icon={<EditOutlined />} />}
           
-          {canDelete && (
+          {canDelete && record.id !== 'ADMIN-01' && (
             <Tooltip title="Xóa nhân sự">
                 <Popconfirm title="Xóa?" onConfirm={() => handleDelete(record.id)} okButtonProps={{ danger: true }}>
                    <Button type="text" danger icon={<DeleteOutlined />} />
@@ -268,18 +266,31 @@ const UserManagement: React.FC = () => {
       </Card>
 
       <Modal
-        title={editingUser ? `Cập nhật: ${editingUser.fullName}` : "Thêm nhân viên mới"}
+        title={editingUser ? `Chỉnh sửa nhân sự: ${editingUser.fullName}` : "Thêm nhân viên mới"}
         open={isModalOpen}
         onCancel={handleCancel}
         footer={null}
+        maskClosable={false}
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <div className="grid grid-cols-2 gap-4">
-              <Form.Item name="id" label="Mã NV" rules={[{ required: !editingUser }]}><Input disabled={!!editingUser} /></Form.Item>
-              <Form.Item name="email" label="Email" rules={[{ required: !editingUser, type: 'email' }]}><Input disabled={!!editingUser} /></Form.Item>
+              <Form.Item name="id" label="Mã NV" rules={[{ required: !editingUser, message: 'Nhập mã NV' }]}><Input disabled={!!editingUser} /></Form.Item>
+              <Form.Item name="email" label="Email" rules={[{ required: !editingUser, type: 'email', message: 'Nhập email hợp lệ' }]}><Input disabled={!!editingUser} /></Form.Item>
           </div>
-          <Form.Item name="fullName" label="Họ tên" rules={[{ required: true }]}><Input /></Form.Item>
-          {!editingUser && <Form.Item name="password" label="Mật khẩu" rules={[{ required: true, min: 6 }]}><Input.Password /></Form.Item>}
+          
+          <Form.Item name="fullName" label="Họ tên" rules={[{ required: true, message: 'Nhập họ tên' }]}><Input /></Form.Item>
+          
+          {/* Ô MẬT KHẨU: Required khi tạo mới, Optional khi edit */}
+          <Form.Item 
+            name="password" 
+            label={editingUser ? "Mật khẩu mới (Để trống nếu không đổi)" : "Mật khẩu"} 
+            rules={[
+              { required: !editingUser, message: 'Vui lòng nhập mật khẩu' },
+              { min: 6, message: 'Tối thiểu 6 ký tự' }
+            ]}
+          >
+            <Input.Password placeholder={editingUser ? "Nhập để thay đổi mật khẩu" : "Mật khẩu ban đầu"} />
+          </Form.Item>
           
           <div className="grid grid-cols-2 gap-4">
              <Form.Item name="departmentId" label="Phòng ban" rules={[{ required: true }]}>
@@ -293,15 +304,19 @@ const UserManagement: React.FC = () => {
                 </Select>
              </Form.Item>
           </div>
+
           <Form.Item name="isActive" label="Trạng thái" valuePropName="value">
              <Select>
                 <Select.Option value={true}><Tag color="success">Hoạt động</Tag></Select.Option>
                 <Select.Option value={false}><Tag color="error">Đã khóa</Tag></Select.Option>
              </Select>
           </Form.Item>
+
           <div className="flex justify-end gap-3 mt-6 border-t pt-4">
             <Button onClick={handleCancel}>Hủy</Button>
-            <Button type="primary" htmlType="submit" loading={loading}>{editingUser ? 'Lưu' : 'Tạo'}</Button>
+            <Button type="primary" htmlType="submit" loading={loading}>
+              {editingUser ? 'Lưu thay đổi' : 'Tạo nhân sự'}
+            </Button>
           </div>
         </Form>
       </Modal>

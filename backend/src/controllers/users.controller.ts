@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import prisma from "../config/prisma";
 import { AppError } from '../utils/AppError';
 import bcrypt from 'bcryptjs';
@@ -77,19 +77,38 @@ export const updateUser = async (
 ) => {
   try {
     const { id } = req.params;
-    const { fullName, departmentId, roleId, isActive } = req.body;
+    const { fullName, departmentId, roleId, isActive, password } = req.body;
 
-    // Không cho phép đổi password ở đây (phải dùng API riêng)
-    // Không cho phép đổi email/id dễ dàng (logic nghiệp vụ)
+    // Tạo object data để update
+    const updateData: any = { 
+      fullName, 
+      departmentId, 
+      roleId, 
+      isActive 
+    };
+
+    // NẾU CÓ PASSWORD MỚI ĐƯỢC GỬI LÊN
+    if (password && password.trim().length >= 6) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updateData.password = hashedPassword;
+      updateData.mustChangePassword = true; // Yêu cầu user đổi lại sau khi Admin can thiệp
+    }
 
     const updatedUser = await prisma.user.update({
       where: { id },
-      data: { fullName, departmentId, roleId, isActive },
+      data: updateData,
     });
 
-    res.status(200).json({ status: "success", data: updatedUser });
+    // Trả về không kèm password
+    const { password: _, ...result } = updatedUser;
+
+    res.status(200).json({ 
+      status: "success", 
+      data: result,
+      message: password ? "Cập nhật thông tin và mật khẩu thành công" : "Cập nhật thông tin thành công"
+    });
   } catch (error) {
-    next(new AppError("Không tìm thấy user", 404));
+    next(new AppError("Không tìm thấy user hoặc lỗi dữ liệu", 404));
   }
 };
 

@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Card, Statistic, Row, Col, Button, Modal, Form, Input, 
-  Select, Upload, message, Table, Tag, Space, Popconfirm, List, Radio, Tooltip 
+  Select, Upload, message, Table, Tag, Space, Popconfirm, List, Radio, Avatar 
 } from 'antd';
 import { 
   UserOutlined, FileTextOutlined, UploadOutlined, PlusOutlined, 
   EditOutlined, DeleteOutlined, PaperClipOutlined, 
-  FilePdfOutlined, FileImageOutlined, GlobalOutlined, TeamOutlined, LinkOutlined 
+  FilePdfOutlined, FileImageOutlined, GlobalOutlined, TeamOutlined, 
+  EyeOutlined
 } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 
-// Lấy baseURL từ cấu hình axiosClient để đảm bảo đồng bộ môi trường (Dev/Prod)
 const API_URL = axiosClient.defaults.baseURL;
 
 interface Attachment {
@@ -30,15 +30,15 @@ const Dashboard: React.FC = () => {
   
   // --- STATE QUẢN LÝ UI ---
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false); // Modal xem danh sách người đã xem
+  const [viewingUserList, setViewingUserList] = useState<any[]>([]); // Danh sách user đã xem của 1 bài
   const [loading, setLoading] = useState(false);
   const [editingPost, setEditingPost] = useState<any>(null);
   const [sendToAll, setSendToAll] = useState(true);
   
-  // --- STATE QUẢN LÝ ĐÍNH KÈM ---
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [linkInput, setLinkInput] = useState('');
 
-  // --- 1. TẢI DỮ LIỆU TỪ SERVER ---
   const fetchData = async () => {
       try {
           const [userRes, postRes, menuRes, deptRes] = await Promise.all([
@@ -48,7 +48,10 @@ const Dashboard: React.FC = () => {
               axiosClient.get('/departments')
           ]);
 
-          const usersCount = Array.isArray(userRes.data.data) ? userRes.data.data.length : (userRes.data.results || 0);
+          // Lấy đúng số lượng nhân sự từ mảng trả về
+          const usersData = userRes.data.data || userRes.data;
+          const usersCount = Array.isArray(usersData) ? usersData.length : 0;
+
           setStats({ 
               users: usersCount, 
               posts: postRes.data.total || 0 
@@ -67,7 +70,19 @@ const Dashboard: React.FC = () => {
       fetchData();
   }, []);
 
-  // --- 2. XỬ LÝ TẬP TIN ĐÍNH KÈM ---
+  // --- HÀM XEM DANH SÁCH USER ĐÃ ĐỌC TIN ---
+  const handleShowViewers = async (post: any) => {
+    try {
+      // Giả sử backend có route: GET /posts/:id/viewers
+      // Nếu chưa có, bạn cần bổ sung logic này ở Backend
+      const res = await axiosClient.get(`/posts/${post.id}/viewers`);
+      setViewingUserList(res.data.data || []);
+      setIsViewModalOpen(true);
+    } catch (error) {
+      message.error("Không thể lấy danh sách lượt xem");
+    }
+  };
+
   const handleUpload = (info: any) => {
       if (info.file.status === 'uploading') {
           setLoading(true);
@@ -85,7 +100,7 @@ const Dashboard: React.FC = () => {
           message.success(`Đã tải lên: ${info.file.name}`);
       } else if (info.file.status === 'error') {
           setLoading(false);
-          message.error('Lỗi tải file lên server. Kiểm tra dung lượng hoặc kết nối.');
+          message.error('Lỗi tải file lên server.');
       }
   };
 
@@ -99,7 +114,6 @@ const Dashboard: React.FC = () => {
       setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
-  // --- 3. LOGIC CRUD (THÊM, SỬA, XÓA) ---
   const handleOpenCreate = () => {
       setEditingPost(null);
       setAttachments([]);
@@ -145,7 +159,7 @@ const Dashboard: React.FC = () => {
           setIsModalOpen(false);
           fetchData();
       } catch (error: any) {
-          message.error(error.response?.data?.message || 'Có lỗi xảy ra khi lưu bài viết!');
+          message.error(error.response?.data?.message || 'Có lỗi xảy ra!');
       } finally {
           setLoading(false);
       }
@@ -154,14 +168,13 @@ const Dashboard: React.FC = () => {
   const handleDelete = async (id: string) => {
       try {
           await axiosClient.delete(`/posts/${id}`);
-          message.success('Đã xóa bài viết và dọn dẹp file thành công');
+          message.success('Đã xóa bài viết');
           fetchData();
       } catch (error: any) {
-          message.error(error.response?.data?.message || 'Lỗi khi xóa bài viết từ server');
+          message.error('Lỗi khi xóa bài viết');
       }
   };
 
-  // --- 4. CẤU HÌNH BẢNG HIỂN THỊ ---
   const columns = [
       { 
         title: 'Tiêu đề', 
@@ -174,23 +187,26 @@ const Dashboard: React.FC = () => {
         render: (t: string) => <Tag color="blue">{t}</Tag> 
       },
       {
-          title: 'Đối tượng nhận',
+          title: 'Đối tượng',
           render: (_: any, record: any) => (
               record.targets && record.targets.length > 0 
               ? <Tag color="orange"><TeamOutlined /> {record.targets.length} Phòng ban</Tag>
-              : <Tag color="green"><GlobalOutlined /> Tất cả nhân viên</Tag>
+              : <Tag color="green"><GlobalOutlined /> Tất cả</Tag>
           )
       },
-      { 
-          title: 'Đính kèm', 
-          dataIndex: 'attachments',
-          render: (files: Attachment[]) => (
-              <Space>
-                  {files?.some(f => f.type === 'image') && <Tooltip title="Ảnh"><FileImageOutlined className="text-orange-500" /></Tooltip>}
-                  {files?.some(f => f.type === 'file') && <Tooltip title="Tài liệu"><FilePdfOutlined className="text-red-500" /></Tooltip>}
-                  {files?.some(f => f.type === 'link') && <Tooltip title="Liên kết"><GlobalOutlined className="text-blue-500" /></Tooltip>}
-              </Space>
-          )
+      {
+        title: 'Lượt xem',
+        key: 'views',
+        align: 'center' as const,
+        render: (_: any, record: any) => (
+          <Button 
+            type="text" 
+            icon={<EyeOutlined className="text-blue-500" />} 
+            onClick={() => handleShowViewers(record)}
+          >
+            {record._count?.views || 0}
+          </Button>
+        )
       },
       { 
         title: 'Ngày tạo', 
@@ -204,11 +220,8 @@ const Dashboard: React.FC = () => {
                   <Button size="small" icon={<EditOutlined />} onClick={() => handleOpenEdit(record)} />
                   <Popconfirm 
                     title="Xóa bài viết này?" 
-                    description="Hành động này sẽ xóa dữ liệu và các tệp đính kèm liên quan."
                     onConfirm={() => handleDelete(record.id)} 
                     okButtonProps={{ danger: true }}
-                    okText="Xóa"
-                    cancelText="Hủy"
                   >
                       <Button size="small" danger icon={<DeleteOutlined />} />
                   </Popconfirm>
@@ -219,13 +232,13 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">Bảng điều khiển Quản trị</h2>
+      <h2 className="text-2xl font-bold mb-6 text-gray-800">Quản trị Tin tức</h2>
       
       {/* THỐNG KÊ NHANH */}
       <Row gutter={16} className="mb-8">
         <Col span={8}>
           <Card className="shadow-sm border-none bg-white">
-            <Statistic title="Tổng nhân sự" value={stats.users} prefix={<UserOutlined className="text-indigo-500" />} />
+            <Statistic title="Tổng số nhân sự" value={stats.users} prefix={<UserOutlined className="text-indigo-500" />} />
           </Card>
         </Col>
         <Col span={8}>
@@ -238,7 +251,7 @@ const Dashboard: React.FC = () => {
             type="primary" 
             size="large" 
             icon={<PlusOutlined />} 
-            className="w-full h-full text-lg font-semibold shadow-indigo-200 shadow-lg" 
+            className="w-full h-full text-lg font-semibold" 
             onClick={handleOpenCreate}
           >
             SOẠN TIN MỚI
@@ -246,35 +259,30 @@ const Dashboard: React.FC = () => {
         </Col>
       </Row>
 
-      {/* DANH SÁCH BÀI ĐĂNG */}
-      <Card title="Quản lý tin tức & Thông báo" className="shadow-sm border-none">
-          <Table rowKey="id" columns={columns} dataSource={posts} pagination={{ pageSize: 7 }} />
+      <Card title="Danh sách bài viết" className="shadow-sm border-none">
+          <Table rowKey="id" columns={columns} dataSource={posts} pagination={{ pageSize: 10 }} />
       </Card>
 
       {/* MODAL SOẠN THẢO */}
       <Modal 
-        title={editingPost ? "Chỉnh sửa bài viết" : "Tạo bài viết & Gửi Email"} 
+        title={editingPost ? "Chỉnh sửa bài viết" : "Tạo bài viết mới"} 
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
         footer={null} 
         width={850}
-        maskClosable={false}
       >
          <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-4">
-            <Form.Item name="title" label="Tiêu đề thông báo" rules={[{ required: true, message: 'Vui lòng nhập tiêu đề' }]}>
-              <Input placeholder="Ví dụ: Thông báo nghỉ lễ..." size="large" />
-            </Form.Item>
-            
+            <Form.Item name="title" label="Tiêu đề" rules={[{ required: true }]}><Input size="large" /></Form.Item>
             <Row gutter={16}>
                 <Col span={12}>
-                    <Form.Item name="menuId" label="Chuyên mục hiển thị" rules={[{ required: true, message: 'Chọn chuyên mục' }]}>
+                    <Form.Item name="menuId" label="Chuyên mục" rules={[{ required: true }]}>
                         <Select placeholder="Chọn mục">
                             {menus.map(m => <Select.Option key={m.id} value={m.id}>{m.title}</Select.Option>)}
                         </Select>
                     </Form.Item>
                 </Col>
                 <Col span={12}>
-                    <Form.Item name="sendType" label="Đối tượng nhận tin">
+                    <Form.Item name="sendType" label="Đối tượng">
                         <Radio.Group onChange={(e) => setSendToAll(e.target.value === 'ALL')}>
                             <Radio value="ALL">Tất cả nhân viên</Radio>
                             <Radio value="DEPT">Theo phòng ban</Radio>
@@ -284,79 +292,77 @@ const Dashboard: React.FC = () => {
             </Row>
 
             {!sendToAll && (
-                <Form.Item 
-                  name="targetDeptIds" 
-                  label="Chọn phòng ban nhận thông báo" 
-                  rules={[{ required: true, message: 'Chọn ít nhất một phòng ban' }]}
-                >
-                    <Select mode="multiple" placeholder="Nhấp để chọn..." optionFilterProp="children">
+                <Form.Item name="targetDeptIds" label="Chọn phòng ban" rules={[{ required: true }]}>
+                    <Select mode="multiple" placeholder="Nhấp để chọn...">
                         {departments.map(d => <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>)}
                     </Select>
                 </Form.Item>
             )}
 
-            <Form.Item name="content" label="Nội dung chi tiết" rules={[{ required: true, message: 'Vui lòng nhập nội dung' }]}>
-              <Input.TextArea rows={6} placeholder="Nhập nội dung thông báo tại đây..." />
-            </Form.Item>
+            <Form.Item name="content" label="Nội dung" rules={[{ required: true }]}><Input.TextArea rows={6} /></Form.Item>
 
-            {/* QUẢN LÝ ĐÍNH KÈM */}
-            <div className="bg-gray-50 p-4 rounded-lg border border-dashed border-gray-300 mb-6">
-                <p className="font-semibold mb-3 flex items-center gap-2"><PaperClipOutlined className="text-indigo-600" /> Tệp đính kèm & Liên kết</p>
-                
+            <div className="bg-gray-50 p-4 rounded-lg border mb-6">
+                <p className="font-semibold mb-3"><PaperClipOutlined /> Đính kèm</p>
                 <List 
                   size="small" 
-                  className="mb-4"
                   dataSource={attachments} 
                   renderItem={(item, index) => (
-                    <List.Item 
-                      className="bg-white mb-1 rounded px-3 border-none shadow-sm"
-                      actions={[<Button danger type="text" size="small" icon={<DeleteOutlined />} onClick={() => removeAttachment(index)} />]}
-                    >
+                    <List.Item actions={[<Button danger type="text" size="small" icon={<DeleteOutlined />} onClick={() => removeAttachment(index)} />]}>
                         <List.Item.Meta 
-                            avatar={item.type === 'image' ? <FileImageOutlined className="text-orange-500" /> : item.type === 'link' ? <GlobalOutlined className="text-blue-500" /> : <FilePdfOutlined className="text-red-500" />}
-                            title={<span className="text-xs text-gray-600">{item.name}</span>}
+                            avatar={item.type === 'image' ? <FileImageOutlined /> : item.type === 'link' ? <GlobalOutlined /> : <FilePdfOutlined />}
+                            title={<span className="text-xs">{item.name}</span>}
                         />
                     </List.Item>
                 )} />
-
-                <div className="flex flex-col md:flex-row gap-4 pt-3 border-t border-gray-200">
+                <div className="flex gap-4 mt-2">
                     <Upload 
                         name="files" 
                         action={`${API_URL}/upload`} 
                         headers={{ Authorization: `Bearer ${localStorage.getItem('token')}` }} 
-                        multiple 
                         showUploadList={false} 
                         onChange={handleUpload}
                     >
-                        <Button icon={<UploadOutlined />} loading={loading} className="w-full md:w-auto">Tải File/Ảnh</Button>
+                        <Button icon={<UploadOutlined />}>Tải File</Button>
                     </Upload>
-                    
-                    <div className="flex flex-1">
-                      <Input 
-                        placeholder="Dán liên kết URL (Youtube, Driver...)" 
-                        value={linkInput} 
-                        onChange={e => setLinkInput(e.target.value)} 
-                        prefix={<LinkOutlined className="text-gray-400" />}
-                        className="rounded-r-none"
-                      />
-                      <Button type="primary" onClick={handleAddLink} className="rounded-l-none">Thêm Link</Button>
-                    </div>
+                    <Input.Group compact style={{ display: 'flex', flex: 1 }}>
+                        <Input placeholder="Dán link..." value={linkInput} onChange={e => setLinkInput(e.target.value)} />
+                        <Button type="primary" onClick={handleAddLink}>Thêm</Button>
+                    </Input.Group>
                 </div>
             </div>
 
-            <div className="flex justify-end gap-3 mt-8">
-                <Button onClick={() => setIsModalOpen(false)} size="large">Hủy bỏ</Button>
-                <Button 
-                  type="primary" 
-                  htmlType="submit" 
-                  loading={loading} 
-                  size="large" 
-                  className="px-8 shadow-md"
-                >
-                  {editingPost ? 'Lưu thay đổi' : 'Đăng bài & Gửi Mail'}
-                </Button>
+            <div className="flex justify-end gap-2">
+                <Button onClick={() => setIsModalOpen(false)}>Hủy</Button>
+                <Button type="primary" htmlType="submit" loading={loading}>Xác nhận</Button>
             </div>
          </Form>
+      </Modal>
+
+      {/* MODAL XEM CHI TIẾT NGƯỜI ĐÃ XEM TIN */}
+      <Modal
+        title="Danh sách nhân viên đã xem tin"
+        open={isViewModalOpen}
+        onCancel={() => setIsViewModalOpen(false)}
+        footer={[<Button key="close" onClick={() => setIsViewModalOpen(false)}>Đóng</Button>]}
+      >
+        <List
+          itemLayout="horizontal"
+          dataSource={viewingUserList}
+          renderItem={(item: any) => (
+            <List.Item>
+              <List.Item.Meta
+                avatar={<Avatar icon={<UserOutlined />} src={item.user?.avatar} />}
+                title={item.user?.fullName}
+                description={
+                  <Space>
+                    <Tag color="cyan">{item.user?.department?.name || 'N/A'}</Tag>
+                    <span className="text-gray-400 text-xs italic">Xem lúc: {new Date(item.createdAt).toLocaleString('vi-VN')}</span>
+                  </Space>
+                }
+              />
+            </List.Item>
+          )}
+        />
       </Modal>
     </div>
   );
