@@ -2,16 +2,15 @@ import nodemailer from 'nodemailer';
 
 // 1. Cấu hình Transporter
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Sử dụng STARTTLS
+  host: process.env.MAIL_HOST, // Sửa từ 'smtp.gmail.com' thành biến môi trường
+  port: Number(process.env.MAIL_PORT), // Sửa từ 587 thành biến môi trường
+  secure: false, 
   auth: {
-    user: process.env.MAIL_USER, // Gmail Admin
-    pass: process.env.MAIL_PASS, // App Password 16 ký tự
+    user: process.env.MAIL_USER, // towavn.it.minhnhan@gmail.com
+    pass: process.env.MAIL_PASS, // eesi fgau irgi kqgp
   },
-  // Cấu hình TLS quan trọng để vượt qua tường lửa mail doanh nghiệp
   tls: {
-    rejectUnauthorized: false 
+    rejectUnauthorized: false // Bắt buộc phải có để gửi cho mail nội bộ
   }
 });
 
