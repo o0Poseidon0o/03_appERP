@@ -7,11 +7,25 @@ import {
   UserOutlined, FileTextOutlined, UploadOutlined, PlusOutlined, 
   EditOutlined, DeleteOutlined, PaperClipOutlined, 
   FilePdfOutlined, FileImageOutlined, GlobalOutlined, TeamOutlined, 
-  EyeOutlined
-} from '@ant-design/icons';
+  EyeOutlined} from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 
+// --- IMPORT BỘ SOẠN THẢO ---
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
+
 const API_URL = axiosClient.defaults.baseURL;
+
+// Cấu hình các nút chức năng trên thanh công cụ soạn thảo
+const quillModules = {
+  toolbar: [
+    [{ 'header': [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline', 'strike'],        // Định dạng chữ
+    [{ 'list': 'ordered'}, { 'list': 'bullet' }],     // Danh sách/Gạch đầu dòng
+    [{ 'color': [] }, { 'background': [] }],          // Màu sắc
+    ['link', 'clean']                                 // Chèn link và xóa định dạng
+  ],
+};
 
 interface Attachment {
   name: string;
@@ -30,8 +44,8 @@ const Dashboard: React.FC = () => {
   
   // --- STATE QUẢN LÝ UI ---
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false); // Modal xem danh sách người đã xem
-  const [viewingUserList, setViewingUserList] = useState<any[]>([]); // Danh sách user đã xem của 1 bài
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false); 
+  const [viewingUserList, setViewingUserList] = useState<any[]>([]); 
   const [loading, setLoading] = useState(false);
   const [editingPost, setEditingPost] = useState<any>(null);
   const [sendToAll, setSendToAll] = useState(true);
@@ -48,7 +62,6 @@ const Dashboard: React.FC = () => {
               axiosClient.get('/departments')
           ]);
 
-          // Lấy đúng số lượng nhân sự từ mảng trả về
           const usersData = userRes.data.data || userRes.data;
           const usersCount = Array.isArray(usersData) ? usersData.length : 0;
 
@@ -70,11 +83,8 @@ const Dashboard: React.FC = () => {
       fetchData();
   }, []);
 
-  // --- HÀM XEM DANH SÁCH USER ĐÃ ĐỌC TIN ---
   const handleShowViewers = async (post: any) => {
     try {
-      // Giả sử backend có route: GET /posts/:id/viewers
-      // Nếu chưa có, bạn cần bổ sung logic này ở Backend
       const res = await axiosClient.get(`/posts/${post.id}/viewers`);
       setViewingUserList(res.data.data || []);
       setIsViewModalOpen(true);
@@ -119,7 +129,7 @@ const Dashboard: React.FC = () => {
       setAttachments([]);
       setSendToAll(true);
       form.resetFields();
-      form.setFieldsValue({ sendType: 'ALL' });
+      form.setFieldsValue({ sendType: 'ALL', content: '' }); // Reset content về chuỗi rỗng
       setIsModalOpen(true);
   };
 
@@ -234,7 +244,6 @@ const Dashboard: React.FC = () => {
     <div className="p-6 bg-gray-50 min-h-screen">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">Quản trị Tin tức</h2>
       
-      {/* THỐNG KÊ NHANH */}
       <Row gutter={16} className="mb-8">
         <Col span={8}>
           <Card className="shadow-sm border-none bg-white">
@@ -263,13 +272,13 @@ const Dashboard: React.FC = () => {
           <Table rowKey="id" columns={columns} dataSource={posts} pagination={{ pageSize: 10 }} />
       </Card>
 
-      {/* MODAL SOẠN THẢO */}
       <Modal 
         title={editingPost ? "Chỉnh sửa bài viết" : "Tạo bài viết mới"} 
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
         footer={null} 
-        width={850}
+        width={1000} // Tăng chiều rộng để bộ soạn thảo thoải mái hơn
+        maskClosable={false}
       >
          <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-4">
             <Form.Item name="title" label="Tiêu đề" rules={[{ required: true }]}><Input size="large" /></Form.Item>
@@ -299,7 +308,19 @@ const Dashboard: React.FC = () => {
                 </Form.Item>
             )}
 
-            <Form.Item name="content" label="Nội dung" rules={[{ required: true }]}><Input.TextArea rows={6} /></Form.Item>
+            {/* THAY THẾ TEXTAREA BẰNG REACT QUILL */}
+            <Form.Item 
+                name="content" 
+                label="Nội dung chi tiết" 
+                rules={[{ required: true, message: 'Vui lòng nhập nội dung!' }]}
+            >
+                <ReactQuill 
+                    theme="snow" 
+                    modules={quillModules}
+                    placeholder="Soạn nội dung tin tức tại đây (hỗ trợ in đậm, gạch đầu dòng...)"
+                    style={{ height: '300px', marginBottom: '50px' }} // Thêm margin bottom để không đè lên phần dưới
+                />
+            </Form.Item>
 
             <div className="bg-gray-50 p-4 rounded-lg border mb-6">
                 <p className="font-semibold mb-3"><PaperClipOutlined /> Đính kèm</p>
@@ -338,7 +359,6 @@ const Dashboard: React.FC = () => {
          </Form>
       </Modal>
 
-      {/* MODAL XEM CHI TIẾT NGƯỜI ĐÃ XEM TIN */}
       <Modal
         title="Danh sách nhân viên đã xem tin"
         open={isViewModalOpen}

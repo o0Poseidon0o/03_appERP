@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { 
   Card, List, Input, Tag, Image, Tabs, Empty, Space, Typography,
-  Tooltip} from 'antd';
+  Tooltip } from 'antd';
 import { 
   UserOutlined, SearchOutlined, GlobalOutlined, 
-  FilePdfOutlined, CalendarOutlined} from '@ant-design/icons';
+  FilePdfOutlined, CalendarOutlined } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 import { useSearchParams } from 'react-router-dom';
 
@@ -146,7 +146,6 @@ const PostPage: React.FC = () => {
                   grid={{ gutter: 24, xs: 1, sm: 1, md: 2, lg: 2, xl: 3, xxl: 3 }}
                   dataSource={filteredPosts}
                   renderItem={(item) => {
-                    // Logic: Lấy ảnh đầu tiên làm ảnh bìa lớn (Cover)
                     const images = item.attachments?.filter(f => f.type?.includes('image') || f.path.match(/\.(jpeg|jpg|png|gif|webp)$/i)) || [];
                     const coverImg = images[0];
                     const galleryImages = images.slice(1);
@@ -185,15 +184,15 @@ const PostPage: React.FC = () => {
                                     {item.title}
                                   </Title>
 
-                                  {/* Không bao giờ mất nội dung với tính năng Xem thêm (expandable) */}
+                                  {/* HIỂN THỊ NỘI DUNG CÓ ĐỊNH DẠNG HTML */}
                                   <Paragraph 
                                     ellipsis={{ rows: 3, expandable: true, symbol: 'Xem thêm' }}
-                                    className="text-gray-500 mb-4 text-[14px] leading-relaxed"
+                                    className="text-gray-500 mb-4 text-[14px] leading-relaxed news-content-display"
                                   >
-                                    {item.content}
+                                    <div dangerouslySetInnerHTML={{ __html: item.content }} />
                                   </Paragraph>
 
-                                  {/* GALLERY ẢNH NHỎ: Nếu có nhiều hơn 1 hình ảnh */}
+                                  {/* GALLERY ẢNH NHỎ */}
                                   {galleryImages.length > 0 && (
                                     <div className="flex gap-2 mb-4">
                                         <Image.PreviewGroup>
@@ -216,13 +215,13 @@ const PostPage: React.FC = () => {
                                         <div className="flex flex-wrap gap-2">
                                             {docs.map((doc, idx) => (
                                                 <Tooltip title={doc.name} key={idx}>
-                                                  <a href={getFullUrl(doc.path)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-1 rounded-full text-[12px] border border-red-100 hover:bg-red-600 hover:text-white transition-all">
+                                                  <a href={getFullUrl(doc.path)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-1 rounded-full text-[12px] border border-red-100 hover:bg-red-600 hover:text-white transition-all no-underline">
                                                       <FilePdfOutlined /> <span>Tài liệu</span>
                                                   </a>
                                                 </Tooltip>
                                             ))}
                                             {links.map((link, idx) => (
-                                                <a key={idx} href={getFullUrl(link.path)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-[12px] border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all">
+                                                <a key={idx} href={getFullUrl(link.path)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-[12px] border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all no-underline">
                                                     <GlobalOutlined /> <span>Liên kết</span>
                                                 </a>
                                             ))}
