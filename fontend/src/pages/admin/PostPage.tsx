@@ -1,17 +1,15 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { 
-  Card, List, Input, Tag, Image, Tabs, Empty, Space, Typography, Row, Col 
-} from 'antd';
+  Card, List, Input, Tag, Image, Tabs, Empty, Space, Typography,
+  Tooltip} from 'antd';
 import { 
   UserOutlined, SearchOutlined, GlobalOutlined, 
-  PaperClipOutlined, FilePdfOutlined, CalendarOutlined,
-  ArrowRightOutlined
-} from '@ant-design/icons';
+  FilePdfOutlined, CalendarOutlined} from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 import { useSearchParams } from 'react-router-dom';
 
 const { Search } = Input;
-const { Title, Paragraph, Text } = Typography;
+const { Title, Paragraph } = Typography;
 
 const SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
