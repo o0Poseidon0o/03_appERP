@@ -1,14 +1,15 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { 
-  Card, List, Input, Tag, Image, Tabs, Empty, Space} from 'antd';
+  Card, List, Input, Tag, Image, Tabs, Empty, Space, Typography} from 'antd';
 import { 
-  UserOutlined, SearchOutlined, GlobalOutlined, 
-  PaperClipOutlined, FilePdfOutlined
+  UserOutlined, GlobalOutlined, 
+  FilePdfOutlined, CalendarOutlined
 } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 import { useSearchParams } from 'react-router-dom';
 
 const { Search } = Input;
+const { Title, Paragraph, Text } = Typography;
 
 // Cấu hình URL cho ảnh - Đảm bảo lấy đúng từ môi trường
 const SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -50,7 +51,7 @@ const PostPage: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string>(menuIdParam || 'all');
 
-  // --- CALL API ---
+  // --- GIỮ NGUYÊN LOGIC CALL API ---
   const fetchMenus = async () => {
       try {
           const res = await axiosClient.get('/menus');
@@ -61,7 +62,7 @@ const PostPage: React.FC = () => {
   const fetchPosts = async () => {
     setLoading(true);
     try {
-        let url = '/posts?limit=50';
+        let url = '/posts?limit=50'; 
         if (activeMenuId !== 'all') {
             url += `&menuId=${activeMenuId}`;
         }
@@ -84,7 +85,6 @@ const PostPage: React.FC = () => {
     else setSearchParams({ menuId: activeMenuId });
   }, [activeMenuId]);
 
-  // --- XỬ LÝ SEARCH CLIENT-SIDE ---
   const filteredPosts = useMemo(() => {
       if (!searchText) return posts;
       const lowerText = searchText.toLowerCase();
@@ -94,151 +94,153 @@ const PostPage: React.FC = () => {
       );
   }, [posts, searchText]);
 
-  // --- HELPER: XỬ LÝ URL ĐẦY ĐỦ ---
   const getFullUrl = (path: string) => {
       if (!path) return '';
       if (path.startsWith('http')) return path;
-      
-      // Đảm bảo có dấu / giữa SERVER_URL và path
       const cleanServerUrl = SERVER_URL.endsWith('/') ? SERVER_URL.slice(0, -1) : SERVER_URL;
       const cleanPath = path.startsWith('/') ? path : `/${path}`;
-      
       return `${cleanServerUrl}${cleanPath}`;
   };
 
-  const renderAttachment = (file: Attachment) => {
-      const fullPath = getFullUrl(file.path);
-
-      // 1. Loại Link
-      if (file.type === 'link') {
-          return (
-              <a href={fullPath} target="_blank" rel="noreferrer" key={file.path} className="flex items-center gap-2 bg-indigo-50 text-indigo-600 px-3 py-2 rounded-md hover:bg-indigo-100 transition-colors border border-indigo-100 no-underline">
-                  <GlobalOutlined /> 
-                  <span className="font-medium text-sm truncate max-w-[150px]">{file.name}</span>
-              </a>
-          )
-      }
-
-      // 2. Loại Ảnh
-      const isImage = file.type?.includes('image') || file.path.match(/\.(jpeg|jpg|png|gif|webp)$/i);
-      if (isImage) {
-          return (
-              <div key={file.path} className="border border-gray-200 p-1 rounded bg-white shadow-sm inline-block">
-                  <Image 
-                    width={100} 
-                    height={80} 
-                    className="object-cover rounded" 
-                    src={fullPath} 
-                    fallback="https://placehold.co/100x80?text=Loi+Anh" 
-                    preview={{
-                        mask: <div className="text-xs">Xem ảnh</div>
-                    }}
-                  />
-              </div>
-          );
-      }
-
-      // 3. Loại File (PDF, Document...)
-      return (
-          <a href={fullPath} target="_blank" rel="noreferrer" key={file.path} className="flex items-center gap-2 bg-gray-50 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 transition-colors border border-gray-200 no-underline">
-              <FilePdfOutlined className="text-red-500" />
-              <span className="font-medium text-sm truncate max-w-[150px]">{file.name}</span>
-          </a>
-      );
-  };
-
-  const menuItems = [
-      { key: 'all', label: 'Tất cả tin tức' },
-      ...menus.map(m => ({ key: String(m.id), label: m.title }))
-  ];
-
+  // --- GIAO DIỆN MỚI ---
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 bg-gray-50 min-h-screen">
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-          <div>
-              <h1 className="text-2xl font-bold text-gray-800 m-0">Bảng tin nội bộ</h1>
-              <p className="text-gray-500 m-0 text-sm">Thông tin và thông báo mới nhất từ hệ thống</p>
-          </div>
+    <div className="max-w-7xl mx-auto px-4 py-8 bg-[#f4f7f9] min-h-screen">
+      {/* HEADER SECTION */}
+      <div className="mb-10 text-center">
+          <Title level={2} style={{ color: '#1a3353', marginBottom: 8 }}>BẢNG TIN DOANH NGHIỆP</Title>
+          <Text type="secondary" style={{ fontSize: '16px' }}>Cập nhật những thông báo và hoạt động mới nhất từ nội bộ</Text>
           
-          <div className="w-full md:w-auto">
+          <div className="max-w-xl mx-auto mt-8">
               <Search 
-                  placeholder="Tìm kiếm nội dung..." 
+                  placeholder="Tìm kiếm nội dung tin tức..." 
                   allowClear 
-                  enterButton={<SearchOutlined />}
-                  size="middle"
-                  className="w-full md:w-72 shadow-sm"
+                  enterButton="Tìm kiếm"
+                  size="large"
+                  className="shadow-lg rounded-lg"
                   onChange={(e) => setSearchText(e.target.value)}
               />
           </div>
       </div>
 
-      {/* TABS MENU */}
-      <div className="bg-white p-1 rounded-lg shadow-sm mb-6 sticky top-2 z-10 border">
+      {/* TABS MENU HIỆN ĐẠI */}
+      <div className="bg-white p-2 rounded-xl shadow-sm mb-8 border sticky top-2 z-10">
           <Tabs 
               activeKey={activeMenuId} 
               onChange={setActiveMenuId} 
-              items={menuItems}
-              tabBarStyle={{ marginBottom: 0, padding: '0 10px' }}
+              centered
+              items={[
+                { key: 'all', label: <span className="px-4 font-bold">TẤT CẢ TIN</span> },
+                ...menus.map(m => ({ key: String(m.id), label: <span className="px-4 font-bold">{m.title.toUpperCase()}</span> }))
+              ]}
+              tabBarStyle={{ marginBottom: 0 }}
           />
       </div>
 
-      {/* DANH SÁCH BÀI VIẾT */}
-      <div className="min-h-[400px]">
+      {/* DANH SÁCH BẢI VIẾT DẠNG GRID TIN TỨC */}
+      <div className="min-h-100">
           {loading ? (
-              <div className="text-center py-20 bg-white rounded-lg border border-dashed">
-                <p className="text-gray-400">Đang tải dữ liệu bài viết...</p>
+              <div className="text-center py-20 bg-white rounded-xl shadow-inner">
+                <div className="animate-spin inline-block w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mb-4"></div>
+                <p className="text-gray-500 font-medium">Đang tải bản tin mới nhất...</p>
               </div>
           ) : filteredPosts.length === 0 ? (
-              <Empty description="Không có tin tức nào trong mục này" className="py-20 bg-white rounded-lg border" />
+              <Empty description="Hiện chưa có tin tức nào phù hợp" className="py-20 bg-white rounded-xl" />
           ) : (
               <List
+                  grid={{ gutter: 24, xs: 1, sm: 1, md: 2, lg: 2, xl: 3, xxl: 3 }}
                   dataSource={filteredPosts}
-                  renderItem={(item) => (
-                    <List.Item className="border-none p-0 mb-6">
-                      <Card 
-                          className="w-full shadow-sm hover:shadow-md transition-all border-l-4 border-l-indigo-500 rounded-r-lg"
-                          bodyStyle={{ padding: '24px' }}
-                      >
-                          <div className="flex justify-between items-start mb-4">
-                              <h3 className="text-xl font-bold text-gray-800 m-0 hover:text-indigo-600 transition-colors">
-                                {item.title}
-                              </h3>
-                              <Tag color="processing" className="m-0 rounded-full px-3">{item.menu?.title}</Tag>
-                          </div>
+                  renderItem={(item) => {
+                    // Logic tách ảnh bìa (cover)
+                    const images = item.attachments?.filter(f => f.type?.includes('image') || f.path.match(/\.(jpeg|jpg|png|gif|webp)$/i)) || [];
+                    const coverImg = images[0];
+                    const otherDocs = item.attachments?.filter(f => !f.type?.includes('image') && f.type !== 'link') || [];
+                    const links = item.attachments?.filter(f => f.type === 'link') || [];
 
-                          <div className="text-gray-600 mb-6 whitespace-pre-wrap leading-relaxed text-base">
-                              {item.content}
-                          </div>
-
-                          {/* ĐÍNH KÈM */}
-                          {item.attachments && item.attachments.length > 0 && (
-                              <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-dashed border-gray-200">
-                                  <div className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-2">
-                                      <PaperClipOutlined /> DANH SÁCH ĐÍNH KÈM:
+                    return (
+                        <List.Item>
+                          <Card 
+                              hoverable
+                              className="h-full flex flex-col shadow-md rounded-xl overflow-hidden border-none hover:shadow-2xl transition-all duration-300"
+                              cover={
+                                <div className="h-56 overflow-hidden bg-gray-200">
+                                  <Image
+                                    alt={item.title}
+                                    src={coverImg ? getFullUrl(coverImg.path) : 'https://placehold.co/600x400?text=Internal+News'}
+                                    className="object-cover w-full h-full transform hover:scale-110 transition-transform duration-500"
+                                    preview={!!coverImg}
+                                    fallback="https://placehold.co/600x400?text=No+Image"
+                                  />
+                                </div>
+                              }
+                          >
+                              <div className="flex flex-col h-full">
+                                  <div className="mb-2">
+                                    <Tag color="indigo" className="font-bold border-none rounded-md px-2 py-0.5 uppercase text-[10px]">
+                                      {item.menu?.title}
+                                    </Tag>
                                   </div>
-                                  <div className="flex flex-wrap gap-3">
-                                      {item.attachments.map((file, idx) => (
-                                          <div key={idx}>{renderAttachment(file)}</div>
-                                      ))}
+
+                                  <Title level={4} className="mb-3 line-clamp-2" style={{ height: '56px', fontSize: '1.1rem', lineHeight: '1.4' }}>
+                                    {item.title}
+                                  </Title>
+
+                                  <Paragraph 
+                                    ellipsis={{ rows: 3, expandable: true, symbol: 'Xem thêm' }}
+                                    className="text-gray-500 mb-4 text-sm leading-relaxed"
+                                  >
+                                    {item.content}
+                                  </Paragraph>
+
+                                  {/* GALLERY ẢNH NHỎ (Nếu có > 1 ảnh) */}
+                                  {images.length > 1 && (
+                                    <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+                                        <Image.PreviewGroup>
+                                            {images.slice(1).map((img, idx) => (
+                                                <Image 
+                                                    key={idx}
+                                                    src={getFullUrl(img.path)} 
+                                                    width={50} 
+                                                    height={40} 
+                                                    className="rounded object-cover border"
+                                                />
+                                            ))}
+                                        </Image.PreviewGroup>
+                                    </div>
+                                  )}
+
+                                  {/* TÀI LIỆU ĐÍNH KÈM */}
+                                  {(otherDocs.length > 0 || links.length > 0) && (
+                                    <div className="mt-auto bg-gray-50 p-3 rounded-lg border border-dashed mb-4">
+                                        <div className="flex flex-wrap gap-2">
+                                            {otherDocs.map((doc, idx) => (
+                                                <a key={idx} href={getFullUrl(doc.path)} target="_blank" className="flex items-center gap-1 text-[11px] bg-white border px-2 py-1 rounded hover:bg-red-50 text-red-600">
+                                                    <FilePdfOutlined /> {doc.name.slice(0, 15)}...
+                                                </a>
+                                            ))}
+                                            {links.map((link, idx) => (
+                                                <a key={idx} href={getFullUrl(link.path)} target="_blank" className="flex items-center gap-1 text-[11px] bg-white border px-2 py-1 rounded hover:bg-blue-50 text-blue-600">
+                                                    <GlobalOutlined /> Link
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </div>
+                                  )}
+
+                                  <div className="mt-auto flex items-center justify-between text-[11px] text-gray-400 pt-4 border-t">
+                                      <Space>
+                                          <UserOutlined className="text-indigo-400" />
+                                          <span className="font-semibold text-gray-500">{item.author?.fullName}</span>
+                                      </Space>
+                                      <Space>
+                                          <CalendarOutlined />
+                                          {new Date(item.createdAt).toLocaleDateString('vi-VN')}
+                                      </Space>
                                   </div>
                               </div>
-                          )}
-
-                          {/* FOOTER */}
-                          <div className="flex items-center justify-between text-xs text-gray-400 border-t pt-4">
-                              <Space size="middle">
-                                  <span className="flex items-center gap-1.5 bg-gray-100 px-3 py-1 rounded-full text-gray-600 font-medium">
-                                      <UserOutlined className="text-indigo-500" /> {item.author?.fullName || 'Ẩn danh'}
-                                  </span>
-                                  <span className="italic">
-                                    Đăng lúc: {new Date(item.createdAt).toLocaleString('vi-VN')}
-                                  </span>
-                              </Space>
-                          </div>
-                      </Card>
-                    </List.Item>
-                  )}
+                          </Card>
+                        </List.Item>
+                    );
+                  }}
               />
           )}
       </div>
