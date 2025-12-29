@@ -16,14 +16,13 @@ import 'react-quill-new/dist/quill.snow.css';
 
 const API_URL = axiosClient.defaults.baseURL;
 
-// Cấu hình các nút chức năng trên thanh công cụ soạn thảo
 const quillModules = {
   toolbar: [
     [{ 'header': [1, 2, 3, false] }],
-    ['bold', 'italic', 'underline', 'strike'],        // Định dạng chữ
-    [{ 'list': 'ordered'}, { 'list': 'bullet' }],     // Danh sách/Gạch đầu dòng
-    [{ 'color': [] }, { 'background': [] }],          // Màu sắc
-    ['link', 'clean']                                 // Chèn link và xóa định dạng
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+    [{ 'color': [] }, { 'background': [] }],
+    ['link', 'clean']
   ],
 };
 
@@ -36,18 +35,18 @@ interface Attachment {
 const Dashboard: React.FC = () => {
   const [form] = Form.useForm();
   
-  // --- STATE QUẢN LÝ DỮ LIỆU ---
   const [stats, setStats] = useState({ users: 0, posts: 0 });
   const [posts, setPosts] = useState<any[]>([]);
   const [menus, setMenus] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   
-  // --- STATE QUẢN LÝ UI ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false); 
   const [viewingUserList, setViewingUserList] = useState<any[]>([]); 
   const [loading, setLoading] = useState(false);
   const [editingPost, setEditingPost] = useState<any>(null);
+  
+  // State quản lý hiển thị ô chọn phòng ban
   const [sendToAll, setSendToAll] = useState(true);
   
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -129,22 +128,24 @@ const Dashboard: React.FC = () => {
       setAttachments([]);
       setSendToAll(true);
       form.resetFields();
-      form.setFieldsValue({ sendType: 'ALL', content: '' }); // Reset content về chuỗi rỗng
+      form.setFieldsValue({ sendType: 'ALL', content: '' });
       setIsModalOpen(true);
   };
 
   const handleOpenEdit = (record: any) => {
       setEditingPost(record);
       setAttachments(record.attachments || []);
-      const hasTarget = record.targets && record.targets.length > 0;
-      setSendToAll(!hasTarget);
+      
+      // Quan trọng: Kiểm tra logic isPublic để hiển thị Radio Group
+      const isPublic = record.isPublic !== false; // Mặc định là true nếu null
+      setSendToAll(isPublic);
 
       form.setFieldsValue({
           title: record.title,
           content: record.content,
           menuId: record.menuId,
-          sendType: hasTarget ? 'DEPT' : 'ALL',
-          targetDeptIds: hasTarget ? record.targets.map((t: any) => t.departmentId) : []
+          sendType: isPublic ? 'ALL' : 'DEPT',
+          targetDeptIds: !isPublic ? record.targets?.map((t: any) => t.departmentId) : []
       });
       setIsModalOpen(true);
   };
@@ -152,10 +153,12 @@ const Dashboard: React.FC = () => {
   const handleSubmit = async (values: any) => {
       setLoading(true);
       try {
+          const isAll = values.sendType === 'ALL';
           const payload = { 
               ...values, 
+              isPublic: isAll, // Gửi giá trị isPublic lên Backend
               attachments: attachments,
-              targetDeptIds: values.sendType === 'ALL' ? [] : values.targetDeptIds
+              targetDeptIds: isAll ? [] : values.targetDeptIds
           };
           
           if (editingPost) {
@@ -163,7 +166,7 @@ const Dashboard: React.FC = () => {
               message.success('Cập nhật bài viết thành công!');
           } else {
               await axiosClient.post('/posts', payload);
-              message.success('Đăng bài và gửi email thông báo thành công!');
+              message.success('Đăng bài thành công!');
           }
 
           setIsModalOpen(false);
@@ -199,8 +202,8 @@ const Dashboard: React.FC = () => {
       {
           title: 'Đối tượng',
           render: (_: any, record: any) => (
-              record.targets && record.targets.length > 0 
-              ? <Tag color="orange"><TeamOutlined /> {record.targets.length} Phòng ban</Tag>
+              record.isPublic === false 
+              ? <Tag color="orange"><TeamOutlined /> {record.targets?.length || 0} Phòng ban</Tag>
               : <Tag color="green"><GlobalOutlined /> Tất cả</Tag>
           )
       },
@@ -277,7 +280,7 @@ const Dashboard: React.FC = () => {
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
         footer={null} 
-        width={1000} // Tăng chiều rộng để bộ soạn thảo thoải mái hơn
+        width={1000} 
         maskClosable={false}
       >
          <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-4">
@@ -291,24 +294,27 @@ const Dashboard: React.FC = () => {
                     </Form.Item>
                 </Col>
                 <Col span={12}>
-                    <Form.Item name="sendType" label="Đối tượng">
+                    <Form.Item name="sendType" label="Đối tượng hiển thị">
                         <Radio.Group onChange={(e) => setSendToAll(e.target.value === 'ALL')}>
-                            <Radio value="ALL">Tất cả nhân viên</Radio>
-                            <Radio value="DEPT">Theo phòng ban</Radio>
+                            <Radio value="ALL">Công khai (Tất cả)</Radio>
+                            <Radio value="DEPT">Nội bộ (Phòng ban)</Radio>
                         </Radio.Group>
                     </Form.Item>
                 </Col>
             </Row>
 
             {!sendToAll && (
-                <Form.Item name="targetDeptIds" label="Chọn phòng ban" rules={[{ required: true }]}>
-                    <Select mode="multiple" placeholder="Nhấp để chọn...">
+                <Form.Item 
+                  name="targetDeptIds" 
+                  label="Chọn phòng ban được quyền xem" 
+                  rules={[{ required: true, message: 'Vui lòng chọn ít nhất 1 phòng ban!' }]}
+                >
+                    <Select mode="multiple" placeholder="Chọn các phòng ban...">
                         {departments.map(d => <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>)}
                     </Select>
                 </Form.Item>
             )}
 
-            {/* THAY THẾ TEXTAREA BẰNG REACT QUILL */}
             <Form.Item 
                 name="content" 
                 label="Nội dung chi tiết" 
@@ -317,8 +323,8 @@ const Dashboard: React.FC = () => {
                 <ReactQuill 
                     theme="snow" 
                     modules={quillModules}
-                    placeholder="Soạn nội dung tin tức tại đây (hỗ trợ in đậm, gạch đầu dòng...)"
-                    style={{ height: '300px', marginBottom: '50px' }} // Thêm margin bottom để không đè lên phần dưới
+                    placeholder="Soạn nội dung tin tức..."
+                    style={{ height: '300px', marginBottom: '50px' }} 
                 />
             </Form.Item>
 
@@ -345,20 +351,21 @@ const Dashboard: React.FC = () => {
                     >
                         <Button icon={<UploadOutlined />}>Tải File</Button>
                     </Upload>
-                    <Input.Group compact style={{ display: 'flex', flex: 1 }}>
+                    <div style={{ display: 'flex', flex: 1 }}>
                         <Input placeholder="Dán link..." value={linkInput} onChange={e => setLinkInput(e.target.value)} />
                         <Button type="primary" onClick={handleAddLink}>Thêm</Button>
-                    </Input.Group>
+                    </div>
                 </div>
             </div>
 
             <div className="flex justify-end gap-2">
                 <Button onClick={() => setIsModalOpen(false)}>Hủy</Button>
-                <Button type="primary" htmlType="submit" loading={loading}>Xác nhận</Button>
+                <Button type="primary" htmlType="submit" loading={loading}>Xác nhận đăng tin</Button>
             </div>
          </Form>
       </Modal>
 
+      {/* Modal Lượt xem giữ nguyên */}
       <Modal
         title="Danh sách nhân viên đã xem tin"
         open={isViewModalOpen}

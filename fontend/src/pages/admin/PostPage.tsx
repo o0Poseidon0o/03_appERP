@@ -4,7 +4,8 @@ import {
   Tooltip } from 'antd';
 import { 
   UserOutlined, SearchOutlined, GlobalOutlined, 
-  FilePdfOutlined, CalendarOutlined } from '@ant-design/icons';
+  FilePdfOutlined, CalendarOutlined, TeamOutlined,
+} from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 import { useSearchParams } from 'react-router-dom';
 
@@ -28,14 +29,24 @@ interface MenuType {
     title: string;
 }
 
+// Thêm Interface cho quan hệ phòng ban
+interface PostDepartment {
+    department: {
+        id: string;
+        name: string;
+    }
+}
+
 interface Post {
     id: string;
     title: string;
     content: string;
     createdAt: string;
+    isPublic: boolean; // Cột mới từ Backend
     menu?: MenuType;
     author?: Author;
     attachments?: Attachment[];
+    targets?: PostDepartment[]; // Quan hệ mới để hiển thị tên phòng ban
 }
 
 const PostPage: React.FC = () => {
@@ -119,7 +130,7 @@ const PostPage: React.FC = () => {
           </div>
       </div>
 
-      {/* THANH ĐIỀU HƯỚNG TABS HIỆN ĐẠI */}
+      {/* THANH ĐIỀU HƯỚNG TABS */}
       <div className="bg-white p-2 rounded-xl shadow-sm mb-8 border sticky top-4 z-20">
           <Tabs 
               activeKey={activeMenuId} 
@@ -133,7 +144,7 @@ const PostPage: React.FC = () => {
           />
       </div>
 
-      {/* DANH SÁCH BÀI VIẾT DẠNG GRID */}
+      {/* DANH SÁCH BÀI VIẾT */}
       <div className="min-h-[500px]">
           {loading ? (
               <div className="text-center py-20 bg-white rounded-2xl border border-dashed">
@@ -166,10 +177,21 @@ const PostPage: React.FC = () => {
                                     preview={!!coverImg}
                                     fallback="https://placehold.co/800x600?text=Image+Error"
                                   />
-                                  <div className="absolute top-4 left-4">
+                                  <div className="absolute top-4 left-4 flex flex-col gap-2">
                                     <Tag color="blue" className="m-0 border-none font-bold shadow-md rounded-md px-3 py-1 uppercase text-[10px]">
                                       {item.menu?.title}
                                     </Tag>
+                                    
+                                    {/* PHẦN HIỂN THỊ PHÂN LOẠI PHÒNG BAN */}
+                                    {item.isPublic ? (
+                                      <Tag icon={<GlobalOutlined />} color="green" className="m-0 border-none font-bold shadow-md rounded-md px-3 py-1 uppercase text-[10px]">
+                                        Công khai
+                                      </Tag>
+                                    ) : (
+                                      <Tag icon={<TeamOutlined />} color="orange" className="m-0 border-none font-bold shadow-md rounded-md px-3 py-1 uppercase text-[10px]">
+                                        Nội bộ: {item.targets?.map(t => t.department.name).join(', ')}
+                                      </Tag>
+                                    )}
                                   </div>
                                 </div>
                               }
@@ -184,7 +206,6 @@ const PostPage: React.FC = () => {
                                     {item.title}
                                   </Title>
 
-                                  {/* HIỂN THỊ NỘI DUNG CÓ ĐỊNH DẠNG HTML */}
                                   <Paragraph 
                                     ellipsis={{ rows: 3, expandable: true, symbol: 'Xem thêm' }}
                                     className="text-gray-500 mb-4 text-[14px] leading-relaxed news-content-display"
@@ -192,7 +213,6 @@ const PostPage: React.FC = () => {
                                     <div dangerouslySetInnerHTML={{ __html: item.content }} />
                                   </Paragraph>
 
-                                  {/* GALLERY ẢNH NHỎ */}
                                   {galleryImages.length > 0 && (
                                     <div className="flex gap-2 mb-4">
                                         <Image.PreviewGroup>
@@ -209,7 +229,6 @@ const PostPage: React.FC = () => {
                                     </div>
                                   )}
 
-                                  {/* KHU VỰC TÀI LIỆU VÀ LINK */}
                                   {(docs.length > 0 || links.length > 0) && (
                                     <div className="mt-auto pt-4 border-t border-gray-100">
                                         <div className="flex flex-wrap gap-2">

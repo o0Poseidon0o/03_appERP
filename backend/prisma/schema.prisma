@@ -73,10 +73,11 @@ model Post {
   title        String
   content      String   @db.Text
   attachments  Json?
+  published    Boolean  @default(true)
   
-  // --- THÊM DÒNG NÀY VÀO ---
-  published    Boolean  @default(true) 
-  // -------------------------
+  // --- THÊM DÒNG NÀY ---
+  isPublic     Boolean  @default(true) // Nếu true = Tất cả xem được, false = Chỉ targets xem được
+  // ---------------------
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -84,7 +85,7 @@ model Post {
   menu         Menu     @relation(fields: [menuId], references: [id])
   authorId     String
   author       User     @relation(fields: [authorId], references: [id])
-  departmentId String?
+  
   targets      PostDepartment[]
   
   @@map("posts")
