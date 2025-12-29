@@ -48,7 +48,7 @@ async function main() {
     }
   })
 
-  console.log(`✅ Đã tạo user: ${adminUser.email} / pass: 123456`)
+  console.log(`✅ Đã tạo user: ${adminUser.email} / pass: P@ssw0rd`)
 
   // ==========================================================
   // PHẦN 2: TẠO PERMISSION & GÁN QUYỀN (Đưa vào trong hàm main)

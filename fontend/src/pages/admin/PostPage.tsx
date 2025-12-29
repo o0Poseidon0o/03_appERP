@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { 
-  Card, List, Input, Tag, Image, Tabs, Empty, Space, Typography} from 'antd';
+  Card, List, Input, Tag, Image, Tabs, Empty, Space, Typography, Row, Col 
+} from 'antd';
 import { 
-  UserOutlined, GlobalOutlined, 
-  FilePdfOutlined, CalendarOutlined
+  UserOutlined, SearchOutlined, GlobalOutlined, 
+  PaperClipOutlined, FilePdfOutlined, CalendarOutlined,
+  ArrowRightOutlined
 } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 import { useSearchParams } from 'react-router-dom';
@@ -11,10 +13,8 @@ import { useSearchParams } from 'react-router-dom';
 const { Search } = Input;
 const { Title, Paragraph, Text } = Typography;
 
-// Cấu hình URL cho ảnh - Đảm bảo lấy đúng từ môi trường
 const SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-// --- 1. ĐỊNH NGHĨA KIỂU DỮ LIỆU (INTERFACE) ---
 interface Attachment {
     name: string;
     path: string;
@@ -51,7 +51,6 @@ const PostPage: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string>(menuIdParam || 'all');
 
-  // --- GIỮ NGUYÊN LOGIC CALL API ---
   const fetchMenus = async () => {
       try {
           const res = await axiosClient.get('/menus');
@@ -62,7 +61,7 @@ const PostPage: React.FC = () => {
   const fetchPosts = async () => {
     setLoading(true);
     try {
-        let url = '/posts?limit=50'; 
+        let url = '/posts?limit=50';
         if (activeMenuId !== 'all') {
             url += `&menuId=${activeMenuId}`;
         }
@@ -102,19 +101,19 @@ const PostPage: React.FC = () => {
       return `${cleanServerUrl}${cleanPath}`;
   };
 
-  // --- GIAO DIỆN MỚI ---
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 bg-[#f4f7f9] min-h-screen">
-      {/* HEADER SECTION */}
+    <div className="max-w-7xl mx-auto px-4 py-8 bg-[#f0f2f5] min-h-screen">
+      {/* HEADER TRANG TIN TỨC */}
       <div className="mb-10 text-center">
-          <Title level={2} style={{ color: '#1a3353', marginBottom: 8 }}>BẢNG TIN DOANH NGHIỆP</Title>
-          <Text type="secondary" style={{ fontSize: '16px' }}>Cập nhật những thông báo và hoạt động mới nhất từ nội bộ</Text>
-          
-          <div className="max-w-xl mx-auto mt-8">
+          <Title level={1} style={{ fontSize: '2.5rem', color: '#001529', fontWeight: 800 }}>PORTAL TIN TỨC</Title>
+          <Paragraph style={{ fontSize: '1.1rem', color: '#595959' }}>
+            Không gian cập nhật thông tin và hoạt động nội bộ dành cho nhân viên
+          </Paragraph>
+          <div className="max-w-2xl mx-auto mt-6">
               <Search 
-                  placeholder="Tìm kiếm nội dung tin tức..." 
+                  placeholder="Tìm kiếm bài viết, thông báo..." 
                   allowClear 
-                  enterButton="Tìm kiếm"
+                  enterButton={<SearchOutlined />}
                   size="large"
                   className="shadow-lg rounded-lg"
                   onChange={(e) => setSearchText(e.target.value)}
@@ -122,120 +121,116 @@ const PostPage: React.FC = () => {
           </div>
       </div>
 
-      {/* TABS MENU HIỆN ĐẠI */}
-      <div className="bg-white p-2 rounded-xl shadow-sm mb-8 border sticky top-2 z-10">
+      {/* THANH ĐIỀU HƯỚNG TABS HIỆN ĐẠI */}
+      <div className="bg-white p-2 rounded-xl shadow-sm mb-8 border sticky top-4 z-20">
           <Tabs 
               activeKey={activeMenuId} 
               onChange={setActiveMenuId} 
               centered
               items={[
-                { key: 'all', label: <span className="px-4 font-bold">TẤT CẢ TIN</span> },
-                ...menus.map(m => ({ key: String(m.id), label: <span className="px-4 font-bold">{m.title.toUpperCase()}</span> }))
+                { key: 'all', label: <span className="px-4 font-bold uppercase tracking-wider">Tất cả tin tức</span> },
+                ...menus.map(m => ({ key: String(m.id), label: <span className="px-4 font-bold uppercase tracking-wider">{m.title}</span> }))
               ]}
               tabBarStyle={{ marginBottom: 0 }}
           />
       </div>
 
-      {/* DANH SÁCH BẢI VIẾT DẠNG GRID TIN TỨC */}
-      <div className="min-h-100">
+      {/* DANH SÁCH BÀI VIẾT DẠNG GRID */}
+      <div className="min-h-[500px]">
           {loading ? (
-              <div className="text-center py-20 bg-white rounded-xl shadow-inner">
-                <div className="animate-spin inline-block w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mb-4"></div>
-                <p className="text-gray-500 font-medium">Đang tải bản tin mới nhất...</p>
+              <div className="text-center py-20 bg-white rounded-2xl border border-dashed">
+                <p className="animate-pulse text-indigo-500 font-semibold">Đang tải bản tin...</p>
               </div>
           ) : filteredPosts.length === 0 ? (
-              <Empty description="Hiện chưa có tin tức nào phù hợp" className="py-20 bg-white rounded-xl" />
+              <Empty description="Không có tin tức nào phù hợp với tìm kiếm của bạn" className="py-20 bg-white rounded-2xl shadow-sm" />
           ) : (
               <List
                   grid={{ gutter: 24, xs: 1, sm: 1, md: 2, lg: 2, xl: 3, xxl: 3 }}
                   dataSource={filteredPosts}
                   renderItem={(item) => {
-                    // Logic tách ảnh bìa (cover)
+                    // Logic: Lấy ảnh đầu tiên làm ảnh bìa lớn (Cover)
                     const images = item.attachments?.filter(f => f.type?.includes('image') || f.path.match(/\.(jpeg|jpg|png|gif|webp)$/i)) || [];
                     const coverImg = images[0];
-                    const otherDocs = item.attachments?.filter(f => !f.type?.includes('image') && f.type !== 'link') || [];
+                    const galleryImages = images.slice(1);
+                    const docs = item.attachments?.filter(f => !f.type?.includes('image') && f.type !== 'link') || [];
                     const links = item.attachments?.filter(f => f.type === 'link') || [];
 
                     return (
                         <List.Item>
                           <Card 
                               hoverable
-                              className="h-full flex flex-col shadow-md rounded-xl overflow-hidden border-none hover:shadow-2xl transition-all duration-300"
+                              className="h-full flex flex-col shadow-md rounded-2xl overflow-hidden border-none hover:shadow-2xl transition-all duration-500"
                               cover={
-                                <div className="h-56 overflow-hidden bg-gray-200">
+                                <div className="h-60 overflow-hidden bg-gray-200 relative group">
                                   <Image
                                     alt={item.title}
-                                    src={coverImg ? getFullUrl(coverImg.path) : 'https://placehold.co/600x400?text=Internal+News'}
-                                    className="object-cover w-full h-full transform hover:scale-110 transition-transform duration-500"
+                                    src={coverImg ? getFullUrl(coverImg.path) : 'https://placehold.co/800x600?text=No+Thumbnail'}
+                                    className="object-cover w-full h-full transform group-hover:scale-110 transition-transform duration-700"
                                     preview={!!coverImg}
-                                    fallback="https://placehold.co/600x400?text=No+Image"
+                                    fallback="https://placehold.co/800x600?text=Image+Error"
                                   />
+                                  <div className="absolute top-4 left-4">
+                                    <Tag color="blue" className="m-0 border-none font-bold shadow-md rounded-md px-3 py-1 uppercase text-[10px]">
+                                      {item.menu?.title}
+                                    </Tag>
+                                  </div>
                                 </div>
                               }
                           >
                               <div className="flex flex-col h-full">
-                                  <div className="mb-2">
-                                    <Tag color="indigo" className="font-bold border-none rounded-md px-2 py-0.5 uppercase text-[10px]">
-                                      {item.menu?.title}
-                                    </Tag>
-                                  </div>
+                                  <Space className="text-[11px] text-gray-400 mb-3 font-semibold uppercase tracking-tighter">
+                                    <span><UserOutlined /> {item.author?.fullName}</span>
+                                    <span><CalendarOutlined /> {new Date(item.createdAt).toLocaleDateString('vi-VN')}</span>
+                                  </Space>
 
-                                  <Title level={4} className="mb-3 line-clamp-2" style={{ height: '56px', fontSize: '1.1rem', lineHeight: '1.4' }}>
+                                  <Title level={4} className="mb-3 leading-snug hover:text-indigo-600 transition-colors line-clamp-2" style={{ height: '52px', fontSize: '1.2rem' }}>
                                     {item.title}
                                   </Title>
 
+                                  {/* Không bao giờ mất nội dung với tính năng Xem thêm (expandable) */}
                                   <Paragraph 
                                     ellipsis={{ rows: 3, expandable: true, symbol: 'Xem thêm' }}
-                                    className="text-gray-500 mb-4 text-sm leading-relaxed"
+                                    className="text-gray-500 mb-4 text-[14px] leading-relaxed"
                                   >
                                     {item.content}
                                   </Paragraph>
 
-                                  {/* GALLERY ẢNH NHỎ (Nếu có > 1 ảnh) */}
-                                  {images.length > 1 && (
-                                    <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+                                  {/* GALLERY ẢNH NHỎ: Nếu có nhiều hơn 1 hình ảnh */}
+                                  {galleryImages.length > 0 && (
+                                    <div className="flex gap-2 mb-4">
                                         <Image.PreviewGroup>
-                                            {images.slice(1).map((img, idx) => (
+                                            {galleryImages.map((img, idx) => (
                                                 <Image 
                                                     key={idx}
                                                     src={getFullUrl(img.path)} 
                                                     width={50} 
-                                                    height={40} 
-                                                    className="rounded object-cover border"
+                                                    height={45} 
+                                                    className="rounded-lg object-cover border-2 border-white shadow-sm"
                                                 />
                                             ))}
                                         </Image.PreviewGroup>
                                     </div>
                                   )}
 
-                                  {/* TÀI LIỆU ĐÍNH KÈM */}
-                                  {(otherDocs.length > 0 || links.length > 0) && (
-                                    <div className="mt-auto bg-gray-50 p-3 rounded-lg border border-dashed mb-4">
+                                  {/* KHU VỰC TÀI LIỆU VÀ LINK */}
+                                  {(docs.length > 0 || links.length > 0) && (
+                                    <div className="mt-auto pt-4 border-t border-gray-100">
                                         <div className="flex flex-wrap gap-2">
-                                            {otherDocs.map((doc, idx) => (
-                                                <a key={idx} href={getFullUrl(doc.path)} target="_blank" className="flex items-center gap-1 text-[11px] bg-white border px-2 py-1 rounded hover:bg-red-50 text-red-600">
-                                                    <FilePdfOutlined /> {doc.name.slice(0, 15)}...
-                                                </a>
+                                            {docs.map((doc, idx) => (
+                                                <Tooltip title={doc.name} key={idx}>
+                                                  <a href={getFullUrl(doc.path)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-1 rounded-full text-[12px] border border-red-100 hover:bg-red-600 hover:text-white transition-all">
+                                                      <FilePdfOutlined /> <span>Tài liệu</span>
+                                                  </a>
+                                                </Tooltip>
                                             ))}
                                             {links.map((link, idx) => (
-                                                <a key={idx} href={getFullUrl(link.path)} target="_blank" className="flex items-center gap-1 text-[11px] bg-white border px-2 py-1 rounded hover:bg-blue-50 text-blue-600">
-                                                    <GlobalOutlined /> Link
+                                                <a key={idx} href={getFullUrl(link.path)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-[12px] border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all">
+                                                    <GlobalOutlined /> <span>Liên kết</span>
                                                 </a>
                                             ))}
                                         </div>
                                     </div>
                                   )}
-
-                                  <div className="mt-auto flex items-center justify-between text-[11px] text-gray-400 pt-4 border-t">
-                                      <Space>
-                                          <UserOutlined className="text-indigo-400" />
-                                          <span className="font-semibold text-gray-500">{item.author?.fullName}</span>
-                                      </Space>
-                                      <Space>
-                                          <CalendarOutlined />
-                                          {new Date(item.createdAt).toLocaleDateString('vi-VN')}
-                                      </Space>
-                                  </div>
                               </div>
                           </Card>
                         </List.Item>
