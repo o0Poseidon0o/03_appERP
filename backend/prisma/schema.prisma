@@ -61,11 +61,13 @@ model RolePermission {
 
 // ... (Các bảng Department, Menu, Post... giữ nguyên như cũ)
 model Department {
-  id            String   @id             
-  name          String
-  code          String   @unique         
-  users         User[]
-  targetedPosts PostDepartment[]
+  id               String           @id 
+  name             String
+  name_content     String           @default("Chưa có nội dung") // Thêm @default ở đây
+  
+  // Các quan hệ (không tạo cột trong DB)
+  users            User[]
+  targetedPosts    PostDepartment[]
 }
 // ... (Copy tiếp các model Post, Menu... vào đây)
 model Post {

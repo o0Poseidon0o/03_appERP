@@ -27,47 +27,34 @@ export const getAllDepartments = async (req: Request, res: Response, next: NextF
 // 2. Tạo phòng ban mới
 export const createDepartment = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id, name, code } = req.body;
+    const { id, name, name_content } = req.body;
 
-    // Kiểm tra trùng ID
     const existDept = await prisma.department.findUnique({ where: { id } });
-    if (existDept) {
-      return next(new AppError('Mã ID phòng ban này đã tồn tại!', 400));
-    }
+    if (existDept) return next(new AppError('Mã ID đã tồn tại!', 400));
 
     const newDept = await prisma.department.create({
       data: { 
         id, 
         name, 
-        // Nếu code gửi lên bị trống, lấy id làm code để tránh lỗi Prisma
-        code: code || id 
+        name_content: name_content || name // Fallback nếu thiếu dữ liệu
       }
     });
-
-    res.status(201).json({
-      status: 'success',
-      data: newDept
-    });
-  } catch (error) {
-    next(error);
-  }
+    res.status(201).json({ status: 'success', data: newDept });
+  } catch (error) { next(error); }
 };
 
 // 3. Cập nhật phòng ban
 export const updateDepartment = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { name, code } = req.body;
+    const { name, name_content } = req.body;
 
     const updatedDept = await prisma.department.update({
       where: { id },
-      data: { name, code }
+      data: { name, name_content }
     });
-
     res.status(200).json({ status: 'success', data: updatedDept });
-  } catch (error) {
-    next(new AppError('Không tìm thấy phòng ban hoặc lỗi cập nhật', 404));
-  }
+  } catch (error) { next(new AppError('Lỗi cập nhật', 404)); }
 };
 
 // --- THÊM MỚI: Xóa phòng ban ---
