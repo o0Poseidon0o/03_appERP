@@ -56,19 +56,26 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
   }
 };
 
-// 2. QUÊN MẬT KHẨU (Giữ nguyên, code này tốt)
 export const forgotPassword = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.body;
+    const { id } = req.body; // Lấy ID từ Frontend gửi lên
 
+    // 1. Tìm User
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
-      return next(new AppError('Không tìm thấy nhân viên với mã này!', 404));
+      return next(new AppError('Mã nhân viên không tồn tại trong hệ thống!', 404));
     }
 
+    // 2. Kiểm tra User có Email không
+    if (!user.email) {
+      return next(new AppError('Tài khoản này chưa cập nhật email. Vui lòng liên hệ IT!', 400));
+    }
+
+    // 3. Tạo mật khẩu tạm (Ví dụ: 6 ký tự viết hoa)
     const tempPass = Math.random().toString(36).slice(-6).toUpperCase();
     const hashedTempPass = await bcrypt.hash(tempPass, 10);
 
+    // 4. Cập nhật DB trước khi gửi mail
     await prisma.user.update({
       where: { id },
       data: {
@@ -77,11 +84,18 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
       }
     });
 
-    await sendTempPasswordEmail(user.email, tempPass);
+    // 5. Gửi Mail (Bọc vào try-catch riêng để log lỗi nếu mail server sập)
+    try {
+      await sendTempPasswordEmail(user.email, tempPass);
+    } catch (mailError) {
+      console.error(">>> [EMAIL ERROR]", mailError);
+      // Vẫn báo lỗi 500 nhưng log rõ là do Mail để bạn sửa
+      return next(new AppError('Lỗi hệ thống gửi thư. Vui lòng thử lại sau!', 500));
+    }
 
     res.status(200).json({
       status: 'success',
-      message: `Mật khẩu tạm đã được gửi tới email ${user.email}`
+      message: `Mật khẩu tạm đã được gửi tới email đăng ký của bạn.`
     });
 
   } catch (error) {
