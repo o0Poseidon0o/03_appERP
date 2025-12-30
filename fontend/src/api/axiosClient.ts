@@ -1,18 +1,17 @@
 import axios from 'axios';
 
 const getBaseURL = () => {
-  // 1. Nếu đang chạy môi trường phát triển (npm run dev trên máy cá nhân)
+  // Nếu là môi trường DEV (chạy npm run dev tại máy local)
   if (import.meta.env.DEV) {
     return 'http://localhost:3000/api';
   }
-
-  // 2. Nếu đã NAT ra ngoài hoặc chạy qua Nginx
-  // Lấy toàn bộ Origin (bao gồm cả http/https, domain và cổng hiện tại - VD: cổng 90)
-  const currentOrigin = window.location.origin; 
   
-  // Trả về địa chỉ hiện tại cộng thêm /api. 
-  // Ví dụ: http://thongbao.towa.com.vn:90/api
-  return `${currentOrigin}/api`;
+  // Môi trường Production (Đã build và chạy qua Nginx)
+  // Lấy VITE_API_URL từ file .env hoặc dùng origin hiện tại
+  const url = import.meta.env.VITE_API_URL || window.location.origin;
+  
+  // Đảm bảo có hậu tố /api nhưng không bị lặp dấu //
+  return url.endsWith('/api') ? url : `${url}/api`;
 };
 
 const axiosClient = axios.create({
