@@ -1,17 +1,15 @@
 import axios from 'axios';
 
 const getBaseURL = () => {
-  // Nếu là môi trường DEV (chạy npm run dev tại máy local)
+  // 1. Khi bạn đang Code trên VS Code (npm run dev)
   if (import.meta.env.DEV) {
     return 'http://localhost:3000/api';
   }
   
-  // Môi trường Production (Đã build và chạy qua Nginx)
-  // Lấy VITE_API_URL từ file .env hoặc dùng origin hiện tại
-  const url = import.meta.env.VITE_API_URL || window.location.origin;
-  
-  // Đảm bảo có hậu tố /api nhưng không bị lặp dấu //
-  return url.endsWith('/api') ? url : `${url}/api`;
+  // 2. Khi đã chạy trên Server (Nội bộ hay Ngoài Internet đều dùng chung origin của trình duyệt)
+  // Nếu bạn vào bằng 192.168.1.10:90 -> origin là http://192.168.1.10:90
+  // Nếu bạn vào bằng thongbao.towa.com.vn:90 -> origin là http://thongbao.towa.com.vn:90
+  return `${window.location.origin}/api`;
 };
 
 const axiosClient = axios.create({
@@ -20,7 +18,6 @@ const axiosClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
-
 // Interceptor gắn Token
 axiosClient.interceptors.request.use(
   (config) => {
