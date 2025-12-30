@@ -74,7 +74,7 @@ export const sendNewPostNotification = async (
 
   console.log(">>> [Email Debug] Đang chuẩn bị gửi tới:", recipients);
   // const frontendUrl = process.env.FRONTEND_URL || 'http://192.168.20.17:90';
-  const frontendUrl = process.env.FRONTEND_URL || 'http://thongbao.towa.com.vn:90';
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:90';
   const chunkSize = 25; 
 
   for (let i = 0; i < recipients.length; i += chunkSize) {
