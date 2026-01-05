@@ -35,7 +35,8 @@ services:
 
       # Frontend chạy port 90, nên link trong email phải là port 90
       # Thay IP_CUA_SERVER_LINUX bằng IP thật (VD: 192.168.1.100)
-      FRONTEND_URL: "http://192.168.20.17:90"
+      # FRONTEND_URL: "http://192.168.20.17:90"
+      FRONTEND_URL: "http://thongbao.towa.com.vn:90"
 
     volumes:
       - ./backend/uploads:/app/uploads
