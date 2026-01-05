@@ -6,8 +6,8 @@ services:
     container_name: towa_db
     restart: always
     environment:
-      POSTGRES_USER: myadmin
-      POSTGRES_PASSWORD: P@ssw0rd
+      POSTGRES_USER: myadmin          # Thống nhất dùng myadmin
+      POSTGRES_PASSWORD: P@ssw0rd      # Thống nhất dùng P@ssw0rd
       POSTGRES_DB: towaERP
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -18,17 +18,11 @@ services:
     build: ./backend
     container_name: towa_backend
     restart: always
-    # Mở port 3000 để bạn vẫn có thể test trực tiếp nếu cần
-    ports:
-      - "3000:3000"
     env_file:
       - ./backend/.env
     environment:
-      # SỬA TẠI ĐÂY: Dùng 'db' thay vì IP nội bộ để Docker tự kết nối
+      # Kết nối nội bộ Docker dùng tên service 'db'
       DATABASE_URL: "postgresql://myadmin:P@ssw0rd@db:5432/towaERP?schema=public"
-      # FRONTEND_URL sẽ được lấy từ file .env backend
-    volumes:
-      - ./backend/uploads:/app/uploads
     depends_on:
       - db
     networks:
