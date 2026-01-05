@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Checkbox, App } from 'antd'; // Thêm App từ antd
+import { Form, Input, Button, message, Checkbox } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate, Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
@@ -7,40 +7,42 @@ import { useAuth } from '../../contexts/AuthContext';
 import AuthLayout from '../../layout/AuthLayout';
 
 const LoginPage: React.FC = () => {
-  // SỬA TẠI ĐÂY: Dùng hook này để hết lỗi Warning static function
-  const { message } = App.useApp(); 
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login } = useAuth(); // Hàm login từ AuthContext
 
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
+      // 1. Gọi API đăng nhập
       const res = await axiosClient.post('/auth/login', {
-        id: values.username,
+        id: values.username, // Backend chờ 'id', frontend form name là 'username'
         password: values.password,
       });
 
-      console.log("Phản hồi thành công:", res.data);
-
+      // 2. Xử lý kết quả thành công
       if (res.data.status === 'success') {
         const { token, data } = res.data;
         
-        // Lưu dữ liệu vào Context & LocalStorage
+        // --- QUAN TRỌNG: Lưu token và user info vào Context ---
+        // Hàm login này sẽ lưu vào localStorage và set state user
         login(token, data.user); 
 
-        message.success('Đăng nhập thành công!');
+        message.success({ content: 'Đăng nhập thành công!', duration: 1 });
 
+        // 3. Điều hướng
         if (data.requirePasswordChange) {
-            message.warning('Vui lòng đổi mật khẩu mới.');
+            // Nếu bắt buộc đổi mật khẩu -> Chuyển sang trang đổi pass (nếu có)
+            // Tạm thời cho vào profile để đổi
+            message.warning('Vui lòng đổi mật khẩu mới để bảo mật tài khoản.');
             navigate('/profile'); 
         } else {
             navigate('/');
         }
       }
     } catch (error: any) {
-      console.error("Lỗi Login thực tế:", error);
-      const msg = error.response?.data?.message || 'Không thể kết nối tới máy chủ (500)';
+      // 4. Xử lý lỗi
+      const msg = error.response?.data?.message || 'Đăng nhập thất bại';
       message.error(msg);
     } finally {
       setLoading(false);
@@ -66,7 +68,7 @@ const LoginPage: React.FC = () => {
           >
             <Input 
                 prefix={<UserOutlined className="text-gray-400 mr-2" />} 
-                placeholder="VD: NV001" 
+                placeholder="VD: ADMIN-01 hoặc NV001" 
                 className="py-3 rounded-lg"
             />
           </Form.Item>
@@ -98,7 +100,8 @@ const LoginPage: React.FC = () => {
                 htmlType="submit" 
                 loading={loading} 
                 block 
-                className="h-12 text-lg font-semibold bg-indigo-600 border-none rounded-lg"
+                className="h-12 text-lg font-semibold"
+                style={{ backgroundColor: '#6366f1', borderColor: '#6366f1' }}
             >
               Đăng nhập hệ thống
             </Button>
