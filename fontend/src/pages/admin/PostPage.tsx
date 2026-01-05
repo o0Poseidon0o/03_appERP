@@ -12,7 +12,7 @@ import { useSearchParams } from 'react-router-dom';
 const { Search } = Input;
 const { Title, Paragraph } = Typography;
 
-const SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// const SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 interface Attachment {
     name: string;
@@ -102,12 +102,22 @@ const PostPage: React.FC = () => {
       );
   }, [posts, searchText]);
 
-  const getFullUrl = (path: string) => {
-      if (!path) return '';
-      if (path.startsWith('http')) return path;
-      const cleanServerUrl = SERVER_URL.endsWith('/') ? SERVER_URL.slice(0, -1) : SERVER_URL;
-      const cleanPath = path.startsWith('/') ? path : `/${path}`;
-      return `${cleanServerUrl}${cleanPath}`;
+ const getFullUrl = (path: string) => {
+    if (!path) return '';
+    if (path.startsWith('http')) return path;
+
+    // Đảm bảo path bắt đầu bằng dấu / (ví dụ: /uploads/abc.jpg)
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+
+    // 1. Khi đang Code ở máy cá nhân (VS Code)
+    if (import.meta.env.DEV) {
+      return `http://localhost:3000${cleanPath}`;
+    }
+
+    // 2. Khi chạy Public trên Server Linux
+    // window.location.origin sẽ lấy http://thongbao.towa.com.vn:90
+    const origin = window.location.origin;
+    return `${origin}${cleanPath}`;
   };
 
   return (
