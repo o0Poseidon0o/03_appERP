@@ -6,8 +6,8 @@ services:
     container_name: towa_db
     restart: always
     environment:
-      POSTGRES_USER: myadmin          # Thống nhất dùng myadmin
-      POSTGRES_PASSWORD: P@ssw0rd      # Thống nhất dùng P@ssw0rd
+      POSTGRES_USER: myadmin          # Tên user
+      POSTGRES_PASSWORD: P@ssw0rd      # Mật khẩu
       POSTGRES_DB: towaERP
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -21,8 +21,10 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # Kết nối nội bộ Docker dùng tên service 'db'
+      # Sử dụng thông tin khớp hoàn toàn với service 'db' ở trên
       DATABASE_URL: "postgresql://myadmin:P@ssw0rd@db:5432/towaERP?schema=public"
+    # THÊM ĐOẠN NÀY NẾU CHƯA CÓ
+    
     depends_on:
       - db
     networks:
