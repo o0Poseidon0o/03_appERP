@@ -4,18 +4,20 @@ import nodemailer from 'nodemailer';
 const transporter = nodemailer.createTransport({
   host: process.env.MAIL_HOST || 'smtp.gmail.com',
   port: Number(process.env.MAIL_PORT) || 587,
-  secure: false, // false cho cổng 587, true cho cổng 465
+  secure: false, 
   auth: {
     user: process.env.MAIL_USER,
     pass: process.env.MAIL_PASS,
   },
   tls: {
-    rejectUnauthorized: false // Quan trọng để gửi được cho mail nội bộ/doanh nghiệp
+    rejectUnauthorized: false 
   }
 });
 
+// Lấy URL Frontend từ .env
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://thongbao.towa.com.vn:90';
+
 /**
- * [MỚI BỔ SUNG] 
  * Hàm gửi mật khẩu tạm thời cho chức năng Quên mật khẩu
  */
 export const sendTempPasswordEmail = async (to: string, tempPass: string) => {
@@ -37,14 +39,16 @@ export const sendTempPasswordEmail = async (to: string, tempPass: string) => {
               ${tempPass}
             </span>
           </div>
+          <div style="text-align: center; margin: 25px 0;">
+             <a href="${FRONTEND_URL}/login" style="background-color: #dc2626; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Đăng nhập ngay</a>
+          </div>
           <p style="color: #ef4444; font-weight: bold;">Lưu ý:</p>
           <ul>
-            <li>Mật khẩu này có hiệu lực ngay lập tức.</li>
-            <li>Vui lòng đăng nhập và <b>đổi mật khẩu mới</b> ngay sau khi truy cập hệ thống để đảm bảo an toàn.</li>
+            <li>Vui lòng đăng nhập và <b>đổi mật khẩu mới</b> ngay sau khi truy cập.</li>
           </ul>
         </div>
         <div style="background-color: #f1f5f9; padding: 15px; text-align: center; font-size: 12px; color: #64748b;">
-          Nếu bạn không yêu cầu thay đổi này, vui lòng liên hệ quản trị viên ngay lập tức.
+          Truy cập hệ thống tại: <a href="${FRONTEND_URL}">${FRONTEND_URL}</a>
         </div>
       </div>
     `,
@@ -52,10 +56,10 @@ export const sendTempPasswordEmail = async (to: string, tempPass: string) => {
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log(`>>> [Email Success] Đã gửi mật khẩu tạm tới: ${to}`);
+    console.log(`>>> [Email Success] Sent to: ${to}`);
   } catch (error) {
-    console.error(`>>> [Email Error] Không thể gửi mail tới ${to}:`, error);
-    throw error; // Quăng lỗi để controller nhận biết và xử lý
+    console.error(`>>> [Email Error]`, error);
+    throw error;
   }
 };
 
@@ -67,14 +71,8 @@ export const sendNewPostNotification = async (
   postTitle: string, 
   authorName: string
 ) => {
-  if (!recipients || recipients.length === 0) {
-    console.log(">>> [Email Info] Không có danh sách người nhận.");
-    return;
-  }
+  if (!recipients || recipients.length === 0) return;
 
-  console.log(">>> [Email Debug] Đang chuẩn bị gửi tới:", recipients);
-  // const frontendUrl = process.env.FRONTEND_URL || 'http://192.168.20.17:90';
-  const frontendUrl = process.env.FRONTEND_URL || 'http://thongbao.towa.com.vn:90';
   const chunkSize = 25; 
 
   for (let i = 0; i < recipients.length; i += chunkSize) {
@@ -96,8 +94,11 @@ export const sendNewPostNotification = async (
               <strong style="font-size: 16px; color: #1e3a8a;">${postTitle}</strong>
             </div>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${frontendUrl}/posts" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Xem bài viết ngay</a>
+              <a href="${FRONTEND_URL}/posts" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Xem bài viết ngay</a>
             </div>
+          </div>
+          <div style="background-color: #f1f5f9; padding: 15px; text-align: center; font-size: 12px; color: #64748b;">
+             Hệ thống Towa ERP: <a href="${FRONTEND_URL}">${FRONTEND_URL}</a>
           </div>
         </div>
       `,
@@ -105,9 +106,8 @@ export const sendNewPostNotification = async (
 
     try {
       await transporter.sendMail(mailOptions);
-      console.log(`>>> [Email Success] Gửi đợt ${i/chunkSize + 1} thành công (${chunk.length} người).`);
     } catch (error) {
-      console.error('>>> [Email Error] Thất bại tại đợt ' + (i/chunkSize + 1), error);
+      console.error('>>> [Email Error] Chunk failure', error);
     }
     
     if (i + chunkSize < recipients.length) {
