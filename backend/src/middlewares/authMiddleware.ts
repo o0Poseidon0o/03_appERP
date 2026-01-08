@@ -3,51 +3,64 @@ import jwt from 'jsonwebtoken';
 import prisma from '../config/prisma';
 import { AppError } from '../utils/AppError';
 
-// Khai báo kiểu dữ liệu cho Payload trong Token
 interface JwtPayload {
   id: string;
   iat: number;
   exp: number;
 }
 
-// 1. Middleware PROTECT (Bảo vệ - Yêu cầu phải đăng nhập)
+// 1. Middleware PROTECT (Bảo vệ - Phải đăng nhập)
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // 1. Lấy token từ Header
     let token;
-    if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith('Bearer')
-    ) {
-      // Dạng gửi lên: "Bearer <token_dai_ngoang>"
+    if (req.headers.authorization?.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
 
     if (!token) {
-      return next(new AppError('Bạn chưa đăng nhập! Vui lòng đăng nhập để truy cập.', 401));
+      return next(new AppError('Bạn chưa đăng nhập!', 401));
     }
 
-    // 2. Verify Token (Kiểm tra chữ ký và hạn sử dụng)
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
 
-    // 3. Kiểm tra xem user chủ sở hữu token còn tồn tại không?
-    // (Đề phòng trường hợp user bị xóa khỏi DB nhưng token cũ vẫn còn hạn)
+    // --- CẬP NHẬT: Lấy cả quyền từ Role và quyền riêng lẻ của User ---
     const currentUser = await prisma.user.findUnique({
       where: { id: decoded.id },
-      include: { role: true } // Lấy kèm role để dùng cho middleware phân quyền sau này
+      include: { 
+        role: {
+          include: {
+            permissions: true // Quyền theo nhóm (RolePermission)
+          }
+        },
+        userPermissions: true // Quyền đặc biệt gán riêng (UserPermission)
+      }
     });
 
     if (!currentUser) {
-      return next(new AppError('Người dùng sở hữu token này không còn tồn tại.', 401));
+      return next(new AppError('Người dùng không tồn tại.', 401));
     }
 
-    // 4. Kiểm tra xem user có bị khóa (isActive = false) sau khi login không?
     if (!currentUser.isActive) {
-        return next(new AppError('Tài khoản này đã bị khóa.', 403));
+      return next(new AppError('Tài khoản này đã bị khóa.', 403));
     }
 
-    // 5. Gán user vào request để các Controller phía sau sử dụng
-    req.user = currentUser;
+    // --- LOGIC HỢP NHẤT QUYỀN ---
+    // 1. Lấy danh sách ID quyền từ Role
+    const rolePerms = currentUser.role?.permissions.map(p => p.permissionId) || [];
+    
+    // 2. Lấy danh sách ID quyền riêng lẻ của User
+    const individualPerms = currentUser.userPermissions.map(p => p.permissionId) || [];
+
+    // 3. Gộp lại và loại bỏ các ID trùng lặp bằng Set
+    const mergedPermissions = Array.from(new Set([...rolePerms, ...individualPerms]));
+
+    // Gán user và mảng quyền tổng hợp vào request để dùng ở các middleware sau hoặc Controller
+    // Lưu ý: Bạn nên cập nhật file express.d.ts để thêm thuộc tính userPermissions vào Request
+    req.user = {
+      ...currentUser,
+      allPermissions: mergedPermissions 
+    };
+
     next();
     
   } catch (error) {
@@ -55,14 +68,31 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
-// 2. Middleware RESTRICT TO (Phân quyền - Chỉ Admin mới được vào)
-// Truyền vào danh sách các Role ID được phép. VD: restrictTo('ROLE-ADMIN', 'ROLE-MANAGER')
+// 2. Middleware RESTRICT TO (Phân quyền theo Nhóm Role)
 export const restrictTo = (...allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    // req.user đã có nhờ middleware protect chạy trước đó
-    if (!req.user || !req.user.role || !allowedRoles.includes(req.user.role.id)) {
-      return next(new AppError('Bạn không có quyền thực hiện hành động này!', 403));
+    if (!req.user || !allowedRoles.includes(req.user.roleId)) {
+      return next(new AppError('Bạn không có quyền truy cập vai trò này!', 403));
     }
+    next();
+  };
+};
+
+// 3. Middleware HAS PERMISSION (Kiểm tra quyền chi tiết sau khi đã hợp nhất)
+export const hasPermission = (permissionId: string) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = req.user;
+
+    // Admin luôn có quyền tối thượng
+    if (user.roleId === 'ROLE-ADMIN') return next();
+
+    // Kiểm tra trong mảng quyền đã được hợp nhất ở bước protect
+    const userPermissions = (user as any).allPermissions || [];
+
+    if (!userPermissions.includes(permissionId)) {
+      return next(new AppError(`Bạn không có quyền thực hiện: ${permissionId}`, 403));
+    }
+
     next();
   };
 };

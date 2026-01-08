@@ -9,40 +9,47 @@ import AuthLayout from '../../layout/AuthLayout';
 const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth(); // Hàm login từ AuthContext
+  const { login } = useAuth();
 
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
-      // 1. Gọi API đăng nhập
+      // 1. Gọi API đăng nhập - Backend nhận 'id'
       const res = await axiosClient.post('/auth/login', {
-        id: values.username, // Backend chờ 'id', frontend form name là 'username'
+        id: values.username, 
         password: values.password,
       });
 
-      // 2. Xử lý kết quả thành công
       if (res.data.status === 'success') {
         const { token, data } = res.data;
         
-        // --- QUAN TRỌNG: Lưu token và user info vào Context ---
-        // Hàm login này sẽ lưu vào localStorage và set state user
+        // --- ĐIỂM CẬP NHẬT ---
+        // Hàm login(token, user) trong AuthContext sẽ tự động bóc tách 
+        // permissions và lưu vào LocalStorage nhờ logic chúng ta vừa sửa.
         login(token, data.user); 
 
-        message.success({ content: 'Đăng nhập thành công!', duration: 1 });
+        message.success({ 
+          content: 'Đăng nhập thành công!', 
+          duration: 1.5 
+        });
 
-        // 3. Điều hướng
-        if (data.requirePasswordChange) {
-            // Nếu bắt buộc đổi mật khẩu -> Chuyển sang trang đổi pass (nếu có)
-            // Tạm thời cho vào profile để đổi
-            message.warning('Vui lòng đổi mật khẩu mới để bảo mật tài khoản.');
+        // 3. Điều hướng dựa trên trạng thái tài khoản
+        // Kiểm tra mustChangePassword từ dữ liệu user hoặc requirePasswordChange từ res
+        if (data.requirePasswordChange || data.user.mustChangePassword) {
+            message.warning('Đây là mật khẩu tạm, vui lòng đổi mật khẩu mới.');
             navigate('/profile'); 
         } else {
-            navigate('/');
+            // Nếu là Admin/Manager thì về Dashboard, nếu là User thường thì về Posts
+            const roleId = data.user.roleId || data.user.role?.id;
+            if (roleId === 'ROLE-USER') {
+              navigate('/posts');
+            } else {
+              navigate('/');
+            }
         }
       }
     } catch (error: any) {
-      // 4. Xử lý lỗi
-      const msg = error.response?.data?.message || 'Đăng nhập thất bại';
+      const msg = error.response?.data?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại!';
       message.error(msg);
     } finally {
       setLoading(false);
@@ -52,7 +59,7 @@ const LoginPage: React.FC = () => {
   return (
     <AuthLayout 
       title="Chào mừng trở lại!" 
-      subtitle="Vui lòng nhập thông tin đăng nhập của bạn."
+      subtitle="Hệ thống quản trị nội bộ Towa ERP"
     >
         <Form 
             name="login" 
@@ -68,7 +75,7 @@ const LoginPage: React.FC = () => {
           >
             <Input 
                 prefix={<UserOutlined className="text-gray-400 mr-2" />} 
-                placeholder="VD: ADMIN-01 hoặc NV001" 
+                placeholder="Nhập mã nhân viên (VD: NV001)" 
                 className="py-3 rounded-lg"
             />
           </Form.Item>
@@ -87,7 +94,7 @@ const LoginPage: React.FC = () => {
 
           <div className="flex justify-between items-center mb-6">
             <Form.Item name="remember" valuePropName="checked" noStyle>
-              <Checkbox>Ghi nhớ đăng nhập</Checkbox>
+              <Checkbox>Ghi nhớ tôi</Checkbox>
             </Form.Item>
             <Link to="/forgot-password" style={{ color: '#6366f1', fontWeight: 500 }}>
               Quên mật khẩu?
@@ -100,10 +107,10 @@ const LoginPage: React.FC = () => {
                 htmlType="submit" 
                 loading={loading} 
                 block 
-                className="h-12 text-lg font-semibold"
+                className="h-12 text-lg font-semibold shadow-md"
                 style={{ backgroundColor: '#6366f1', borderColor: '#6366f1' }}
             >
-              Đăng nhập hệ thống
+              ĐĂNG NHẬP
             </Button>
           </Form.Item>
         </Form>

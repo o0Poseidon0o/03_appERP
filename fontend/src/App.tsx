@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext'; // Đảm bảo đúng đường dẫn file Theme của bạn
 import { Spin, ConfigProvider, theme, App as AntdApp } from 'antd'; 
 
 // Import Pages
@@ -9,36 +9,45 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import MainLayout from './layout/MainLayout';
 import Profile from './pages/Profile';
 
-// --- CÁC TRANG MỚI ---
-import Dashboard from './pages/admin/Dashboard'; // Trang thống kê & soạn tin (Admin/Manager)
-import PostPage from './pages/admin/PostPage';         // Trang xem tin (All Users)
+// --- CÁC TRANG QUẢN TRỊ ---
+import Dashboard from './pages/admin/Dashboard'; 
+import PostPage from './pages/admin/PostPage'; 
 import UserManagement from './pages/admin/UserManagement';
 import DepartmentManagement from './pages/department/DepartmentManagement';
 import RoleManagement from './pages/Role/RoleManagement';
 import MenuManagement from './pages/admin/MenuManagement';
+
 // Import Security
 import RoleRoute from './components/RoleRoute';
-import type { JSX } from 'react/jsx-dev-runtime';
+import type { JSX } from 'react';
 
+// --- COMPONENT BẢO VỆ ĐƯỜNG DẪN RIÊNG TƯ ---
 const PrivateRoute = ({ children }: { children: JSX.Element }) => {
   const { token, isLoading } = useAuth();
-  if (isLoading) return <div className="h-screen flex justify-center items-center"><Spin size="large"/></div>;
-  return token ? children : <Navigate to="/login" />;
+  
+  if (isLoading) {
+    return (
+      <div className="h-screen flex justify-center items-center bg-gray-50">
+        <Spin size="large" tip="Đang nạp dữ liệu hệ thống..." />
+      </div>
+    );
+  }
+  
+  return token ? children : <Navigate to="/login" replace />;
 };
 
-// --- COMPONENT BẢO VỆ DASHBOARD ---
-// Logic: Admin/Manager -> Vào Dashboard. User -> Chuyển sang trang Tin tức
+// --- COMPONENT ĐIỀU HƯỚNG THÔNG MINH (DASHBOARD GUARD) ---
 const DashboardGuard = () => {
   const { user } = useAuth();
-  // Lấy roleId, nếu lỗi thì mặc định là User thường
-  const role = user?.role?.id || 'ROLE-USER';
+  
+  // Lấy roleId chuẩn từ quan hệ Prisma
+  const roleId = user?.role?.id || user?.roleId;
 
-  // Nếu là User thường -> Đuổi sang trang /posts ngay lập tức
-  if (role === 'ROLE-USER') {
+  // Nếu là ROLE-USER (Nhân viên thường), tự động đẩy sang trang Tin tức vì họ không có Dashboard thống kê
+  if (roleId === 'ROLE-USER') {
     return <Navigate to="/posts" replace />;
   }
   
-  // Nếu là Admin/Manager -> Cho vào Dashboard
   return <Dashboard />;
 };
 
@@ -49,7 +58,11 @@ const AppContent = () => {
     <ConfigProvider
       theme={{
         algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: { colorPrimary: '#6366f1', borderRadius: 8, fontFamily: "'Inter', sans-serif" },
+        token: { 
+          colorPrimary: '#6366f1', 
+          borderRadius: 8, 
+          fontFamily: "'Inter', system-ui, sans-serif" 
+        },
         components: {
           Layout: {
              bodyBg: isDarkMode ? '#111827' : '#f3f4f6', 
@@ -62,34 +75,46 @@ const AppContent = () => {
     >
       <AntdApp>
         <Routes>
-          {/* Public Routes */}
+          {/* 1. PUBLIC ROUTES */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
-          {/* Protected Routes */}
+          {/* 2. PROTECTED ROUTES (Yêu cầu đăng nhập) */}
           <Route path="/" element={<PrivateRoute><MainLayout /></PrivateRoute>}>
              
-             {/* 1. TRANG CHỦ (Dashboard): Có phân luồng tự động */}
+             {/* Trang chủ: Tự động phân luồng Dashboard hoặc Tin tức */}
              <Route index element={<DashboardGuard />} />
 
-             {/* 2. TRANG TIN TỨC: Ai cũng vào được */}
+             {/* Trang tin tức: Mặc định ai đã login cũng xem được */}
              <Route path="posts" element={<PostPage />} />
              
+             {/* Trang cá nhân */}
              <Route path="profile" element={<Profile />} /> 
              
-             {/* NHÓM 3: TRANG NHÂN SỰ (Admin, Manager, User đều vào được - nhưng nút bấm sẽ khác) */}
-             <Route element={<RoleRoute allowedRoles={['ROLE-ADMIN', 'ROLE-USER', 'ROLE-MANAGER']} />}>
+             {/* --- PHÂN QUYỀN CHI TIẾT DỰA TRÊN PERMISSION --- */}
+
+             {/* Quản lý nhân sự: Chỉ cần có quyền USER_VIEW là vào được, không quan trọng Role gì */}
+             <Route element={<RoleRoute requiredPermission="USER_VIEW" />}>
                 <Route path="admin/users" element={<UserManagement />} />
              </Route>
 
-             {/* NHÓM 4: TRANG CẤU HÌNH (Chỉ Admin) */}
-             <Route element={<RoleRoute allowedRoles={['ROLE-ADMIN']} />}>
+             {/* Quản lý phòng ban: Yêu cầu quyền DEPT_VIEW */}
+             <Route element={<RoleRoute requiredPermission="DEPT_VIEW" />}>
                 <Route path="admin/departments" element={<DepartmentManagement />} />
+             </Route>
+
+             {/* --- PHÂN QUYỀN DỰA TRÊN ROLE (Dành cho trang hệ thống nhạy cảm) --- */}
+             <Route element={<RoleRoute allowedRoles={['ROLE-ADMIN']} />}>
                 <Route path="admin/roles" element={<RoleManagement />} />
                 <Route path="admin/menus" element={<MenuManagement />} />
              </Route>
 
+             {/* Báo lỗi 404 trong Layout */}
+             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
+
+          {/* Báo lỗi 404 ngoài Layout */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </AntdApp>
     </ConfigProvider>

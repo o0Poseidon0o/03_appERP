@@ -7,48 +7,51 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ... (Giữ nguyên generator và datasource)
-
-// 1. Bảng User sửa lại: Thay field 'role' string bằng quan hệ sang bảng Role
+// 1. Model User: Tích hợp thêm quan hệ với UserPermission
 model User {
-  id        String   @id // "NV001"
-  email     String   @unique
-  password  String
-  fullName  String
-  isActive  Boolean  @default(true)
+  id                 String           @id // "NV001"
+  email              String           @unique
+  password           String
+  fullName           String
+  isActive           Boolean          @default(true)
+  mustChangePassword Boolean          @default(false)
   
-  // ... (các trường cũ giữ nguyên)
-  roleId       String
-  role         Role       @relation(fields: [roleId], references: [id])
-  departmentId String
-  department   Department @relation(fields: [departmentId], references: [id])
-  mustChangePassword Boolean @default(false)
-  posts        Post[]     // Đã có từ trước
+  roleId             String
+  role               Role             @relation(fields: [roleId], references: [id])
   
-  // --- THÊM DÒNG NÀY ---
-  notifications Notification[] 
+  departmentId       String
+  department         Department       @relation(fields: [departmentId], references: [id])
+  
+  posts              Post[]
+  notifications      Notification[]
+
+  // --- THÊM DÒNG NÀY: Quan hệ với bảng quyền riêng lẻ ---
+  userPermissions    UserPermission[] 
 }
 
-// 2. Bảng Role (Vai trò): Ví dụ ID="ADMIN", "ACC_MGR" (Trưởng phòng kế toán)
+// 2. Bảng Role (Giữ nguyên cấu trúc của bạn)
 model Role {
-  id          String       @id // Tự đặt mã: "ADMIN", "SALE_STAFF"
-  name        String       // Tên hiển thị: "Quản trị viên", "Nhân viên kinh doanh"
+  id          String           @id
+  name        String
   description String?
   
-  users       User[]       // 1 Role có nhiều User
-  permissions RolePermission[] // 1 Role có nhiều Quyền
+  users       User[]
+  permissions RolePermission[]
 }
 
-// 3. Bảng Permission (Quyền hạn chi tiết): Ví dụ ID="USER_CREATE", "ORDER_VIEW"
+// 3. Bảng Permission: Tích hợp thêm quan hệ với UserPermission
 model Permission {
-  id          String           @id // Mã quyền: "USER_READ", "POST_DELETE"
-  name        String           // "Xem danh sách user", "Xóa bài viết"
-  module      String           // Gom nhóm: "SYSTEM", "CONTENT", "SALES"
+  id      String           @id // "USER_READ", "POST_DELETE"
+  name    String
+  module  String           // "SYSTEM", "CONTENT"
   
-  roles       RolePermission[] 
+  roles   RolePermission[]
+  
+  // --- THÊM DÒNG NÀY ---
+  users   UserPermission[]
 }
 
-// 4. Bảng trung gian (Many-to-Many giữa Role và Permission)
+// 4. Bảng trung gian Role - Permission (Many-to-Many cũ)
 model RolePermission {
   roleId       String
   permissionId String
@@ -56,37 +59,46 @@ model RolePermission {
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
-  @@id([roleId, permissionId]) // Khóa chính phức hợp
+  @@id([roleId, permissionId])
 }
 
-// ... (Các bảng Department, Menu, Post... giữ nguyên như cũ)
+// --- 5. THÊM MỚI: Bảng trung gian User - Permission (Quyền đặc biệt cho từng User) ---
+model UserPermission {
+  userId       String
+  permissionId String
+  
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+}
+
+// 6. Các bảng khác (Giữ nguyên như bạn đã gửi)
 model Department {
-  id               String           @id 
-  name             String
-  name_content     String           @default("Chưa có nội dung") // Thêm @default ở đây
+  id            String           @id 
+  name          String
+  name_content  String           @default("Chưa có nội dung")
   
-  // Các quan hệ (không tạo cột trong DB)
-  users            User[]
-  targetedPosts    PostDepartment[]
+  users         User[]
+  targetedPosts PostDepartment[]
 }
-// ... (Copy tiếp các model Post, Menu... vào đây)
-model Post {
-  id           String   @id @default(uuid())
-  title        String
-  content      String   @db.Text
-  attachments  Json?
-  published    Boolean  @default(true)
-  
-  // --- THÊM DÒNG NÀY ---
-  isPublic     Boolean  @default(true) // Nếu true = Tất cả xem được, false = Chỉ targets xem được
-  // ---------------------
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+model Post {
+  id           String           @id @default(uuid())
+  title        String
+  content      String           @db.Text
+  attachments  Json?
+  published    Boolean          @default(true)
+  isPublic     Boolean          @default(true)
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  
   menuId       Int
-  menu         Menu     @relation(fields: [menuId], references: [id])
+  menu         Menu             @relation(fields: [menuId], references: [id])
+  
   authorId     String
-  author       User     @relation(fields: [authorId], references: [id])
+  author       User             @relation(fields: [authorId], references: [id])
   
   targets      PostDepartment[]
   
@@ -96,15 +108,15 @@ model Post {
 model Menu {
   id        Int      @id @default(autoincrement())
   title     String
-  slug      String?  // Đường dẫn tĩnh (VD: /thong-bao)
-  order     Int      @default(0) // Sắp xếp thứ tự
-  isVisible Boolean  @default(true) // Ẩn/Hiện
+  slug      String?
+  order     Int      @default(0)
+  isVisible Boolean  @default(true)
 
   parentId  Int?
   parent    Menu?    @relation("MenuHierarchy", fields: [parentId], references: [id])
   children  Menu[]   @relation("MenuHierarchy")
 
-  posts     Post[]   // Quan hệ với bài viết
+  posts     Post[]
   
   @@map("menus")
 }
@@ -113,22 +125,20 @@ model PostDepartment {
   id           String     @id @default(uuid())
   postId       String
   departmentId String
-  // Sửa dòng dưới đây:
+  
   post         Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
   department   Department @relation(fields: [departmentId], references: [id])
 }
 
 model Notification {
   id        String   @id @default(uuid())
-  userId    String   // Người nhận
-  
-  // Quan hệ ngược về User
+  userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   title     String
   message   String
   isRead    Boolean  @default(false)
-  link      String?  // Link tùy chọn (nếu có)
+  link      String?
   createdAt DateTime @default(now())
 
   @@map("notifications")

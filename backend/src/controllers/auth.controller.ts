@@ -14,22 +14,23 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return next(new AppError('Vui lòng nhập Mã nhân viên và Mật khẩu!', 400));
     }
 
-    // --- SỬA ĐOẠN NÀY (QUAN TRỌNG NHẤT) ---
-    // Phải include lồng nhau để lấy ra danh sách quyền chi tiết
+    // Lấy thông tin User kèm Role (quyền nhóm) và UserPermissions (quyền đặc biệt)
     const user = await prisma.user.findUnique({
       where: { id },
       include: { 
         role: {
           include: {
             permissions: {
-              include: { permission: true } // Lấy tên và ID của quyền (USER_VIEW...)
+              include: { permission: true }
             }
           }
         },
-        department: true // Nên lấy thêm thông tin phòng ban để hiển thị nếu cần
+        userPermissions: { // Lấy các quyền gán riêng cho User
+          include: { permission: true }
+        },
+        department: true 
       }
     });
-    // ---------------------------------------
 
     if (!user || !(await comparePassword(password, user.password))) {
       return next(new AppError('Mã nhân viên hoặc mật khẩu sai!', 401));
@@ -39,14 +40,26 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return next(new AppError('Tài khoản đã bị khóa!', 403));
     }
 
+    // --- LOGIC HỢP NHẤT QUYỀN TRƯỚC KHI TRẢ VỀ FRONTEND ---
+    const rolePerms = user.role?.permissions.map(p => p.permissionId) || [];
+    const specialPerms = user.userPermissions.map(p => p.permissionId) || [];
+    
+    // Gộp 2 mảng và loại bỏ trùng lặp
+    const mergedPermissions = Array.from(new Set([...rolePerms, ...specialPerms]));
+
     const token = signToken(user.id);
+    
+    // Loại bỏ password khỏi dữ liệu trả về
     const { password: _, ...userData } = user;
 
     res.status(200).json({
       status: 'success',
       token,
       data: {
-        user: userData,
+        user: {
+          ...userData,
+          allPermissions: mergedPermissions // Frontend sẽ dùng mảng này để phân quyền UI
+        },
         requirePasswordChange: user.mustChangePassword 
       }
     });
@@ -58,24 +71,20 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
 export const forgotPassword = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.body; // Lấy ID từ Frontend gửi lên
+    const { id } = req.body;
 
-    // 1. Tìm User
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
       return next(new AppError('Mã nhân viên không tồn tại trong hệ thống!', 404));
     }
 
-    // 2. Kiểm tra User có Email không
     if (!user.email) {
       return next(new AppError('Tài khoản này chưa cập nhật email. Vui lòng liên hệ IT!', 400));
     }
 
-    // 3. Tạo mật khẩu tạm (Ví dụ: 6 ký tự viết hoa)
     const tempPass = Math.random().toString(36).slice(-6).toUpperCase();
     const hashedTempPass = await bcrypt.hash(tempPass, 10);
 
-    // 4. Cập nhật DB trước khi gửi mail
     await prisma.user.update({
       where: { id },
       data: {
@@ -84,12 +93,10 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
       }
     });
 
-    // 5. Gửi Mail (Bọc vào try-catch riêng để log lỗi nếu mail server sập)
     try {
       await sendTempPasswordEmail(user.email, tempPass);
     } catch (mailError) {
       console.error(">>> [EMAIL ERROR]", mailError);
-      // Vẫn báo lỗi 500 nhưng log rõ là do Mail để bạn sửa
       return next(new AppError('Lỗi hệ thống gửi thư. Vui lòng thử lại sau!', 500));
     }
 
@@ -103,10 +110,8 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-// 3. ĐỔI MẬT KHẨU (Giữ nguyên, code này tốt)
 export const changePassword = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // req.user được middleware 'protect' gán vào
         const id = req.user?.id; 
         const { currentPassword, newPassword } = req.body;
 

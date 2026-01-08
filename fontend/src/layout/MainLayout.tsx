@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'; // 1. Thêm useCallback
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layout, Menu, Button, Dropdown, Avatar, Badge, List, Popover, theme as antTheme, Switch, Drawer, type MenuProps } from 'antd';
 import { 
   MenuFoldOutlined, MenuUnfoldOutlined, 
@@ -12,12 +12,13 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useHasPermission } from '../hooks/useHasPermission'; // 1. Import Hook phân quyền
 import axiosClient from '../api/axiosClient';
 import useMediaQuery from '../hooks/useMediaQuery';
 
 const { Header, Sider, Content } = Layout;
 
-// --- MENU COMPONENT (Giữ nguyên phần tách code này) ---
+// --- MENU COMPONENT ---
 interface SideMenuProps {
     collapsed: boolean;
     isMobile: boolean;
@@ -29,7 +30,7 @@ interface SideMenuProps {
 const SideMenu: React.FC<SideMenuProps> = ({ collapsed, isMobile, locationPath, menuItems, onMenuClick }) => (
     <>
       <div className="h-16 flex items-center justify-center border-b border-gray-700/50 bg-[#001529]">
-          <div className={`text-xl font-bold bg-linear-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent transition-all duration-300 ${collapsed && !isMobile ? 'scale-0' : 'scale-100'}`}>
+          <div className={`text-xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent transition-all duration-300 ${collapsed && !isMobile ? 'scale-0' : 'scale-100'}`}>
               TOWA ERP
           </div>
           {collapsed && !isMobile && <div className="text-white font-bold text-xl absolute">T</div>}
@@ -50,19 +51,17 @@ const MainLayout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
+  const { hasPermission } = useHasPermission(); // 2. Sử dụng Hook phân quyền
   const navigate = useNavigate();
   const location = useLocation();
   const { token } = antTheme.useToken();
-  
   const isMobile = useMediaQuery('(max-width: 768px)');
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dynamicMenus, setDynamicMenus] = useState<any[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // 1. Fetch Menu
+  // Fetch Menu động từ Database (Dành cho trang tin tức)
   useEffect(() => {
     const fetchMenus = async () => {
         try {
@@ -73,64 +72,71 @@ const MainLayout: React.FC = () => {
     fetchMenus();
   }, []);
 
-  // --- 2. FETCH THÔNG BÁO (SỬA Ở ĐÂY) ---
-  // Sử dụng useCallback để hàm này không bị tạo lại mỗi lần render
+  // Fetch Thông báo
   const fetchNoti = useCallback(async () => {
       try {
           const res = await axiosClient.get('/notifications');
           setNotifications(res.data.data.notifications);
           setUnreadCount(res.data.data.unreadCount);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (e) { 
-          // console.error(e); 
-      }
-  }, []); // Dependency rỗng vì axiosClient là tĩnh
+      } catch (e) { /* silent */ }
+  }, []);
 
   useEffect(() => {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      fetchNoti(); // Gọi lần đầu
-      const interval = setInterval(fetchNoti, 30000); // Gọi định kỳ
-      return () => clearInterval(interval); // Dọn dẹp
-  }, [fetchNoti]); // Thêm fetchNoti vào dependency
+      fetchNoti();
+      const interval = setInterval(fetchNoti, 30000);
+      return () => clearInterval(interval);
+  }, [fetchNoti]);
 
   const handleReadNoti = async (open: boolean) => {
       if (open && unreadCount > 0) {
           try {
             await axiosClient.patch('/notifications/read-all');
             setUnreadCount(0);
-            fetchNoti(); // Gọi lại hàm đã được cache
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            fetchNoti();
           } catch(e) { /* empty */ }
       }
   };
 
-  // 3. Cấu hình Menu Sidebar
-  const userRoleId = user?.role?.id || 'ROLE-USER';
-  
-  const menuItems: MenuProps['items'] = [
-    ...(['ROLE-ADMIN', 'ROLE-MANAGER'].includes(userRoleId) ? [
-        { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
-    ] : []),
-    { 
+  // --- 3. LOGIC PHÂN QUYỀN MENU (DÙNG HAS_PERMISSION) ---
+  const menuItems = useMemo<MenuProps['items']>(() => {
+    const items: MenuProps['items'] = [];
+
+    // Dashboard: Chỉ hiện cho người có quyền xem Dashboard (Admin/Manager)
+    if (user?.roleId !== 'ROLE-USER') {
+      items.push({ key: '/', icon: <DashboardOutlined />, label: 'Dashboard' });
+    }
+
+    // Tin tức & Thông báo: Ai cũng xem được
+    items.push({ 
         key: '/posts', icon: <ReadOutlined />, label: 'Tin tức & Thông báo',
         children: [
             { key: '/posts', label: 'Tất cả tin tức' }, 
             ...dynamicMenus.map(m => ({ key: `/posts?menuId=${m.id}`, label: m.title, icon: <FileTextOutlined /> }))
         ]
-    },
-    { key: '/admin/users', icon: <TeamOutlined />, label: 'Nhân sự' },
-    ...(userRoleId === 'ROLE-ADMIN' ? [
-       { type: 'divider' as const },
-       { 
-           key: 'grp-system', label: 'HỆ THỐNG', type: 'group' as const,
-           children: [
-               { key: '/admin/departments', icon: <ApartmentOutlined />, label: 'Phòng ban' },
-               { key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Phân quyền' },
-               { key: '/admin/menus', icon: <UnorderedListOutlined />, label: 'Quản lý Menu' },
-           ]
-       }
-    ] : [])
-  ];
+    });
+
+    // Quản lý Nhân sự: Yêu cầu quyền USER_VIEW
+    if (hasPermission('USER_VIEW')) {
+      items.push({ key: '/admin/users', icon: <TeamOutlined />, label: 'Nhân sự' });
+    }
+
+    // Nhóm Hệ thống: Chỉ hiện nếu có ít nhất 1 quyền trong các quyền hệ thống
+    const canSeeSystem = hasPermission('DEPT_VIEW') || hasPermission('ROLE_VIEW') || hasPermission('MENU_VIEW');
+    
+    if (canSeeSystem) {
+      items.push({ type: 'divider' });
+      items.push({ 
+          key: 'grp-system', label: 'HỆ THỐNG', type: 'group',
+          children: [
+              ...(hasPermission('DEPT_VIEW') ? [{ key: '/admin/departments', icon: <ApartmentOutlined />, label: 'Phòng ban' }] : []),
+              ...(hasPermission('ROLE_VIEW') ? [{ key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Phân quyền' }] : []),
+              ...(hasPermission('MENU_VIEW') ? [{ key: '/admin/menus', icon: <UnorderedListOutlined />, label: 'Quản lý Menu' }] : []),
+          ]
+      });
+    }
+
+    return items;
+  }, [user, dynamicMenus, hasPermission]);
 
   const handleMenuClick: MenuProps['onClick'] = (e) => {
       navigate(e.key);
