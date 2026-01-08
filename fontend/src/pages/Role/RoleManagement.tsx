@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Table, Card, List, Checkbox, Button, 
+  Card, List, Checkbox, Button, 
   App as AntdApp, Empty, 
-  Tag, Modal, Form, Input, Divider, Row, Col 
+  Tag, Modal, Form, Input, Row, Col 
 } from 'antd';
 import { 
   SafetyCertificateOutlined, PlusOutlined, 
