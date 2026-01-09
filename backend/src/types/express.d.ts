@@ -1,18 +1,19 @@
-import { User, Role, RolePermission, UserPermission } from '@prisma/client';
+import { User, Role, RolePermission, UserPermission, Department } from '@prisma/client';
 
 declare global {
   namespace Express {
     interface Request {
-      // Cập nhật User kèm theo đầy đủ các quan hệ đã include trong middleware
-      user?: User & {
-        // Quyền theo Role
+      user: User & {
         role: Role & {
-          permissions: RolePermission[];
+          permissions: (RolePermission & {
+            permission: { id: string }; // Để truy cập mã quyền
+          })[];
         };
-        // Quyền riêng lẻ của từng User
-        userPermissions: UserPermission[];
-        // Mảng chuỗi các mã quyền đã được hợp nhất (từ Middleware protect)
-        allPermissions?: string[];
+        userPermissions: (UserPermission & {
+          permission: { id: string };
+        })[];
+        department?: Department; // Thông tin phòng ban/nhà máy
+        allPermissions?: string[]; // Mảng phẳng các mã quyền: ['WMS_SETUP', 'WMS_APPROVE']
       };
     }
   }

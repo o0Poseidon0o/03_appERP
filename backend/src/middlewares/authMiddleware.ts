@@ -9,7 +9,7 @@ interface JwtPayload {
   exp: number;
 }
 
-// 1. Middleware PROTECT (Bảo vệ - Phải đăng nhập)
+// 1. Middleware PROTECT (Xác thực người dùng & Hợp nhất quyền)
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
   try {
     let token;
@@ -23,16 +23,16 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
 
-    // --- CẬP NHẬT: Lấy cả quyền từ Role và quyền riêng lẻ của User ---
+    // --- Lấy User kèm theo Role -> Permissions và UserPermissions ---
     const currentUser = await prisma.user.findUnique({
       where: { id: decoded.id },
       include: { 
         role: {
           include: {
-            permissions: true // Quyền theo nhóm (RolePermission)
+            permissions: true // Quyền gán cho Role
           }
         },
-        userPermissions: true // Quyền đặc biệt gán riêng (UserPermission)
+        userPermissions: true // Quyền gán riêng cho User
       }
     });
 
@@ -44,18 +44,18 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
       return next(new AppError('Tài khoản này đã bị khóa.', 403));
     }
 
-    // --- LOGIC HỢP NHẤT QUYỀN ---
-    // 1. Lấy danh sách ID quyền từ Role
+    // --- LOGIC HỢP NHẤT QUYỀN (Merged Permissions) ---
+    // 1. Lấy mã quyền từ Role
     const rolePerms = currentUser.role?.permissions.map(p => p.permissionId) || [];
     
-    // 2. Lấy danh sách ID quyền riêng lẻ của User
+    // 2. Lấy mã quyền riêng lẻ
     const individualPerms = currentUser.userPermissions.map(p => p.permissionId) || [];
 
-    // 3. Gộp lại và loại bỏ các ID trùng lặp bằng Set
+    // 3. Gộp lại thành mảng duy nhất không trùng lặp
     const mergedPermissions = Array.from(new Set([...rolePerms, ...individualPerms]));
 
-    // Gán user và mảng quyền tổng hợp vào request để dùng ở các middleware sau hoặc Controller
-    // Lưu ý: Bạn nên cập nhật file express.d.ts để thêm thuộc tính userPermissions vào Request
+    // Gán thông tin vào Request
+    // allPermissions sẽ được dùng trong middleware hasPermission bên dưới
     req.user = {
       ...currentUser,
       allPermissions: mergedPermissions 
@@ -68,29 +68,37 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
-// 2. Middleware RESTRICT TO (Phân quyền theo Nhóm Role)
+// 2. Middleware RESTRICT TO (Dùng khi muốn chặn cứng theo tên Role - ví dụ: chỉ cho ADMIN vào)
 export const restrictTo = (...allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user || !allowedRoles.includes(req.user.roleId)) {
-      return next(new AppError('Bạn không có quyền truy cập vai trò này!', 403));
+      return next(new AppError('Bạn không có quyền truy cập chức năng này!', 403));
     }
     next();
   };
 };
 
-// 3. Middleware HAS PERMISSION (Kiểm tra quyền chi tiết sau khi đã hợp nhất)
+// 3. Middleware HAS PERMISSION (Dùng để kiểm tra quyền chi tiết - DEPT_VIEW, USER_CREATE...)
 export const hasPermission = (permissionId: string) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const user = req.user;
 
-    // Admin luôn có quyền tối thượng
-    if (user.roleId === 'ROLE-ADMIN') return next();
+    if (!user) {
+      return next(new AppError('Không tìm thấy thông tin người dùng.', 401));
+    }
 
-    // Kiểm tra trong mảng quyền đã được hợp nhất ở bước protect
+    // ƯU TIÊN: Nếu là ROLE-ADMIN thì luôn luôn cho qua, không cần check mảng quyền
+    if (user.roleId === 'ROLE-ADMIN') {
+      return next();
+    }
+
+    // Kiểm tra trong mảng quyền đã được hợp nhất ở middleware protect
     const userPermissions = (user as any).allPermissions || [];
 
     if (!userPermissions.includes(permissionId)) {
-      return next(new AppError(`Bạn không có quyền thực hiện: ${permissionId}`, 403));
+      return next(
+        new AppError(`Bạn không có quyền thực hiện hành động này. Cần quyền: ${permissionId}`, 403)
+      );
     }
 
     next();

@@ -115,3 +115,47 @@ export const sendNewPostNotification = async (
     }
   }
 };
+
+export const sendApprovalNotificationEmail = async (
+  to: string, 
+  ticketCode: string, 
+  creatorName: string,
+  type: 'IMPORT' | 'EXPORT'
+) => {
+  const typeText = type === 'IMPORT' ? 'NHẬP KHO' : 'XUẤT KHO';
+  
+  const mailOptions = {
+    from: `"Towa ERP WMS" <${process.env.MAIL_USER}>`,
+    to: to,
+    subject: `[WMS Approval] Yêu cầu phê duyệt phiếu ${typeText}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+        <div style="background-color: #059669; padding: 20px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 20px;">Yêu cầu phê duyệt ${typeText}</h1>
+        </div>
+        <div style="padding: 20px; color: #334155;">
+          <p>Xin chào Quản lý,</p>
+          <p>Hệ thống ghi nhận một yêu cầu phê duyệt mới từ nhân viên <strong>${creatorName}</strong>.</p>
+          <div style="background-color: #f0fdf4; padding: 15px; border-left: 4px solid #059669; margin: 20px 0;">
+            <p style="margin: 5px 0;">Mã phiếu: <strong>${ticketCode}</strong></p>
+            <p style="margin: 5px 0;">Loại giao dịch: <strong>${typeText}</strong></p>
+          </div>
+          <div style="text-align: center; margin: 25px 0;">
+             <a href="${FRONTEND_URL}/warehouse/approval" style="background-color: #059669; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Đi tới trang phê duyệt</a>
+          </div>
+          <p style="font-size: 13px; color: #64748b;">Vui lòng kiểm tra kỹ chi tiết vật tư và vị trí kho trước khi xác nhận.</p>
+        </div>
+        <div style="background-color: #f1f5f9; padding: 15px; text-align: center; font-size: 12px; color: #64748b;">
+          Hệ thống Towa ERP: <a href="${FRONTEND_URL}">${FRONTEND_URL}</a>
+        </div>
+      </div>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`>>> [Approval Email Success] Sent to: ${to}`);
+  } catch (error) {
+    console.error(`>>> [Approval Email Error]`, error);
+  }
+};

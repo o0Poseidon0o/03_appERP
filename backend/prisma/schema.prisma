@@ -7,101 +7,271 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 1. Model User: Tích hợp thêm quan hệ với UserPermission
+// ==========================================
+// 1. NHÓM HỆ THỐNG & PHÂN QUYỀN
+// ==========================================
+
 model User {
-  id                 String           @id // "NV001"
-  email              String           @unique
+  id                 String                @id
+  email              String                @unique
   password           String
   fullName           String
-  isActive           Boolean          @default(true)
-  mustChangePassword Boolean          @default(false)
+  isActive           Boolean               @default(true)
+  mustChangePassword Boolean               @default(false)
   
   roleId             String
-  role               Role             @relation(fields: [roleId], references: [id])
+  role               Role                  @relation(fields: [roleId], references: [id])
   
   departmentId       String
-  department         Department       @relation(fields: [departmentId], references: [id])
+  department         Department            @relation(fields: [departmentId], references: [id])
   
+  userPermissions    UserPermission[]
   posts              Post[]
   notifications      Notification[]
 
-  // --- THÊM DÒNG NÀY: Quan hệ với bảng quyền riêng lẻ ---
-  userPermissions    UserPermission[] 
+  createdTransactions  StockTransaction[]    @relation("CreatedBy")
+  approvedSteps        TransactionApproval[] @relation("ActualApprover")
+  keeperTransactions   StockTransaction[]    @relation("WarehouseKeeper")
+  receivedTransactions StockTransaction[]    @relation("Receiver")
+  approvalLogs         ApprovalLog[]
 }
 
-// 2. Bảng Role (Giữ nguyên cấu trúc của bạn)
 model Role {
-  id          String           @id
-  name        String
-  description String?
-  
-  users       User[]
-  permissions RolePermission[]
+  id            String           @id
+  name          String
+  description   String?
+  users         User[]
+  permissions   RolePermission[]
+  approvalSteps ApprovalStep[]
 }
 
-// 3. Bảng Permission: Tích hợp thêm quan hệ với UserPermission
 model Permission {
-  id      String           @id // "USER_READ", "POST_DELETE"
+  id      String           @id
   name    String
-  module  String           // "SYSTEM", "CONTENT"
-  
+  module  String
   roles   RolePermission[]
-  
-  // --- THÊM DÒNG NÀY ---
   users   UserPermission[]
 }
 
-// 4. Bảng trung gian Role - Permission (Many-to-Many cũ)
 model RolePermission {
   roleId       String
   permissionId String
-  
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
   @@id([roleId, permissionId])
 }
 
-// --- 5. THÊM MỚI: Bảng trung gian User - Permission (Quyền đặc biệt cho từng User) ---
 model UserPermission {
   userId       String
   permissionId String
-  
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
   @@id([userId, permissionId])
 }
 
-// 6. Các bảng khác (Giữ nguyên như bạn đã gửi)
 model Department {
-  id            String           @id 
+  id            String           @id // ID từ XML (1100, 7110...)
   name          String
-  name_content  String           @default("Chưa có nội dung")
+  name_content  String           @default("Chưa có nội dung") // Khôi phục nguyên vẹn của bạn
   
+  // Kết nối dài hạn: Phòng ban thuộc Nhà máy nào (Vật lý)
+  factoryId     String?
+  factory       Factory?         @relation(fields: [factoryId], references: [id])
+
   users         User[]
   targetedPosts PostDepartment[]
 }
 
-model Post {
-  id           String           @id @default(uuid())
-  title        String
-  content      String           @db.Text
-  attachments  Json?
-  published    Boolean          @default(true)
-  isPublic     Boolean          @default(true)
+// ==========================================
+// 2. NHÓM QUẢN LÝ VẬT LÝ (FACTORY - WAREHOUSE - LOCATION)
+// ==========================================
 
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+model Factory {
+  id          String      @id @default(uuid())
+  name        String      @unique 
+  address     String?
+  warehouses  Warehouse[] 
+  departments Department[] // Để biết nhà máy này có những phòng ban nào đang ngồi
+  createdAt   DateTime    @default(now())
+}
+
+model Warehouse {
+  id            String     @id @default(uuid())
+  warehouseCode String     @unique 
+  name          String
   
-  menuId       Int
-  menu         Menu             @relation(fields: [menuId], references: [id])
+  factoryId     String     
+  factory       Factory    @relation(fields: [factoryId], references: [id])
   
-  authorId     String
-  author       User             @relation(fields: [authorId], references: [id])
+  locations     Location[]
+}
+
+model Location {
+  id           String    @id @default(uuid())
+  locationCode String    @unique 
+  qrCode       String    @unique 
+  warehouseId  String
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id])
   
-  targets      PostDepartment[]
+  stocks       Stock[]
+  fromDetails  TransactionDetail[] @relation("FromLoc")
+  toDetails    TransactionDetail[] @relation("ToLoc")
+}
+
+// ==========================================
+// 3. NHÓM VẬT TƯ & TỒN KHO
+// ==========================================
+
+model Item {
+  id          String       @id @default(uuid())
+  itemCode    String       @unique
+  itemName    String
+  unit        String
+  qrCode      String       @unique
+  categoryId  String
+  category    ItemCategory @relation(fields: [categoryId], references: [id])
   
+  stocks      Stock[]
+  suppliers   ItemSupplier[]
+  details     TransactionDetail[]
+}
+
+model ItemCategory {
+  id    String @id @default(uuid())
+  name  String @unique
+  items Item[]
+}
+
+model Supplier {
+  id           String   @id @default(uuid())
+  supplierCode String   @unique
+  name         String
+  items        ItemSupplier[]
+  stocks       Stock[]
+  transactions StockTransaction[]
+}
+
+model ItemSupplier {
+  itemId     String
+  supplierId String
+  item       Item     @relation(fields: [itemId], references: [id])
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  @@id([itemId, supplierId])
+}
+
+model Stock {
+  id         String    @id @default(uuid())
+  itemId     String
+  locationId String
+  supplierId String?
+  quantity   Float     @default(0)
+  
+  item       Item      @relation(fields: [itemId], references: [id])
+  location   Location  @relation(fields: [locationId], references: [id])
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@unique([itemId, locationId, supplierId])
+}
+
+// ==========================================
+// 4. NHÓM PHÊ DUYỆT & GIAO DỊCH
+// ==========================================
+
+model StockTransaction {
+  id                String   @id @default(uuid())
+  code              String   @unique
+  type              String   
+  status            String   @default("DRAFT")
+  isEmergency       Boolean  @default(false)
+
+  creatorId         String
+  creator           User     @relation("CreatedBy", fields: [creatorId], references: [id])
+
+  warehouseKeeperId String?
+  warehouseKeeper   User?    @relation("WarehouseKeeper", fields: [warehouseKeeperId], references: [id])
+
+  receiverId        String?
+  receiver          User?    @relation("Receiver", fields: [receiverId], references: [id])
+
+  supplierId        String?
+  supplier          Supplier? @relation(fields: [supplierId], references: [id])
+
+  createdAt         DateTime @default(now())
+  details           TransactionDetail[]
+  approvals         TransactionApproval[]
+  logs              ApprovalLog[]
+}
+
+model ApprovalStep {
+  id          String   @id @default(uuid())
+  name        String
+  order       Int
+  roleId      String
+  role        Role     @relation(fields: [roleId], references: [id])
+  type        String
+  approvals   TransactionApproval[]
+}
+
+model TransactionApproval {
+  id            String   @id @default(uuid())
+  transactionId String
+  stepId        String
+  approverId    String?
+  status        String   @default("PENDING")
+  
+  transaction   StockTransaction @relation(fields: [transactionId], references: [id])
+  step          ApprovalStep     @relation(fields: [stepId], references: [id])
+  approver      User?            @relation("ActualApprover", fields: [approverId], references: [id])
+  
+  @@unique([transactionId, stepId])
+}
+
+model TransactionDetail {
+  id             String   @id @default(uuid())
+  transactionId  String
+  itemId         String
+  quantity       Float
+  fromLocationId String?
+  toLocationId   String?
+
+  transaction    StockTransaction @relation(fields: [transactionId], references: [id])
+  item           Item             @relation(fields: [itemId], references: [id])
+  fromLocation   Location?        @relation("FromLoc", fields: [fromLocationId], references: [id])
+  toLocation     Location?        @relation("ToLoc", fields: [toLocationId], references: [id])
+}
+
+model ApprovalLog {
+  id            String   @id @default(uuid())
+  transactionId String
+  userId        String
+  action        String
+  comment       String?
+  createdAt     DateTime @default(now())
+  
+  transaction   StockTransaction @relation(fields: [transactionId], references: [id])
+  user          User             @relation(fields: [userId], references: [id])
+}
+
+// ==========================================
+// 5. CÁC BẢNG CÔNG TÁC
+// ==========================================
+
+model Post {
+  id          String   @id @default(uuid())
+  title       String
+  content     String   @db.Text
+  attachments Json?
+  published   Boolean  @default(true)
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  menuId      Int
+  menu        Menu     @relation(fields: [menuId], references: [id])
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  targets     PostDepartment[]
+
   @@map("posts")
 }
 
@@ -111,13 +281,11 @@ model Menu {
   slug      String?
   order     Int      @default(0)
   isVisible Boolean  @default(true)
-
   parentId  Int?
   parent    Menu?    @relation("MenuHierarchy", fields: [parentId], references: [id])
   children  Menu[]   @relation("MenuHierarchy")
-
   posts     Post[]
-  
+
   @@map("menus")
 }
 
@@ -125,7 +293,6 @@ model PostDepartment {
   id           String     @id @default(uuid())
   postId       String
   departmentId String
-  
   post         Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
   department   Department @relation(fields: [departmentId], references: [id])
 }
@@ -134,7 +301,6 @@ model Notification {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
   title     String
   message   String
   isRead    Boolean  @default(false)

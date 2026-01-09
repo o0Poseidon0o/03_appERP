@@ -5,31 +5,44 @@ import {
   createRole, 
   updateRole, 
   deleteRole 
-} from '../controllers/role.controller'; // Đảm bảo đường dẫn import đúng tới file controller của bạn
-import { protect, restrictTo } from '../middlewares/authMiddleware';
+} from '../controllers/role.controller';
+import { protect, hasPermission } from '../middlewares/authMiddleware';
 
 const router = Router();
 
-// Tất cả các API dưới đây đều yêu cầu đăng nhập
+// Tất cả API Role đều cần đăng nhập
 router.use(protect);
 
-// --- 1. API cho bảng Permission ---
-// Frontend gọi: axiosClient.get('/roles/permissions')
-// Mục đích: Lấy danh sách để vẽ Checkbox
-router.get('/permissions', restrictTo('ROLE-ADMIN'), getAllPermissions);
+/**
+ * 1. LẤY DANH MỤC QUYỀN ĐỂ VẼ CHECKBOX
+ * Frontend đang gọi: axiosClient.get('/roles/permissions')
+ * Quyền yêu cầu: ROLE_VIEW (User của bạn đã có quyền này nên sẽ thấy được danh sách)
+ */
+router.get('/permissions', hasPermission('ROLE_VIEW'), getAllPermissions);
 
-// --- 2. API cho bảng Role (Kèm xử lý RolePermission bên trong) ---
+/**
+ * 2. LẤY DANH SÁCH CÁC VAI TRÒ (ROLES)
+ * Quyền yêu cầu: ROLE_VIEW 
+ * (Khi sửa thế này, ROLE-USER sẽ không bị chặn 403 nữa)
+ */
+router.get('/', hasPermission('ROLE_VIEW'), getRoles);
 
-// Lấy danh sách Role (Frontend gọi: axiosClient.get('/roles'))
-router.get('/', restrictTo('ROLE-ADMIN', 'ROLE-MANAGER', 'ROLE-USER'), getRoles);
+/**
+ * 3. TẠO ROLE MỚI
+ * Quyền yêu cầu: ROLE_MANAGE (Chỉ Admin mới có mã này trong file Excel của bạn)
+ */
+router.post('/', hasPermission('ROLE_MANAGE'), createRole);
 
-// Tạo Role mới (Frontend gọi: axiosClient.post('/roles'))
-router.post('/', restrictTo('ROLE-ADMIN'), createRole);
+/**
+ * 4. CẬP NHẬT ROLE & MA TRẬN QUYỀN
+ * Quyền yêu cầu: ROLE_MANAGE
+ */
+router.patch('/:id', hasPermission('ROLE_MANAGE'), updateRole);
 
-// Cập nhật Role & Phân quyền (Frontend gọi: axiosClient.patch('/roles/:id'))
-router.patch('/:id', restrictTo('ROLE-ADMIN'), updateRole);
-
-// Xóa Role (Frontend gọi: axiosClient.delete('/roles/:id'))
-router.delete('/:id', restrictTo('ROLE-ADMIN'), deleteRole);
+/**
+ * 5. XÓA ROLE
+ * Quyền yêu cầu: ROLE_MANAGE
+ */
+router.delete('/:id', hasPermission('ROLE_MANAGE'), deleteRole);
 
 export default router;

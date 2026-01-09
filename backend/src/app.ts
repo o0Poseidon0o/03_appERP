@@ -13,6 +13,10 @@ import notiRoutes from './routes/notification.routes';
 import menuRoutes from './routes/menu.routes';
 import postRoutes from './routes/post.routes';
 import uploadRoutes from './routes/upload.routes';
+import factoryRouter from './routes/factory.route';
+// kho
+import warehouseRoutes from './routes/warehouse/warehouse.routes';
+import itemRoutes from './routes/warehouse/item.routes';
 
 const app = express();
 
@@ -56,6 +60,10 @@ app.use('/api/menus', menuRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/notifications', notiRoutes);
+app.use('/api/factories', factoryRouter);
+// kho
+app.use('/api/warehouses', warehouseRoutes);
+app.use('/api/items', itemRoutes);
 
 // --- 4. ERROR HANDLING ---
 app.all('*', (req: Request, res: Response, next: NextFunction) => {

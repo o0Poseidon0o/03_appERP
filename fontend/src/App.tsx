@@ -102,7 +102,6 @@ const AppContent = () => {
              <Route element={<RoleRoute requiredPermission="DEPT_VIEW" />}>
                 <Route path="admin/departments" element={<DepartmentManagement />} />
              </Route>
-
              {/* --- PHÂN QUYỀN DỰA TRÊN ROLE (Dành cho trang hệ thống nhạy cảm) --- */}
              <Route element={<RoleRoute allowedRoles={['ROLE-ADMIN']} />}>
                 <Route path="admin/roles" element={<RoleManagement />} />

@@ -17,7 +17,7 @@ async function main() {
     create: {
       id: 'DEPT-BOD',
       name: 'Ban Giám Đốc',
-      code: 'BOD'
+      
     }
   })
 
