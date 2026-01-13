@@ -14,16 +14,43 @@ export const createWarehouse = async (req: Request, res: Response, next: NextFun
   }
 };
 
+// Thêm vào cuối file warehouse.controller.ts
+
+export const getAllLocations = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const locations = await prisma.location.findMany({
+      include: {
+        warehouse: {
+          select: { warehouseCode: true, name: true }
+        }
+      },
+      orderBy: { locationCode: 'asc' }
+    });
+
+    // Format lại label để hiển thị đẹp hơn: "WH01 - Bin A1"
+    const formattedData = locations.map(loc => ({
+      id: loc.id,
+      locationCode: loc.locationCode,
+      qrCode: loc.qrCode,
+      displayName: `${loc.warehouse.warehouseCode} - ${loc.locationCode}`
+    }));
+
+    res.status(200).json({ status: 'success', data: formattedData });
+  } catch (error) {
+    next(new AppError('Lỗi lấy danh sách vị trí', 500));
+  }
+};
+// Sửa tại file warehouse.controller.ts
 export const getAllWarehouses = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = req.user;
-    // Kiểm tra quyền (Đảm bảo Middleware protect đã nạp role cho user)
     const canViewAll = user.roleId === 'ROLE-ADMIN'; 
 
     const warehouses = await prisma.warehouse.findMany({
       where: canViewAll ? {} : { factoryId: user.departmentId },
       include: { 
         factory: true, 
+        locations: true, // THÊM DÒNG NÀY ĐỂ TRẢ VỀ DANH SÁCH VỊ TRÍ
         _count: { select: { locations: true } } 
       }
     });

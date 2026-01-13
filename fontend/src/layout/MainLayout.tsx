@@ -7,18 +7,21 @@ import {
   LogoutOutlined, FileTextOutlined,
   TeamOutlined, ApartmentOutlined, SafetyCertificateOutlined,
   MoonOutlined, SunOutlined,
-  UnorderedListOutlined
+  UnorderedListOutlined,
+  TagsOutlined,
+  EnvironmentOutlined, SwapOutlined, 
+  BoxPlotOutlined, DatabaseOutlined
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { useHasPermission } from '../hooks/useHasPermission'; // 1. Import Hook phân quyền
+import { useHasPermission } from '../hooks/useHasPermission';
 import axiosClient from '../api/axiosClient';
 import useMediaQuery from '../hooks/useMediaQuery';
 
 const { Header, Sider, Content } = Layout;
 
-// --- MENU COMPONENT ---
+// --- MENU COMPONENT (Giữ nguyên phần này) ---
 interface SideMenuProps {
     collapsed: boolean;
     isMobile: boolean;
@@ -51,7 +54,7 @@ const MainLayout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
-  const { hasPermission } = useHasPermission(); // 2. Sử dụng Hook phân quyền
+  const { hasPermission } = useHasPermission(); 
   const navigate = useNavigate();
   const location = useLocation();
   const { token } = antTheme.useToken();
@@ -61,7 +64,7 @@ const MainLayout: React.FC = () => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Fetch Menu động từ Database (Dành cho trang tin tức)
+  // Fetch Menu & Notification (Giữ nguyên code cũ của bạn)
   useEffect(() => {
     const fetchMenus = async () => {
         try {
@@ -72,7 +75,6 @@ const MainLayout: React.FC = () => {
     fetchMenus();
   }, []);
 
-  // Fetch Thông báo
   const fetchNoti = useCallback(async () => {
       try {
           const res = await axiosClient.get('/notifications');
@@ -97,16 +99,16 @@ const MainLayout: React.FC = () => {
       }
   };
 
-  // --- 3. LOGIC PHÂN QUYỀN MENU (DÙNG HAS_PERMISSION) ---
+  // --- 3. LOGIC PHÂN QUYỀN MENU (ĐÃ CẬP NHẬT THEO CSV) ---
   const menuItems = useMemo<MenuProps['items']>(() => {
     const items: MenuProps['items'] = [];
 
-    // Dashboard: Chỉ hiện cho người có quyền xem Dashboard (Admin/Manager)
+    // 1. Dashboard
     if (user?.roleId !== 'ROLE-USER') {
       items.push({ key: '/', icon: <DashboardOutlined />, label: 'Dashboard' });
     }
 
-    // Tin tức & Thông báo: Ai cũng xem được
+    // 2. Tin tức
     items.push({ 
         key: '/posts', icon: <ReadOutlined />, label: 'Tin tức & Thông báo',
         children: [
@@ -114,14 +116,54 @@ const MainLayout: React.FC = () => {
             ...dynamicMenus.map(m => ({ key: `/posts?menuId=${m.id}`, label: m.title, icon: <FileTextOutlined /> }))
         ]
     });
-
-    // Quản lý Nhân sự: Yêu cầu quyền USER_VIEW
+    
+    // 3. Nhân sự (Theo CSV: USER_VIEW)
     if (hasPermission('USER_VIEW')) {
       items.push({ key: '/admin/users', icon: <TeamOutlined />, label: 'Nhân sự' });
     }
 
-    // Nhóm Hệ thống: Chỉ hiện nếu có ít nhất 1 quyền trong các quyền hệ thống
-    const canSeeSystem = hasPermission('DEPT_VIEW') || hasPermission('ROLE_VIEW') || hasPermission('MENU_VIEW');
+    // 4. --- QUẢN LÝ KHO ---
+    // Điều kiện: Có quyền xem WMS hoặc quyền vật tư hoặc quyền duyệt
+    // Lưu ý: CSV không có ITEM_VIEW, ta dùng WMS_VIEW làm quyền cơ bản để xem kho/vật tư
+    const canSeeWarehouse = hasPermission('WMS_VIEW') || hasPermission('WMS_APPROVE');
+
+    if (canSeeWarehouse) {
+      items.push({ type: 'divider' });
+      
+      const warehouseChildren: MenuProps['items'] = [];
+
+      // Nhóm Master Data (Vật tư, Danh mục, NCC, Vị trí)
+      // Ai có quyền WMS_VIEW đều xem được danh sách (Admin, Manager, Leader, User, Kho)
+      if (hasPermission('WMS_VIEW')) {
+          warehouseChildren.push(
+            { key: '/warehouse/items', icon: <BoxPlotOutlined />, label: 'Danh mục vật tư' },
+            { key: '/warehouse/categories', icon: <TagsOutlined />, label: 'Nhóm vật tư' },
+            { key: '/warehouse/suppliers', icon: <TeamOutlined />, label: 'Nhà cung cấp' }, 
+            { key: '/warehouse/locations', icon: <EnvironmentOutlined />, label: 'Vị trí lưu kho' },
+            { key: '/warehouse/stock', icon: <DatabaseOutlined />, label: 'Tồn kho thực tế' },
+            { key: '/warehouse/transactions', icon: <SwapOutlined />, label: 'Phiếu Nhập / Xuất' }
+          );
+      }
+
+      // Nhóm Phê duyệt (Theo CSV: WMS_APPROVE)
+      if (hasPermission('WMS_APPROVE')) {
+          warehouseChildren.push({ 
+            key: '/warehouse/approvals', 
+            icon: <SafetyCertificateOutlined />, 
+            label: 'Phê duyệt phiếu'
+          });
+      }
+
+      if (warehouseChildren.length > 0) {
+        items.push({
+            key: 'grp-warehouse', label: 'QUẢN LÝ KHO', type: 'group',
+            children: warehouseChildren
+        });
+      }
+    }
+
+    // 5. --- HỆ THỐNG ---
+    const canSeeSystem = hasPermission('DEPT_VIEW') || hasPermission('ROLE_VIEW') || hasPermission('MENU_VIEW') || user?.roleId === 'ROLE-ADMIN';
     
     if (canSeeSystem) {
       items.push({ type: 'divider' });
@@ -129,8 +171,10 @@ const MainLayout: React.FC = () => {
           key: 'grp-system', label: 'HỆ THỐNG', type: 'group',
           children: [
               ...(hasPermission('DEPT_VIEW') ? [{ key: '/admin/departments', icon: <ApartmentOutlined />, label: 'Phòng ban' }] : []),
+              // Theo CSV, ROLE_VIEW dành cho Admin
               ...(hasPermission('ROLE_VIEW') ? [{ key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Phân quyền' }] : []),
-              ...(hasPermission('MENU_VIEW') ? [{ key: '/admin/menus', icon: <UnorderedListOutlined />, label: 'Quản lý Menu' }] : []),
+              // MENU_VIEW không có trong CSV snippet nhưng thường Admin có
+              ...(user?.roleId === 'ROLE-ADMIN' ? [{ key: '/admin/menus', icon: <UnorderedListOutlined />, label: 'Quản lý Menu' }] : []),
           ]
       });
     }
@@ -143,6 +187,7 @@ const MainLayout: React.FC = () => {
       if (isMobile) setMobileMenuOpen(false);
   };
 
+  // --- PHẦN RENDER UI (Giữ nguyên) ---
   const notiContent = (
       <div className="w-80 max-h-96 overflow-y-auto">
           <List dataSource={notifications} renderItem={item => (

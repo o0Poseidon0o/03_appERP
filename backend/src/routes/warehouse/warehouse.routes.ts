@@ -4,7 +4,8 @@ import {
   getAllWarehouses, 
   addLocation, 
   deleteWarehouse, 
-  updateWarehouse 
+  updateWarehouse, 
+  getAllLocations
 } from '../../controllers/warehouse/warehouse.controller';
 import { protect, hasPermission } from '../../middlewares/authMiddleware';
 
@@ -14,7 +15,7 @@ router.use(protect);
 
 // 1. Xem kho: Chỉ cần quyền VIEW (hoặc mặc định đăng nhập là được xem tùy chính sách)
 router.get('/', hasPermission('WMS_VIEW'), getAllWarehouses);
-
+router.get('/locations/all', hasPermission('WMS_VIEW'), getAllLocations);
 // 2. Thêm mới: Tách riêng quyền CREATE
 router.post('/', hasPermission('WMS_CREATE'), createWarehouse);
 router.post('/location', hasPermission('WMS_CREATE'), addLocation);

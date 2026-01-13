@@ -123,14 +123,15 @@ model Location {
 // ==========================================
 
 model Item {
-  id          String       @id @default(uuid())
-  itemCode    String       @unique
+  id          String   @id @default(uuid())
+  itemCode    String   @unique
   itemName    String
   unit        String
-  qrCode      String       @unique
+  qrCode      String   @unique
   categoryId  String
-  category    ItemCategory @relation(fields: [categoryId], references: [id])
+  minStock    Float    @default(0) // Số lượng tồn kho tối thiểu để cảnh báo
   
+  category    ItemCategory @relation(fields: [categoryId], references: [id])
   stocks      Stock[]
   suppliers   ItemSupplier[]
   details     TransactionDetail[]
@@ -177,12 +178,16 @@ model Stock {
 // 4. NHÓM PHÊ DUYỆT & GIAO DỊCH
 // ==========================================
 
+// ==========================================
+// CẬP NHẬT GIAO DỊCH (Thêm loại giao dịch & Ghi chú)
+// ==========================================
 model StockTransaction {
   id                String   @id @default(uuid())
   code              String   @unique
-  type              String   
-  status            String   @default("DRAFT")
+  type              String   // IMPORT (Nhập), EXPORT (Xuất), TRANSFER (Điều chuyển)
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
   isEmergency       Boolean  @default(false)
+  description       String?  // Ghi chú tổng quát của phiếu
 
   creatorId         String
   creator           User     @relation("CreatedBy", fields: [creatorId], references: [id])
@@ -190,13 +195,15 @@ model StockTransaction {
   warehouseKeeperId String?
   warehouseKeeper   User?    @relation("WarehouseKeeper", fields: [warehouseKeeperId], references: [id])
 
-  receiverId        String?
-  receiver          User?    @relation("Receiver", fields: [receiverId], references: [id])
+  receiverId         String?
+  receiver           User?    @relation("Receiver", fields: [receiverId], references: [id])
 
-  supplierId        String?
-  supplier          Supplier? @relation(fields: [supplierId], references: [id])
+  supplierId         String?
+  supplier           Supplier? @relation(fields: [supplierId], references: [id])
 
   createdAt         DateTime @default(now())
+  completedAt       DateTime? // Ngày thực nhập/thực xuất kho sau khi duyệt xong
+  
   details           TransactionDetail[]
   approvals         TransactionApproval[]
   logs              ApprovalLog[]

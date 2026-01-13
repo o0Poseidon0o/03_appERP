@@ -14,16 +14,20 @@ import menuRoutes from './routes/menu.routes';
 import postRoutes from './routes/post.routes';
 import uploadRoutes from './routes/upload.routes';
 import factoryRouter from './routes/factory.route';
-// kho
+
+// --- NHÓM KHO (WMS) ---
 import warehouseRoutes from './routes/warehouse/warehouse.routes';
 import itemRoutes from './routes/warehouse/item.routes';
+import stockRoutes from './routes/warehouse/stockTransaction.routes';
+// 1. Import thêm route Supplier ở đây
+import supplierRoutes from './routes/warehouse/supplier.routes';
+
 
 const app = express();
 
 // --- 1. GLOBAL MIDDLEWARES ---
 app.use(
   helmet({
-    // Quan trọng: Cho phép trình duyệt load ảnh từ domain khác (cross-origin)
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     contentSecurityPolicy: false,
   })
@@ -43,8 +47,7 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// --- 2. STATIC FILES (QUAN TRỌNG NHẤT) ---
-// Phục vụ thư mục uploads tại địa chỉ http://ip:port/uploads
+// --- 2. STATIC FILES ---
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // --- 3. ROUTES ---
@@ -61,9 +64,13 @@ app.use('/api/posts', postRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/notifications', notiRoutes);
 app.use('/api/factories', factoryRouter);
-// kho
+
+// --- ROUTES KHO ---
 app.use('/api/warehouses', warehouseRoutes);
 app.use('/api/items', itemRoutes);
+app.use('/api/stock-transactions', stockRoutes);
+// 2. Khai báo API cho Suppliers
+app.use('/api/suppliers', supplierRoutes); 
 
 // --- 4. ERROR HANDLING ---
 app.all('*', (req: Request, res: Response, next: NextFunction) => {
