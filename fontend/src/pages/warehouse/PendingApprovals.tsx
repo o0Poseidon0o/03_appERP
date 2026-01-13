@@ -121,7 +121,6 @@ const PendingApprovals: React.FC = () => {
     { 
         title: 'Trạng thái / Tiến độ', key: 'progress',
         render: (_: any, r: any) => {
-          // [FIX] Hiển thị trạng thái Chờ xác nhận rõ ràng
           if (r.status === 'WAITING_CONFIRM') {
              return <Tag icon={<SolutionOutlined />} color="processing">Chờ xác nhận</Tag>;
           }
@@ -131,7 +130,6 @@ const PendingApprovals: React.FC = () => {
           return (
             <Space direction="vertical" size={0} style={{ width: 140 }}>
                <div className="flex justify-between mb-1">
-                  {/* FIX: Text không có prop size, thay bằng style */}
                   <Text style={{ fontSize: '12px' }} type={r.isRequesterStep ? "danger" : "secondary"}>{r.currentStepName}</Text>
                   <Text style={{ fontSize: '12px' }}>{approved}/{total}</Text>
                </div>
@@ -151,7 +149,6 @@ const PendingApprovals: React.FC = () => {
         <Button 
           type="primary" 
           size="small" 
-          // Đổi màu nút nếu là người tạo đang cần xác nhận
           className={r.isRequesterStep ? "bg-green-600 hover:bg-green-500" : ""}
           icon={r.isRequesterStep ? <CheckCircleOutlined /> : <EyeOutlined />} 
           onClick={() => { setSelectedTicket(r); setIsModalOpen(true); }}
@@ -244,7 +241,6 @@ const PendingApprovals: React.FC = () => {
             <>
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-2">
                     <InfoCircleOutlined className="text-blue-500 mt-1" />
-                    {/* FIX: Text không có prop size, thay bằng style */}
                     <Text type="secondary" style={{ fontSize: '12px' }}>
                     Danh sách các phiếu cần bạn phê duyệt theo đúng thứ tự, hoặc xác nhận đã nhận hàng.
                     </Text>
@@ -325,19 +321,19 @@ const PendingApprovals: React.FC = () => {
                 )}
             </div>
 
-            {/* FIX: Thêm 'as const' cho orientation */}
-            <Divider orientation={"left" as const}><Text strong>Chi tiết vật tư</Text></Divider>
+            {/* FIX: Ép kiểu as any để tránh lỗi TS */}
+            <Divider orientation={"left" as any}><Text strong>Chi tiết vật tư</Text></Divider>
             
             <Table 
               dataSource={selectedTicket.details} 
               pagination={false} size="small" bordered rowKey="id"
               columns={[
-                // FIX: Thêm type any cho r
-                { title: 'Vật tư', render: (r: any) => <div><Text strong>{r.item?.itemName}</Text><br/><Text type="secondary" style={{ fontSize: '11px' }}>{r.item?.itemCode}</Text></div>},
-                { title: 'Số lượng', dataIndex: 'quantity', align: 'center', render: (v, r: any) => <b>{v} {r.item?.unit}</b> },
+                // FIX: Dùng (_: any, r: any) để r được hiểu là record
+                { title: 'Vật tư', render: (_: any, r: any) => <div><Text strong>{r.item?.itemName}</Text><br/><Text type="secondary" style={{ fontSize: '11px' }}>{r.item?.itemCode}</Text></div>},
+                { title: 'Số lượng', dataIndex: 'quantity', align: 'center', render: (v: any, r: any) => <b>{v} {r.item?.unit}</b> },
                 { 
                     title: 'Lộ trình kho', 
-                    render: (row: any) => {
+                    render: (_: any, row: any) => {
                         const fromLoc = row.fromLocation?.locationCode; 
                         const toLoc = row.toLocation?.locationCode;
                         if (selectedTicket.type === 'IMPORT') return <Space><Tag>NCC</Tag><ArrowRightOutlined /><Tag color="blue">{toLoc}</Tag></Space>

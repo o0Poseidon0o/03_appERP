@@ -144,7 +144,8 @@ const ItemManagement: React.FC = () => {
     const stockColumns = [
       { title: 'Vị trí kệ (Bin)', dataIndex: ['location', 'locationCode'], key: 'loc', render: (text: string) => <Tag color="blue">{text}</Tag> },
       { title: 'Số lượng thực tế', dataIndex: 'quantity', key: 'qty', render: (val: number) => <Text strong>{val.toLocaleString()}</Text> },
-      { title: 'Trạng thái', render: (_, s: any) => s.quantity > 0 ? <Badge status="success" text="Sẵn có" /> : <Badge status="default" text="Hết hàng" /> }
+      // FIX: Thêm type annotation : any cho _
+      { title: 'Trạng thái', render: (_: any, s: any) => s.quantity > 0 ? <Badge status="success" text="Sẵn có" /> : <Badge status="default" text="Hết hàng" /> }
     ];
     return <Table columns={stockColumns} dataSource={record.stocks} pagination={false} size="small" rowKey="id" className="bg-slate-50" />;
   };
