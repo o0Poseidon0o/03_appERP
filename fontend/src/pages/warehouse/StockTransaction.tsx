@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 import { useNavigate } from 'react-router-dom';
-import QRScannerModal from './QRScannerModal'; // Đảm bảo đường dẫn import đúng file bạn vừa tạo
+import QRScannerModal from './QRScannerModal';
 
 const { Text, Title } = Typography;
 
@@ -120,20 +120,19 @@ const StockTransactionCreate: React.FC = () => {
   // ============================================================
   const handleScanSuccess = (decodedText: string) => {
     // 1. Tìm vật tư trong danh sách Items đã load
-    // Giả định QR Code chứa itemCode
     const foundItem = items.find(
       i => i.itemCode.toLowerCase() === decodedText.toLowerCase() || 
            i.itemName.toLowerCase().includes(decodedText.toLowerCase())
     );
 
     if (foundItem) {
-      // 2. Tạo dòng mới với thông tin vật tư đã tìm thấy
+      // 2. Tạo dòng mới
       const newKey = `row_qr_${Date.now()}`;
       const newRow: TransactionDetail = {
         key: newKey,
         itemId: foundItem.id, // Auto-fill Item ID
         quantity: 1,
-        fromLocationId: null, // Vẫn phải chọn kho tay vì QR item thường không chứa vị trí
+        fromLocationId: null, 
         toLocationId: null,
         unit: foundItem.unit, // Auto-fill Unit
         currentStock: undefined
@@ -142,8 +141,6 @@ const StockTransactionCreate: React.FC = () => {
       setSelectedItems(prev => [...prev, newRow]);
       message.success(`Đã thêm vật tư: ${foundItem.itemCode} - ${foundItem.itemName}`);
       
-      // Đóng modal sau khi quét thành công (QRScannerModal đã tự gọi onClose trong logic của nó, 
-      // nhưng ta set state ở đây để chắc chắn UI update)
       setIsScannerOpen(false); 
     } else {
       message.warning(`Không tìm thấy vật tư với mã: ${decodedText}`);
@@ -248,7 +245,8 @@ const StockTransactionCreate: React.FC = () => {
       title: 'Vật tư',
       dataIndex: 'itemId',
       width: '30%',
-      render: (val: any, record: TransactionDetail) => (
+      // FIX TS6133: Thay val bằng _
+      render: (_: any, record: TransactionDetail) => (
         <Space direction="vertical" style={{ width: '100%' }} size={2}>
             <Select
                 showSearch
@@ -276,6 +274,7 @@ const StockTransactionCreate: React.FC = () => {
       title: 'Kho Nguồn (Xuất)',
       dataIndex: 'fromLocationId',
       className: transactionType === 'IMPORT' ? 'hidden-col' : '', 
+      // FIX TS6133: Thay val bằng _
       render: (_: any, record: TransactionDetail) => (
         <Select
             style={{ width: '100%' }}
@@ -291,6 +290,7 @@ const StockTransactionCreate: React.FC = () => {
         title: 'Kho Đích (Nhập)',
         dataIndex: 'toLocationId',
         className: transactionType === 'EXPORT' ? 'hidden-col' : '',
+        // FIX TS6133: Thay val bằng _
         render: (_: any, record: TransactionDetail) => (
           <Select
               style={{ width: '100%' }}
@@ -306,7 +306,8 @@ const StockTransactionCreate: React.FC = () => {
       title: 'Số lượng',
       dataIndex: 'quantity',
       width: '15%',
-      render: (val: any, record: TransactionDetail) => (
+      // FIX TS6133: Thay val bằng _
+      render: (_: any, record: TransactionDetail) => (
         <Space>
              <InputNumber 
                 min={1} 
@@ -419,7 +420,8 @@ const StockTransactionCreate: React.FC = () => {
                 </Col>
             </Row>
 
-            <Divider orientation="left">Chi tiết vật tư</Divider>
+            {/* FIX TS2322: Thêm 'as const' */}
+            <Divider orientation={"left" as const}>Chi tiết vật tư</Divider>
             
             <Table 
                 dataSource={selectedItems}

@@ -76,7 +76,8 @@ const InventoryReport: React.FC = () => {
     },
     {
       title: 'Vật Tư',
-      render: (_, record: InventoryLog) => (
+      // SỬA LỖI TẠI ĐÂY: Thêm ': any' cho tham số _
+      render: (_: any, record: InventoryLog) => (
         <div>
           <Text strong>{record.item.itemName}</Text>
           <br />

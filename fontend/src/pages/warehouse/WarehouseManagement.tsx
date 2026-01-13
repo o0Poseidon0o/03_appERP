@@ -7,8 +7,7 @@ import {
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
   DeleteOutlined, ReloadOutlined, DatabaseOutlined, 
-  PrinterOutlined, EnvironmentOutlined, ArrowRightOutlined
-} from '@ant-design/icons';
+  PrinterOutlined, EnvironmentOutlined} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { QRCodeSVG } from 'qrcode.react'; 
 import { useReactToPrint } from 'react-to-print'; 

@@ -7,7 +7,7 @@ import {
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
   DeleteOutlined, ReloadOutlined, BoxPlotOutlined,
-  BarcodeOutlined, ScanOutlined, PrinterOutlined, DownloadOutlined // <--- 1. Thêm Icon Download
+  BarcodeOutlined, ScanOutlined, PrinterOutlined, DownloadOutlined 
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import axiosClient from '../../api/axiosClient';
@@ -173,7 +173,8 @@ const ItemManagement: React.FC = () => {
     {
       title: 'Vật Tư / Mã Số',
       key: 'itemName',
-      render: (_, record) => (
+      // FIX: Thêm type annotation : any cho _
+      render: (_: any, record) => (
         <Space size="middle">
           <div className="p-1 bg-white border rounded">
             <img src={`https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=${record.itemCode}`} alt="QR" width={40} />
@@ -195,7 +196,8 @@ const ItemManagement: React.FC = () => {
       title: 'Tổng Tồn Kho',
       key: 'totalStock',
       align: 'right',
-      render: (_, record) => {
+      // FIX: Thêm type annotation : any cho _
+      render: (_: any, record) => {
         const total = record.stocks?.reduce((acc, s) => acc + s.quantity, 0) || 0;
         const isLow = total <= record.minStock;
         return (
@@ -211,8 +213,9 @@ const ItemManagement: React.FC = () => {
       title: 'Thao tác',
       key: 'action',
       align: 'center',
-      width: 180, // Tăng width một chút để chứa đủ 4 nút
-      render: (_, record) => (
+      width: 180,
+      // FIX: Thêm type annotation : any cho _
+      render: (_: any, record) => (
         <Space>
            {/* Nút Download Mới */}
           <Tooltip title="Tải QR">
