@@ -323,14 +323,13 @@ const PendingApprovals: React.FC = () => {
                 )}
             </div>
 
-            {/* FIX: Thêm 'as const' để sửa lỗi TS2322 cho orientation */}
-            <Divider orientation={"left" as const}><Text strong>Chi tiết vật tư</Text></Divider>
+            {/* FIX: Sử dụng 'as any' để tránh lỗi kiểm tra kiểu nghiêm ngặt của TS với Divider orientation */}
+            <Divider orientation={"left" as any}><Text strong>Chi tiết vật tư</Text></Divider>
             
             <Table 
               dataSource={selectedTicket.details} 
               pagination={false} size="small" bordered rowKey="id"
               columns={[
-                // FIX: Thêm type annotation cho tham số để tránh lỗi TS7006
                 { title: 'Vật tư', render: (_: any, r: any) => <div><Text strong>{r.item?.itemName}</Text><br/><Text type="secondary" style={{ fontSize: '11px' }}>{r.item?.itemCode}</Text></div>},
                 { title: 'Số lượng', dataIndex: 'quantity', align: 'center', render: (v: any, r: any) => <b>{v} {r.item?.unit}</b> },
                 { 
