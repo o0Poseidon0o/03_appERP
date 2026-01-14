@@ -6,31 +6,30 @@ import {
   updateFactory, 
   deleteFactory 
 } from '../controllers/factoryController';
-import { protect, hasPermission } from '../middlewares/authMiddleware'; // Đổi sang hasPermission
+import { protect, hasPermission } from '../middlewares/authMiddleware';
 
 const router = Router();
 
-// Tất cả API nhà máy đều yêu cầu đăng nhập
+// Yêu cầu đăng nhập cho mọi thao tác
 router.use(protect);
 
-/** * LƯU Ý: Dựa trên file permission.xlsx bạn gửi, 
- * hiện chưa có mã FACTORY_VIEW, FACTORY_CREATE...
- * Bạn nên thêm các mã này vào DB hoặc dùng mã DEPT tương ứng.
- */
+// ==============================================================================
+// 1. Xem danh sách nhà máy
+// [ĐIỀU CHỈNH]: Chỉ cần đăng nhập là xem được danh sách (để phục vụ dropdown cho các module khác)
+// Nếu bạn muốn bảo mật tuyệt đối, hãy giữ hasPermission('FACTORY_VIEW') và nhớ cấp quyền này cho ROLE-KHO
+// ==============================================================================
+router.get('/', getAllFactories);
 
-// 1. Xem danh sách nhà máy: Dùng quyền DEPT_VIEW (hoặc FACTORY_VIEW nếu bạn đã thêm)
-router.get('/', hasPermission('DEPT_VIEW'), getAllFactories);
+// 2. Xem chi tiết một nhà máy (Kèm thông tin nhạy cảm hơn nếu có)
+router.get('/:id', hasPermission('FACTORY_VIEW'), getFactoryById);
 
-// 2. Xem chi tiết nhà máy
-router.get('/:id', hasPermission('DEPT_VIEW'), getFactoryById);
+// 3. Tạo nhà máy mới - Chỉ ADMIN hoặc Quản lý cấp cao
+router.post('/', hasPermission('FACTORY_CREATE'), createFactory);
 
-// 3. Tạo nhà máy mới: Dùng mã quyền chi tiết
-router.post('/', hasPermission('DEPT_CREATE'), createFactory);
+// 4. Cập nhật thông tin - Chỉ ADMIN hoặc Quản lý cấp cao
+router.patch('/:id', hasPermission('FACTORY_UPDATE'), updateFactory);
 
-// 4. Cập nhật nhà máy
-router.patch('/:id', hasPermission('DEPT_UPDATE'), updateFactory);
-
-// 5. Xóa nhà máy
-router.delete('/:id', hasPermission('DEPT_DELETE'), deleteFactory);
+// 5. Xóa nhà máy - Chỉ ADMIN
+router.delete('/:id', hasPermission('FACTORY_DELETE'), deleteFactory);
 
 export default router;

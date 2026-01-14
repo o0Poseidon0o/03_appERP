@@ -9,7 +9,9 @@ interface JwtPayload {
   exp: number;
 }
 
-// 1. Middleware PROTECT (Xác thực người dùng & Hợp nhất quyền)
+// =========================================================================
+// 1. MIDDLEWARE PROTECT (Xác thực & Lấy thông tin User đầy đủ)
+// =========================================================================
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
   try {
     let token;
@@ -23,16 +25,23 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
 
-    // --- Lấy User kèm theo Role -> Permissions và UserPermissions ---
+    // --- Lấy User kèm theo Role, Permissions VÀ QUAN TRỌNG LÀ DEPARTMENT ---
     const currentUser = await prisma.user.findUnique({
       where: { id: decoded.id },
       include: { 
         role: {
           include: {
-            permissions: true // Quyền gán cho Role
+            permissions: true // Để lấy quyền từ Role
           }
         },
-        userPermissions: true // Quyền gán riêng cho User
+        userPermissions: true, // Để lấy quyền riêng
+        
+        // [QUAN TRỌNG - ĐÃ SỬA]: Lấy thông tin Phòng ban & Nhà máy
+        department: {
+            include: {
+                factory: true 
+            }
+        } 
       }
     });
 
@@ -51,11 +60,10 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
     // 2. Lấy mã quyền riêng lẻ
     const individualPerms = currentUser.userPermissions.map(p => p.permissionId) || [];
 
-    // 3. Gộp lại thành mảng duy nhất không trùng lặp
+    // 3. Gộp lại thành mảng duy nhất
     const mergedPermissions = Array.from(new Set([...rolePerms, ...individualPerms]));
 
-    // Gán thông tin vào Request
-    // allPermissions sẽ được dùng trong middleware hasPermission bên dưới
+    // Gán thông tin vào Request để Controller dùng
     req.user = {
       ...currentUser,
       allPermissions: mergedPermissions 
@@ -68,7 +76,9 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
-// 2. Middleware RESTRICT TO (Dùng khi muốn chặn cứng theo tên Role - ví dụ: chỉ cho ADMIN vào)
+// =========================================================================
+// 2. MIDDLEWARE RESTRICT TO (Chặn theo Role cứng)
+// =========================================================================
 export const restrictTo = (...allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user || !allowedRoles.includes(req.user.roleId)) {
@@ -78,7 +88,9 @@ export const restrictTo = (...allowedRoles: string[]) => {
   };
 };
 
-// 3. Middleware HAS PERMISSION (Dùng để kiểm tra quyền chi tiết - DEPT_VIEW, USER_CREATE...)
+// =========================================================================
+// 3. MIDDLEWARE HAS PERMISSION (Chặn theo quyền chi tiết)
+// =========================================================================
 export const hasPermission = (permissionId: string) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const user = req.user;
@@ -87,12 +99,11 @@ export const hasPermission = (permissionId: string) => {
       return next(new AppError('Không tìm thấy thông tin người dùng.', 401));
     }
 
-    // ƯU TIÊN: Nếu là ROLE-ADMIN thì luôn luôn cho qua, không cần check mảng quyền
+    // Admin luôn được qua
     if (user.roleId === 'ROLE-ADMIN') {
       return next();
     }
 
-    // Kiểm tra trong mảng quyền đã được hợp nhất ở middleware protect
     const userPermissions = (user as any).allPermissions || [];
 
     if (!userPermissions.includes(permissionId)) {

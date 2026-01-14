@@ -2,32 +2,43 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { Spin, ConfigProvider, theme, App as AntdApp } from "antd";
+import type { JSX } from "react";
 
-// Import Pages (Giữ nguyên)
+// --- IMPORT PAGES ---
+// 1. Auth & Public
 import LoginPage from "./pages/auth/LoginPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+
+// 2. Layout & General
 import MainLayout from "./layout/MainLayout";
 import Profile from "./pages/Profile";
 import Dashboard from "./pages/admin/Dashboard";
 import PostPage from "./pages/admin/PostPage";
+
+// 3. Admin System (Nhân sự & Phòng ban)
 import UserManagement from "./pages/admin/UserManagement";
 import DepartmentManagement from "./pages/department/DepartmentManagement";
 import RoleManagement from "./pages/Role/RoleManagement";
 import MenuManagement from "./pages/admin/MenuManagement";
+
+// 4. Warehouse System (Kho & Nhà máy & Vật tư)
 import ItemManagement from "./pages/warehouse/ItemManagement";
 import CategoryManagement from "./pages/warehouse/CategoryManagement";
 import SupplierPage from "./pages/warehouse/SupplierList";
-import WarehouseManagement from "./pages/warehouse/WarehouseManagement";
+import WarehouseManagement from "./pages/warehouse/WarehouseManagement"; // Đã gộp quản lý Nhà máy vào đây
 import PendingApprovals from "./pages/warehouse/PendingApprovals";
 import StockTransaction from "./pages/warehouse/StockTransaction";
 import StockActual from "./pages/warehouse/StockActual";
 
-// Import Security
+// 5. Security Component
 import RoleRoute from "./components/RoleRoute";
-import type { JSX } from "react";
 
+// --- COMPONENTS BẢO VỆ ---
+
+// Component chặn người chưa đăng nhập
 const PrivateRoute = ({ children }: { children: JSX.Element }) => {
   const { token, isLoading } = useAuth();
+  
   if (isLoading) {
     return (
       <div className="h-screen flex justify-center items-center bg-gray-50">
@@ -35,15 +46,20 @@ const PrivateRoute = ({ children }: { children: JSX.Element }) => {
       </div>
     );
   }
+  
   return token ? children : <Navigate to="/login" replace />;
 };
 
+// Component điều hướng Dashboard theo Role
 const DashboardGuard = () => {
   const { user } = useAuth();
   const roleId = user?.role?.id || user?.roleId;
+
+  // Nếu là User thường (hoặc KHO không có quyền quản trị hệ thống) -> Sang trang Tin tức
   if (roleId === "ROLE-USER") {
     return <Navigate to="/posts" replace />;
   }
+  // Admin, Manager, Leader... vào Dashboard
   return <Dashboard />;
 };
 
@@ -54,7 +70,11 @@ const AppContent = () => {
     <ConfigProvider
       theme={{
         algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: { colorPrimary: "#6366f1", borderRadius: 8, fontFamily: "'Inter', system-ui, sans-serif" },
+        token: { 
+          colorPrimary: "#6366f1", 
+          borderRadius: 8, 
+          fontFamily: "'Inter', system-ui, sans-serif" 
+        },
         components: {
           Layout: {
             bodyBg: isDarkMode ? "#111827" : "#f3f4f6",
@@ -67,59 +87,70 @@ const AppContent = () => {
     >
       <AntdApp>
         <Routes>
-          {/* 1. PUBLIC ROUTES */}
+          {/* ========================================================= */}
+          {/* 1. PUBLIC ROUTES (Không cần đăng nhập) */}
+          {/* ========================================================= */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
-          {/* 2. PROTECTED ROUTES */}
+          {/* ========================================================= */}
+          {/* 2. PROTECTED ROUTES (Phải đăng nhập) */}
+          {/* ========================================================= */}
           <Route path="/" element={<PrivateRoute><MainLayout /></PrivateRoute>}>
+            
+            {/* Trang chủ: Tự động điều hướng dựa trên Role */}
             <Route index element={<DashboardGuard />} />
+            
+            {/* Các trang chung */}
             <Route path="posts" element={<PostPage />} />
             <Route path="profile" element={<Profile />} />
 
-            {/* --- PHÂN QUYỀN THEO CSV --- */}
+            {/* --- PHÂN QUYỀN (RBAC) --- */}
 
-            {/* Nhân sự: USER_VIEW */}
+            {/* A. NHÂN SỰ: Cần quyền USER_VIEW (Admin/HR) */}
             <Route element={<RoleRoute requiredPermission="USER_VIEW" />}>
               <Route path="admin/users" element={<UserManagement />} />
             </Route>
 
-            {/* Phòng ban: DEPT_VIEW */}
+            {/* B. PHÒNG BAN: Cần quyền DEPT_VIEW (Admin/HR) */}
+            {/* User ROLE-KHO không vào được đây -> Bảo mật thông tin tổ chức */}
             <Route element={<RoleRoute requiredPermission="DEPT_VIEW" />}>
               <Route path="admin/departments" element={<DepartmentManagement />} />
             </Route>
 
-            {/* Quản lý Danh mục Kho:
-                Trong CSV không có ITEM_VIEW, nhưng có WMS_VIEW cho hầu hết các vai trò liên quan kho.
-                Dùng WMS_VIEW để cho phép truy cập trang danh sách.
-                (Việc tạo/sửa/xóa sẽ được ẩn nút bên trong trang dựa trên ITEM_CREATE/UPDATE)
+            {/* C. HẠ TẦNG & KHO: Cần quyền WMS_VIEW (Admin/KHO/Leader) */}
+            {/* - WarehouseManagement: Giờ đây quản lý cả Kho và Nhà máy (Tab) 
+                - Backend đã mở API GET /factories nên ROLE-KHO vào đây vẫn thấy dữ liệu Nhà máy
             */}
             <Route element={<RoleRoute requiredPermission="WMS_VIEW" />}>
+              <Route path="warehouse/locations" element={<WarehouseManagement />} /> 
               <Route path="warehouse/items" element={<ItemManagement />} />
               <Route path="warehouse/categories" element={<CategoryManagement />} />
-              <Route path="warehouse/locations" element={<WarehouseManagement />} />
               <Route path="warehouse/stock" element={<StockActual />} />
-              <Route path="/warehouse/suppliers" element={<SupplierPage />} />
+              <Route path="warehouse/suppliers" element={<SupplierPage />} />
               <Route path="warehouse/transactions" element={<StockTransaction />} />
             </Route>
 
-            {/* Phê duyệt: WMS_APPROVE (Admin, Manager, Leader, User đều có trong CSV) */}
+            {/* D. PHÊ DUYỆT PHIẾU: Cần quyền WMS_APPROVE (Leader/Manager) */}
             <Route element={<RoleRoute requiredPermission="WMS_APPROVE" />}>
               <Route path="warehouse/approvals" element={<PendingApprovals />} />
             </Route>
 
-            {/* Hệ thống Admin */}
+            {/* E. CẤU HÌNH HỆ THỐNG: Cần quyền ROLE_VIEW (Admin) */}
             <Route element={<RoleRoute requiredPermission="ROLE_VIEW" />}>
                <Route path="admin/roles" element={<RoleManagement />} />
             </Route>
             
-            {/* Menu Management - Thường cho Admin */}
+            {/* F. QUẢN LÝ MENU (Admin tối cao) */}
             <Route element={<RoleRoute allowedRoles={["ROLE-ADMIN"]} />}>
                <Route path="admin/menus" element={<MenuManagement />} />
             </Route>
 
+            {/* Route không tồn tại -> Quay về trang chủ */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
+          
+          {/* Route rác -> Login */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </AntdApp>

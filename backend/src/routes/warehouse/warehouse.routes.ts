@@ -5,7 +5,9 @@ import {
   addLocation, 
   deleteWarehouse, 
   updateWarehouse, 
-  getAllLocations
+  getAllLocations,
+  deleteLocation,
+  updateLocation
 } from '../../controllers/warehouse/warehouse.controller';
 import { protect, hasPermission } from '../../middlewares/authMiddleware';
 
@@ -25,5 +27,9 @@ router.patch('/:id', hasPermission('WMS_UPDATE'), updateWarehouse);
 
 // 4. Xóa: Quyền DELETE (Chỉ cấp cho Admin/Manager)
 router.delete('/:id', hasPermission('WMS_DELETE'), deleteWarehouse);
+// Route Xóa Vị trí
+router.delete('/location/:id', hasPermission('WMS_DELETE'), deleteLocation);
+// Dùng quyền WMS_UPDATE (Sửa kho) để sửa vị trí
+router.patch('/location/:id', hasPermission('WMS_UPDATE'), updateLocation);
 
 export default router;

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Table, Card, Button, Select, InputNumber, Space, 
-  Form, Input, Row, Col, App as AntdApp, Switch, Typography, Divider, Tag 
+  Form, Input, Row, Col, App as AntdApp, Switch, Typography, Divider, Tag, Tooltip 
 } from 'antd';
 import { 
   PlusOutlined, DeleteOutlined, QrcodeOutlined,
-  SwapOutlined, InfoCircleOutlined, ShopOutlined, SendOutlined 
+  SwapOutlined, InfoCircleOutlined, ShopOutlined, SendOutlined, QuestionCircleOutlined 
 } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 import { useNavigate } from 'react-router-dom';
@@ -37,7 +37,8 @@ interface TransactionDetail {
   quantity: number;
   fromLocationId: string | null;
   toLocationId: string | null;
-  currentStock?: number; 
+  currentStock?: number; // Tồn kho KHẢ DỤNG (Available) sau khi check
+  physicalStock?: number; // Tồn kho THỰC TẾ (Physical) để hiển thị tham khảo
   unit?: string;
 }
 
@@ -49,10 +50,13 @@ const StockTransactionCreate: React.FC = () => {
   // States
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]); // List full location (cho dropdown Đích)
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedItems, setSelectedItems] = useState<TransactionDetail[]>([]);
   
+  // [MỚI]: State lưu danh sách Option Vị trí nguồn cho từng dòng (Key: rowKey, Value: Options[])
+  const [rowLocationOptions, setRowLocationOptions] = useState<Record<string, any[]>>({});
+
   // State cho QR Scanner
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
@@ -63,32 +67,17 @@ const StockTransactionCreate: React.FC = () => {
 
   const transactionType = Form.useWatch('type', form);
 
-  // 1. FETCH DỮ LIỆU
+  // 1. FETCH MASTER DATA
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
-        const [resStock, resLocs, resSups] = await Promise.all([
-          axiosClient.get('/stock-transactions/actual?limit=2000'), 
+        const [resItems, resLocs, resSups] = await Promise.all([
+          axiosClient.get('/items'), 
           axiosClient.get('/warehouses/locations/all'), 
-          axiosClient.get('/suppliers') 
+          axiosClient.get('/suppliers')
         ]);
 
-        const rawStocks = resStock.data?.data || [];
-        const uniqueItemMap = new Map();
-
-        rawStocks.forEach((s: any) => {
-          const realItemId = s.itemId || s.id;
-          if (!uniqueItemMap.has(realItemId)) {
-            uniqueItemMap.set(realItemId, {
-               id: realItemId,
-               itemCode: s.itemCode, 
-               itemName: s.itemName, 
-               unit: s.unit 
-            });
-          }
-        });
-
-        setItems(Array.from(uniqueItemMap.values()));
+        setItems(resItems.data?.data || []);
         setLocations(resLocs.data?.data || []);
         setSuppliers(resSups.data?.data || []);
 
@@ -102,6 +91,7 @@ const StockTransactionCreate: React.FC = () => {
 
   const handleTypeChange = () => {
     setSelectedItems([]);
+    setRowLocationOptions({});
   };
 
   const addRow = () => {
@@ -113,42 +103,71 @@ const StockTransactionCreate: React.FC = () => {
 
   const removeRow = (key: string) => {
     setSelectedItems(selectedItems.filter(item => item.key !== key));
+    // Clear options của dòng đã xóa để nhẹ bộ nhớ
+    const newOptions = { ...rowLocationOptions };
+    delete newOptions[key];
+    setRowLocationOptions(newOptions);
   };
 
   // ============================================================
-  // XỬ LÝ QUÉT QR CODE
+  // LOGIC TÍNH TOÁN TỒN KHO KHẢ DỤNG (Frontend Calculation)
   // ============================================================
-  const handleScanSuccess = (decodedText: string) => {
-    // 1. Tìm vật tư trong danh sách Items đã load
-    const foundItem = items.find(
-      i => i.itemCode.toLowerCase() === decodedText.toLowerCase() || 
-           i.itemName.toLowerCase().includes(decodedText.toLowerCase())
-    );
+  const getAvailableStockForLine = (record: TransactionDetail) => {
+    if (transactionType === 'IMPORT' || record.currentStock === undefined) return 999999;
 
-    if (foundItem) {
-      // 2. Tạo dòng mới
-      const newKey = `row_qr_${Date.now()}`;
-      const newRow: TransactionDetail = {
-        key: newKey,
-        itemId: foundItem.id, // Auto-fill Item ID
-        quantity: 1,
-        fromLocationId: null, 
-        toLocationId: null,
-        unit: foundItem.unit, // Auto-fill Unit
-        currentStock: undefined
-      };
+    // Tính tổng số lượng đang nhập ở CÁC DÒNG KHÁC (cùng Item + cùng Kho Nguồn)
+    const usedInOtherLines = selectedItems.reduce((total, item) => {
+        if (
+            item.key !== record.key && 
+            item.itemId === record.itemId && 
+            item.fromLocationId === record.fromLocationId
+        ) {
+            return total + (item.quantity || 0);
+        }
+        return total;
+    }, 0);
 
-      setSelectedItems(prev => [...prev, newRow]);
-      message.success(`Đã thêm vật tư: ${foundItem.itemCode} - ${foundItem.itemName}`);
-      
-      setIsScannerOpen(false); 
-    } else {
-      message.warning(`Không tìm thấy vật tư với mã: ${decodedText}`);
+    const available = record.currentStock - usedInOtherLines;
+    return available > 0 ? available : 0;
+  };
+
+  // ============================================================
+  // [MỚI] HÀM LẤY DANH SÁCH VỊ TRÍ CÓ HÀNG (KHI CHỌN VẬT TƯ)
+  // ============================================================
+  const fetchStockLocationsForItem = async (rowKey: string, itemId: string) => {
+    try {
+        const selectedItem = items.find(i => i.id === itemId);
+        if(!selectedItem) return;
+
+        // Gọi API lấy tồn kho thực tế của Item này (Dùng API getStockActual hoặc tương tự)
+        // Giả sử API là /stock-transactions/actual (như code cũ của bạn) hoặc /stocks
+        // Cần truyền itemCode vào search để lọc
+        const res = await axiosClient.get('/stock-transactions/actual', {
+            params: { search: selectedItem.itemCode, limit: 100 } 
+        });
+
+        const stocks = res.data.data || [];
+        
+        // Map ra danh sách options cho Select
+        const options = stocks.map((s: any) => ({
+            value: s.locationId,
+            // Hiển thị: Mã Vị Trí (Tồn: 10)
+            label: `${s.locationCode} (Tồn: ${s.quantity})`,
+            quantity: s.quantity // Lưu lại để tham khảo nếu cần
+        }));
+
+        setRowLocationOptions(prev => ({
+            ...prev,
+            [rowKey]: options
+        }));
+
+    } catch (error) {
+        console.error("Lỗi lấy vị trí tồn kho:", error);
     }
   };
 
   // ============================================================
-  // CẬP NHẬT DÒNG & CHECK TỒN KHO
+  // CẬP NHẬT DÒNG & CHECK TỒN KHO KHẢ DỤNG (API)
   // ============================================================
   const updateRow = async (key: string, field: keyof TransactionDetail, value: any) => {
     const newData = [...selectedItems];
@@ -157,39 +176,90 @@ const StockTransactionCreate: React.FC = () => {
     if (index > -1) {
       const row = { ...newData[index], [field]: value };
       
+      // 1. KHI CHỌN VẬT TƯ
       if (field === 'itemId') {
         const selectedItem = items.find(i => i.id === value);
         if (selectedItem) row.unit = selectedItem.unit;
+        
+        // Reset các trường liên quan
+        row.fromLocationId = null;
+        row.currentStock = undefined;
+        row.physicalStock = undefined;
+
+        // [MỚI] Tải danh sách kho có hàng ngay lập tức nếu là Xuất/Chuyển
+        if (['EXPORT', 'TRANSFER'].includes(transactionType)) {
+            fetchStockLocationsForItem(key, value);
+        }
       }
 
+      // 2. KHI CHỌN VỊ TRÍ NGUỒN (Check lại Available chính xác từ Backend)
       if (transactionType !== 'IMPORT') {
         const currentItemId = field === 'itemId' ? value : row.itemId;
         const currentLocationId = field === 'fromLocationId' ? value : row.fromLocationId;
 
         if (currentItemId && currentLocationId) {
-          try {
-            const res = await axiosClient.get('/stock-transactions/check-stock', {
-              params: { itemId: currentItemId, locationId: currentLocationId }
-            });
-            row.currentStock = res.data.quantity;
-          } catch (error) {
-            row.currentStock = 0;
+          // Chỉ gọi API check nếu thay đổi Item hoặc Location
+          if (field === 'itemId' || field === 'fromLocationId') {
+              try {
+                // Gọi API check stock (Backend đã trừ hàng pending)
+                const res = await axiosClient.get('/stock-transactions/check-stock', {
+                  params: { itemId: currentItemId, locationId: currentLocationId }
+                });
+                
+                // Backend trả về: quantity (Available), physical (Thực tế), pending
+                row.currentStock = res.data.quantity; 
+                row.physicalStock = res.data.physical; 
+
+              } catch (error) {
+                row.currentStock = 0;
+              }
           }
         } else {
             if (field === 'itemId' || field === 'fromLocationId') {
                 row.currentStock = undefined;
+                row.physicalStock = undefined;
             }
         }
       }
+      
       newData[index] = row;
       setSelectedItems(newData);
     }
   };
 
-  const onFinish = async (values: any) => {
-    if (selectedItems.length === 0) {
-      return message.error('Vui lòng thêm ít nhất một vật tư vào danh sách!');
+  const handleScanSuccess = (decodedText: string) => {
+    const foundItem = items.find(
+      i => i.itemCode.toLowerCase() === decodedText.toLowerCase() || 
+           i.itemName.toLowerCase().includes(decodedText.toLowerCase())
+    );
+
+    if (foundItem) {
+      const newKey = `row_qr_${Date.now()}`;
+      const newRow: TransactionDetail = {
+        key: newKey,
+        itemId: foundItem.id,
+        quantity: 1,
+        fromLocationId: null, 
+        toLocationId: null,
+        unit: foundItem.unit,
+        currentStock: undefined
+      };
+      
+      // Nếu là Xuất, tự động load location options cho dòng mới này
+      if (['EXPORT', 'TRANSFER'].includes(transactionType)) {
+          fetchStockLocationsForItem(newKey, foundItem.id);
+      }
+
+      setSelectedItems(prev => [...prev, newRow]);
+      message.success(`Đã thêm vật tư: ${foundItem.itemCode}`);
+      setIsScannerOpen(false); 
+    } else {
+      message.warning(`Không tìm thấy vật tư với mã: ${decodedText}`);
     }
+  };
+
+  const onFinish = async (values: any) => {
+    if (selectedItems.length === 0) return message.error('Vui lòng thêm ít nhất một vật tư!');
 
     for (const item of selectedItems) {
       if (!item.itemId) return message.error('Vui lòng chọn vật tư cho tất cả các dòng');
@@ -201,8 +271,10 @@ const StockTransactionCreate: React.FC = () => {
       if (['IMPORT', 'TRANSFER'].includes(transactionType) && !item.toLocationId) {
         return message.error('Vui lòng chọn Vị trí nhập hàng (Đích)');
       }
-      if (transactionType !== 'IMPORT' && item.currentStock !== undefined && item.quantity > item.currentStock) {
-        return message.error(`Vật tư dòng ${selectedItems.indexOf(item) + 1} vượt quá tồn kho khả dụng (${item.currentStock})!`);
+      
+      const available = getAvailableStockForLine(item);
+      if (transactionType !== 'IMPORT' && item.quantity > available) {
+         return message.error(`Vật tư dòng ${selectedItems.indexOf(item) + 1} vượt quá tồn kho khả dụng (Còn lại: ${available})!`);
       }
     }
 
@@ -210,8 +282,9 @@ const StockTransactionCreate: React.FC = () => {
     try {
       const payload = {
         ...values,
+        isEmergency: false, 
         details: selectedItems.map(item => ({
-          itemId: item.itemId,
+          itemId: item.itemId!, 
           quantity: item.quantity,
           fromLocationId: item.fromLocationId || null,
           toLocationId: item.toLocationId || null
@@ -227,13 +300,13 @@ const StockTransactionCreate: React.FC = () => {
 
       form.resetFields();
       setSelectedItems([]);
+      setRowLocationOptions({});
       form.setFieldsValue({ type: 'IMPORT', isEmergency: false });
       
     } catch (error: any) {
-      console.error("Lỗi submit:", error);
       notification.error({
         message: 'Tạo phiếu thất bại',
-        description: error.response?.data?.message || 'Lỗi hệ thống không xác định.'
+        description: error.response?.data?.message || 'Lỗi hệ thống.'
       });
     } finally {
       setLoading(false);
@@ -245,8 +318,10 @@ const StockTransactionCreate: React.FC = () => {
       title: 'Vật tư',
       dataIndex: 'itemId',
       width: '30%',
-      // FIX TS6133: Thay val bằng _
-      render: (_: any, record: TransactionDetail) => (
+      render: (_: any, record: TransactionDetail) => {
+        const available = getAvailableStockForLine(record);
+        
+        return (
         <Space direction="vertical" style={{ width: '100%' }} size={2}>
             <Select
                 showSearch
@@ -259,30 +334,44 @@ const StockTransactionCreate: React.FC = () => {
                 filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
             />
             {transactionType !== 'IMPORT' && record.itemId && record.fromLocationId && (
-                <div style={{ fontSize: '12px' }}>
+                <div style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between' }}>
                    {record.currentStock !== undefined ? (
-                       <span style={{ color: record.currentStock < record.quantity ? 'red' : 'green' }}>
-                           Tồn hiện tại: <b>{record.currentStock}</b> {record.unit}
-                       </span>
-                   ) : <span style={{color: '#faad14'}}>...</span>}
+                       <>
+                           <span style={{ color: '#8c8c8c' }}>
+                               Thực tế: {record.physicalStock ?? '...'}
+                           </span>
+                           <span style={{ color: available < record.quantity ? 'red' : 'green', fontWeight: 500 }}>
+                               Khả dụng: {available} {record.unit}
+                           </span>
+                       </>
+                   ) : <span style={{color: '#faad14'}}>Đang kiểm tra tồn...</span>}
                 </div>
             )}
         </Space>
-      )
+      )}
     },
     {
       title: 'Kho Nguồn (Xuất)',
       dataIndex: 'fromLocationId',
       className: transactionType === 'IMPORT' ? 'hidden-col' : '', 
-      // FIX TS6133: Thay val bằng _
       render: (_: any, record: TransactionDetail) => (
         <Select
             style={{ width: '100%' }}
-            placeholder="Chọn vị trí..."
-            disabled={transactionType === 'IMPORT'}
+            placeholder={record.itemId ? "Chọn vị trí có hàng..." : "Chọn vật tư trước"}
+            disabled={transactionType === 'IMPORT' || !record.itemId}
             value={record.fromLocationId}
             onChange={(v) => updateRow(record.key, 'fromLocationId', v)}
-            options={locations.map(l => ({ value: l.id, label: l.locationCode }))}
+            // [MỚI]: Sử dụng danh sách vị trí riêng của từng dòng
+            options={rowLocationOptions[record.key] || []}
+            // Fallback: Nếu không có options (do lỗi mạng hoặc chưa load), hiển thị list full location
+            onDropdownVisibleChange={(open) => {
+                // Nếu mở dropdown mà chưa có options và đã chọn item -> thử load lại
+                if (open && (!rowLocationOptions[record.key] || rowLocationOptions[record.key].length === 0) && record.itemId) {
+                    fetchStockLocationsForItem(record.key, record.itemId);
+                }
+            }}
+            loading={!rowLocationOptions[record.key] && !!record.itemId}
+            notFoundContent={record.itemId ? "Hết hàng hoặc chưa nhập kho" : "Vui lòng chọn vật tư"}
         />
       )
     },
@@ -290,7 +379,6 @@ const StockTransactionCreate: React.FC = () => {
         title: 'Kho Đích (Nhập)',
         dataIndex: 'toLocationId',
         className: transactionType === 'EXPORT' ? 'hidden-col' : '',
-        // FIX TS6133: Thay val bằng _
         render: (_: any, record: TransactionDetail) => (
           <Select
               style={{ width: '100%' }}
@@ -306,18 +394,22 @@ const StockTransactionCreate: React.FC = () => {
       title: 'Số lượng',
       dataIndex: 'quantity',
       width: '15%',
-      // FIX TS6133: Thay val bằng _
-      render: (_: any, record: TransactionDetail) => (
+      render: (_: any, record: TransactionDetail) => {
+        const available = getAvailableStockForLine(record);
+        const maxVal = transactionType !== 'IMPORT' ? available : undefined;
+        
+        return (
         <Space>
              <InputNumber 
                 min={1} 
+                max={maxVal}
                 value={record.quantity}
                 onChange={(v) => updateRow(record.key, 'quantity', v)}
-                status={transactionType !== 'IMPORT' && record.currentStock !== undefined && record.quantity > record.currentStock ? 'error' : ''}
+                status={transactionType !== 'IMPORT' && record.currentStock !== undefined && record.quantity > available ? 'error' : ''}
             />
             <span style={{color: '#888'}}>{record.unit || '...'}</span>
         </Space>
-      )
+      )}
     },
     {
       title: '',
@@ -325,9 +417,7 @@ const StockTransactionCreate: React.FC = () => {
       width: '50px',
       render: (_: any, record: TransactionDetail) => (
         <Button 
-            type="text" 
-            danger 
-            icon={<DeleteOutlined />} 
+            type="text" danger icon={<DeleteOutlined />} 
             onClick={() => removeRow(record.key)}
         />
       )
@@ -340,10 +430,7 @@ const StockTransactionCreate: React.FC = () => {
           case 'TRANSFER': return '1. Quản lý kho duyệt lệnh \u2192 2. Thủ kho chuyển hàng.';
           case 'EXPORT': 
             if(isLeader) return (
-                <span>
-                    <Tag color="gold">Quyền Ưu Tiên</Tag> 
-                    {'1. Thủ kho xuất hàng \u2192 2. Bạn xác nhận nhận đủ (Bỏ qua duyệt cấp trên).'}
-                </span>
+                <span><Tag color="gold">Quyền Ưu Tiên</Tag> {'1. Thủ kho xuất hàng \u2192 2. Bạn xác nhận nhận đủ.'}</span>
             );
             return '1. Trưởng bộ phận duyệt \u2192 2. Thủ kho xuất hàng \u2192 3. Người tạo xác nhận.';
           default: return '';
@@ -352,13 +439,7 @@ const StockTransactionCreate: React.FC = () => {
 
   return (
     <div style={{ padding: '24px', background: '#f5f7fa', minHeight: '100vh' }}>
-      
-      {/* Component Scanner Modal */}
-      <QRScannerModal 
-        isOpen={isScannerOpen} 
-        onClose={() => setIsScannerOpen(false)} 
-        onScanSuccess={handleScanSuccess}
-      />
+      <QRScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleScanSuccess} />
 
       <Card bordered={false} style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
           <div style={{ marginBottom: '24px', borderBottom: '1px solid #f0f0f0', paddingBottom: '16px' }}>
@@ -369,13 +450,7 @@ const StockTransactionCreate: React.FC = () => {
               <Text type="secondary">Lập phiếu yêu cầu Nhập / Xuất / Điều chuyển vật tư</Text>
           </div>
 
-          <Form 
-            form={form} 
-            layout="vertical" 
-            onFinish={onFinish} 
-            initialValues={{ type: 'IMPORT', isEmergency: false }}
-          >
-            
+          <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ type: 'IMPORT', isEmergency: false }}>
             <Row gutter={24}>
                 <Col xs={24} md={6}>
                     <Form.Item name="type" label="Loại giao dịch" rules={[{ required: true }]}>
@@ -391,20 +466,9 @@ const StockTransactionCreate: React.FC = () => {
                     <Form.Item 
                         name="supplierId" 
                         label={transactionType === 'IMPORT' ? "Nhà cung cấp (Bắt buộc)" : "Đối tác / NCC (Tùy chọn)"}
-                        rules={[
-                            { 
-                                required: transactionType === 'IMPORT', 
-                                message: 'Vui lòng chọn Nhà cung cấp để truy xuất nguồn gốc!' 
-                            }
-                        ]}
+                        rules={[{ required: transactionType === 'IMPORT', message: 'Vui lòng chọn NCC!' }]}
                     >
-                        <Select 
-                            size="large" 
-                            allowClear 
-                            placeholder="Chọn nhà cung cấp..."
-                            options={suppliers.map(s => ({ value: s.id, label: s.name }))}
-                            suffixIcon={<ShopOutlined />}
-                        />
+                        <Select size="large" allowClear placeholder="Chọn nhà cung cấp..." options={suppliers.map(s => ({ value: s.id, label: s.name }))} suffixIcon={<ShopOutlined />} />
                     </Form.Item>
                 </Col>
 
@@ -413,14 +477,25 @@ const StockTransactionCreate: React.FC = () => {
                         <Input size="large" placeholder="Vd: Nhập hàng mới / Xuất thay thế..." />
                     </Form.Item>
                 </Col>
+                
                 <Col xs={24} md={4}>
-                    <Form.Item name="isEmergency" label="Mức độ ưu tiên" valuePropName="checked">
-                          <Switch checkedChildren="Khẩn cấp" unCheckedChildren="Bình thường" />
+                    <Form.Item name="isEmergency" label={
+                        <Space>
+                            Mức độ ưu tiên
+                            <Tooltip title="Tính năng đang được phát triển. Vui lòng liên hệ Admin để biết thêm chi tiết.">
+                                <QuestionCircleOutlined style={{ color: '#faad14', cursor: 'help' }} />
+                            </Tooltip>
+                        </Space>
+                    } valuePropName="checked">
+                          <Switch 
+                            checkedChildren="Khẩn cấp" 
+                            unCheckedChildren="Bình thường" 
+                            disabled={true} 
+                          />
                     </Form.Item>
                 </Col>
             </Row>
 
-            {/* FIX TS2322: Thêm 'as any' để tránh lỗi kiểm tra kiểu nghiêm ngặt */}
             <Divider orientation={"left" as any}>Chi tiết vật tư</Divider>
             
             <Table 
@@ -432,61 +507,26 @@ const StockTransactionCreate: React.FC = () => {
                 locale={{ emptyText: 'Chưa có vật tư nào. Nhấn "Thêm dòng" để bắt đầu.' }}
                 footer={() => (
                     <div className="flex gap-4">
-                        <Button 
-                            type="dashed" 
-                            onClick={addRow} 
-                            style={{ flex: 1 }} 
-                            icon={<PlusOutlined />} 
-                            size="large"
-                        >
-                            Thêm dòng thủ công
-                        </Button>
-                        <Button 
-                            type="primary" 
-                            onClick={() => setIsScannerOpen(true)} 
-                            style={{ background: '#10b981', borderColor: '#10b981' }}
-                            icon={<QrcodeOutlined />} 
-                            size="large"
-                        >
-                            Quét QR để thêm
-                        </Button>
+                        <Button type="dashed" onClick={addRow} style={{ flex: 1 }} icon={<PlusOutlined />} size="large">Thêm dòng thủ công</Button>
+                        <Button type="primary" onClick={() => setIsScannerOpen(true)} style={{ background: '#10b981', borderColor: '#10b981' }} icon={<QrcodeOutlined />} size="large">Quét QR để thêm</Button>
                     </div>
                 )}
             />
 
             <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ 
-                    background: isLeader && transactionType === 'EXPORT' ? '#fffbe6' : '#e6f7ff', 
-                    border: `1px solid ${isLeader && transactionType === 'EXPORT' ? '#ffe58f' : '#91d5ff'}`,
-                    padding: '12px 16px',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'start',
-                    gap: '12px'
-                }}>
+                <div style={{ background: '#e6f7ff', border: '1px solid #91d5ff', padding: '12px 16px', borderRadius: '6px', display: 'flex', alignItems: 'start', gap: '12px' }}>
                     <InfoCircleOutlined style={{ color: '#1890ff', marginTop: '4px' }} />
                     <div>
                         <Text strong>Quy trình dự kiến:</Text>
-                        <div style={{ marginTop: '4px', color: '#595959' }}>
-                            {getProcessDescription()}
-                        </div>
+                        <div style={{ marginTop: '4px', color: '#595959' }}>{getProcessDescription()}</div>
                     </div>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                     <Button size="large" onClick={() => navigate(-1)}>Hủy bỏ</Button>
-                    <Button 
-                        type="primary" 
-                        htmlType="submit" 
-                        size="large" 
-                        icon={<SendOutlined />}
-                        loading={loading}
-                    >
-                        Gửi Yêu Cầu
-                    </Button>
+                    <Button type="primary" htmlType="submit" size="large" icon={<SendOutlined />} loading={loading}>Gửi Yêu Cầu</Button>
                 </div>
             </div>
-
           </Form>
       </Card>
     </div>

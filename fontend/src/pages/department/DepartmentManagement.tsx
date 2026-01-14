@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from "react";
 import {
   Table, Card, Button, Input, Space, Modal, Form, Tag, Tooltip,
-  Tabs, Select, App as AntdApp
+  Select, App as AntdApp
 } from "antd";
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  ReloadOutlined, ApartmentOutlined, BankOutlined, GlobalOutlined,
-  CalendarOutlined} from "@ant-design/icons";
+  ReloadOutlined, ApartmentOutlined, GlobalOutlined,
+  CalendarOutlined
+} from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import axiosClient from "../../api/axiosClient";
-import dayjs from "dayjs"; // Dùng để format ngày tháng
+import dayjs from "dayjs"; 
 
 // --- INTERFACES ---
+// Vẫn cần Interface Factory để hiển thị trong dropdown chọn nhà máy
 interface Factory {
   id: string;
   name: string;
@@ -33,30 +35,29 @@ interface Department {
 
 const DepartmentManagement: React.FC = () => {
   const { message, modal } = AntdApp.useApp();
-  const [activeTab, setActiveTab] = useState("1");
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
 
   // States dữ liệu
   const [depts, setDepts] = useState<Department[]>([]);
-  const [factories, setFactories] = useState<Factory[]>([]);
   
-  // States Modals
+  // Vẫn giữ state factories để đổ dữ liệu vào Select Box khi tạo phòng ban
+  const [factories, setFactories] = useState<Factory[]>([]); 
+  
+  // States Modals chỉ dành cho Department
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
-  const [isFactoryModalOpen, setIsFactoryModalOpen] = useState(false);
-  const [editingFactory, setEditingFactory] = useState<Factory | null>(null);
 
   const [form] = Form.useForm();
-  const [factoryForm] = Form.useForm();
 
   // --- API CALLS ---
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Gọi cả 2 API: Lấy list phòng ban để hiển thị, Lấy list nhà máy để gán
       const [resDept, resFact] = await Promise.all([
         axiosClient.get("/departments"),
-        axiosClient.get("/factories")
+        axiosClient.get("/factories") 
       ]);
       setDepts(resDept.data?.data || resDept.data || []);
       setFactories(resFact.data?.data || resFact.data || []);
@@ -91,26 +92,25 @@ const DepartmentManagement: React.FC = () => {
     }
   };
 
-  const handleDelete = (type: 'dept' | 'factory', record: any) => {
+  const handleDelete = (record: Department) => {
     modal.confirm({
-      title: `Xác nhận xóa ${type === 'dept' ? 'phòng ban' : 'nhà máy'}`,
-      content: `Bạn có chắc muốn xóa: ${record.name}?`,
+      title: `Xác nhận xóa phòng ban`,
+      content: `Bạn có chắc muốn xóa: ${record.name}? Hành động này không thể hoàn tác nếu đã có nhân sự.`,
       okText: "Xóa ngay",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          const url = type === 'dept' ? `/departments/${record.id}` : `/factories/${record.id}`;
-          await axiosClient.delete(url);
+          await axiosClient.delete(`/departments/${record.id}`);
           message.success("Đã xóa thành công");
           fetchData();
         } catch (error: any) {
-          message.error("Không thể xóa do có dữ liệu liên quan");
+          message.error("Không thể xóa do có dữ liệu nhân sự liên quan");
         }
       },
     });
   };
 
-  // --- BẢNG PHÒNG BAN (HIỂN THỊ HẾT CÁC TRƯỜNG) ---
+  // --- COLUMNS ---
   const columns: ColumnsType<Department> = [
     { 
       title: "Mã Phòng", 
@@ -181,7 +181,7 @@ const DepartmentManagement: React.FC = () => {
             <Button type="text" icon={<EditOutlined className="text-blue-600" />} onClick={() => { setEditingDept(record); form.setFieldsValue(record); setIsModalOpen(true); }} />
           </Tooltip>
           <Tooltip title="Xóa">
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete('dept', record)} />
+            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} />
           </Tooltip>
         </Space>
       ),
@@ -192,96 +192,91 @@ const DepartmentManagement: React.FC = () => {
     <div className="bg-slate-50 min-h-screen p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-          <ApartmentOutlined className="text-indigo-600" /> Quản lý Tổ chức & Nhà máy
-        </h2>
+        <div>
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2 m-0">
+            <ApartmentOutlined className="text-indigo-600" /> Quản lý Cơ cấu Tổ chức
+            </h2>
+            <span className="text-slate-500 text-sm">Quản lý danh sách các phòng ban và chức năng nhiệm vụ</span>
+        </div>
+        
         <Button 
           type="primary" icon={<PlusOutlined />} size="large"
+          className="bg-indigo-600 hover:bg-indigo-500 shadow-md"
           onClick={() => {
-            if (activeTab === "1") { setEditingDept(null); form.resetFields(); setIsModalOpen(true); }
-            else { setEditingFactory(null); factoryForm.resetFields(); setIsFactoryModalOpen(true); }
+             setEditingDept(null); 
+             form.resetFields(); 
+             setIsModalOpen(true); 
           }}
         >
-          {activeTab === "1" ? "Thêm phòng ban" : "Thêm nhà máy"}
+          Thêm phòng ban
         </Button>
       </div>
 
-      <Tabs 
-        activeKey={activeTab} onChange={setActiveTab}
-        items={[
-          {
-            key: "1", label: <span><ApartmentOutlined /> Danh sách Phòng ban</span>,
-            children: (
-              <Card bordered={false} className="shadow-sm rounded-xl">
-                <div className="flex justify-between mb-5">
-                  <Input placeholder="Tìm kiếm nhanh..." prefix={<SearchOutlined />} style={{ width: 350 }} onChange={(e) => setSearchText(e.target.value)} allowClear className="rounded-lg" />
-                  <Button icon={<ReloadOutlined />} onClick={fetchData}>Làm mới</Button>
-                </div>
-                <Table 
-                  columns={columns} 
-                  dataSource={depts.filter(d => d.name.toLowerCase().includes(searchText.toLowerCase()) || d.id.includes(searchText))} 
-                  rowKey="id" 
-                  loading={loading}
-                  scroll={{ x: 1300 }} // Cho phép cuộn ngang để xem hết các trường
-                  pagination={{ pageSize: 10, showSizeChanger: true }}
-                />
-              </Card>
-            )
-          },
-          {
-            key: "2", label: <span><BankOutlined /> Quản lý Nhà máy</span>,
-            children: (
-              <Card bordered={false} className="shadow-sm rounded-xl">
-                <Table 
-                  rowKey="id" loading={loading} dataSource={factories}
-                  columns={[
-                    { title: "Tên nhà máy", dataIndex: "name", render: (t) => <b>{t}</b> },
-                    { title: "Địa chỉ", dataIndex: "address" },
-                    { title: "Hành động", align: "center", render: (_, r) => (
-                      <Space>
-                         <Button type="text" icon={<EditOutlined className="text-blue-600" />} onClick={() => { setEditingFactory(r); factoryForm.setFieldsValue(r); setIsFactoryModalOpen(true); }} />
-                         <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete('factory', r)} />
-                      </Space>
-                    )}
-                  ]}
-                />
-              </Card>
-            )
-          }
-        ]}
-      />
+      {/* Main Content - Không còn Tab nữa, chỉ hiển thị Table */}
+      <Card bordered={false} className="shadow-sm rounded-xl">
+        <div className="flex justify-between mb-5">
+            <Input 
+                placeholder="Tìm kiếm phòng ban..." 
+                prefix={<SearchOutlined className="text-slate-400"/>} 
+                style={{ width: 350 }} 
+                onChange={(e) => setSearchText(e.target.value)} 
+                allowClear 
+                className="rounded-lg" 
+            />
+            <Button icon={<ReloadOutlined />} onClick={fetchData}>Làm mới</Button>
+        </div>
+        
+        <Table 
+            columns={columns} 
+            dataSource={depts.filter(d => d.name.toLowerCase().includes(searchText.toLowerCase()) || d.id.includes(searchText))} 
+            rowKey="id" 
+            loading={loading}
+            scroll={{ x: 1300 }} 
+            pagination={{ pageSize: 10, showSizeChanger: true }}
+            className="border border-slate-100 rounded-lg"
+        />
+      </Card>
 
       {/* Modal Phòng ban */}
-      <Modal title={editingDept ? "Cập nhật phòng ban" : "Tạo phòng ban mới"} open={isModalOpen} onCancel={() => setIsModalOpen(false)} onOk={() => form.submit()} width={600} centered>
-        <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-4">
+      <Modal 
+        title={editingDept ? "Cập nhật thông tin phòng ban" : "Tạo phòng ban mới"} 
+        open={isModalOpen} 
+        onCancel={() => setIsModalOpen(false)} 
+        onOk={() => form.submit()} 
+        width={600} 
+        centered
+      >
+        <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-6">
           <div className="grid grid-cols-2 gap-4">
-            <Form.Item name="id" label="Mã ID (Duy nhất)" rules={[{ required: true }]} tooltip="Ví dụ: 7110, KETOAN...">
-              <Input disabled={!!editingDept} className="uppercase font-mono" />
+            <Form.Item 
+                name="id" 
+                label="Mã ID (Duy nhất)" 
+                rules={[{ required: true, message: "Vui lòng nhập mã phòng" }]} 
+                tooltip="Ví dụ: 1100, HR, KETOAN..."
+            >
+              <Input disabled={!!editingDept} className="uppercase font-mono input-uppercase" placeholder="Mã phòng..." />
             </Form.Item>
-            <Form.Item name="factoryId" label="Trực thuộc nhà máy" rules={[{ required: true }]}>
-              <Select placeholder="Chọn nhà máy" options={factories.map(f => ({ label: f.name, value: f.id }))} />
+            
+            <Form.Item 
+                name="factoryId" 
+                label="Trực thuộc nhà máy" 
+                rules={[{ required: true, message: "Bắt buộc chọn nhà máy" }]}
+            >
+              <Select 
+                placeholder="Chọn nhà máy" 
+                options={factories.map(f => ({ label: f.name, value: f.id }))} 
+                notFoundContent="Không có dữ liệu nhà máy"
+              />
             </Form.Item>
           </div>
-          <Form.Item name="name" label="Tên phòng ban" rules={[{ required: true }]}>
-            <Input placeholder="Nhập tên đầy đủ" />
+          
+          <Form.Item name="name" label="Tên phòng ban" rules={[{ required: true, message: "Vui lòng nhập tên phòng ban" }]}>
+            <Input placeholder="Nhập tên đầy đủ (VD: Phòng Hành chính Nhân sự)" />
           </Form.Item>
+          
           <Form.Item name="name_content" label="Mô tả / Chức năng nhiệm vụ">
-            <Input.TextArea rows={4} placeholder="Nhập chức năng của phòng ban này..." />
+            <Input.TextArea rows={4} placeholder="Mô tả ngắn gọn chức năng của phòng ban này..." />
           </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* Modal Nhà máy */}
-      <Modal title={editingFactory ? "Sửa nhà máy" : "Thêm nhà máy"} open={isFactoryModalOpen} onCancel={() => setIsFactoryModalOpen(false)} onOk={() => factoryForm.submit()} centered>
-        <Form form={factoryForm} layout="vertical" onFinish={async (v) => {
-           try {
-             if(editingFactory) await axiosClient.patch(`/factories/${editingFactory.id}`, v);
-             else await axiosClient.post("/factories", v);
-             message.success("Thành công"); fetchData(); setIsFactoryModalOpen(false);
-           } catch (e) { message.error("Lỗi!"); }
-        }} className="mt-4">
-          <Form.Item name="name" label="Tên nhà máy" rules={[{required: true}]}><Input /></Form.Item>
-          <Form.Item name="address" label="Địa chỉ"><Input /></Form.Item>
         </Form>
       </Modal>
     </div>

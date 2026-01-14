@@ -21,16 +21,18 @@ import useMediaQuery from '../hooks/useMediaQuery';
 
 const { Header, Sider, Content } = Layout;
 
-// --- MENU COMPONENT (Giữ nguyên phần này) ---
+// --- MENU COMPONENT ---
 interface SideMenuProps {
     collapsed: boolean;
     isMobile: boolean;
     locationPath: string;
+    openKeys: string[]; // Thêm props để quản lý mở menu cha
+    onOpenChange: (keys: string[]) => void;
     menuItems: MenuProps['items'];
     onMenuClick: MenuProps['onClick'];
 }
 
-const SideMenu: React.FC<SideMenuProps> = ({ collapsed, isMobile, locationPath, menuItems, onMenuClick }) => (
+const SideMenu: React.FC<SideMenuProps> = ({ collapsed, isMobile, locationPath, openKeys, onOpenChange, menuItems, onMenuClick }) => (
     <>
       <div className="h-16 flex items-center justify-center border-b border-gray-700/50 bg-[#001529]">
           <div className={`text-xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent transition-all duration-300 ${collapsed && !isMobile ? 'scale-0' : 'scale-100'}`}>
@@ -42,6 +44,8 @@ const SideMenu: React.FC<SideMenuProps> = ({ collapsed, isMobile, locationPath, 
           theme="dark" 
           mode="inline" 
           selectedKeys={[locationPath]} 
+          openKeys={openKeys} // Điều khiển mở menu cha
+          onOpenChange={onOpenChange}
           items={menuItems} 
           onClick={onMenuClick}
           className="bg-transparent mt-2 border-r-0" 
@@ -52,6 +56,10 @@ const SideMenu: React.FC<SideMenuProps> = ({ collapsed, isMobile, locationPath, 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // State quản lý việc mở các nhóm menu (System, Kho...)
+  const [openKeys, setOpenKeys] = useState<string[]>([]);
+
   const { user, logout } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
   const { hasPermission } = useHasPermission(); 
@@ -64,7 +72,24 @@ const MainLayout: React.FC = () => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Fetch Menu & Notification (Giữ nguyên code cũ của bạn)
+  // --- 1. LOGIC GIỮ MENU LUÔN MỞ KHI RELOAD ---
+  // Khi đường dẫn thay đổi, tự động xác định menu cha nào cần mở
+  useEffect(() => {
+    const pathname = location.pathname;
+    const keys = [];
+    if (pathname.startsWith('/posts')) keys.push('/posts'); // Key của submenu Tin tức
+    if (pathname.startsWith('/warehouse')) keys.push('grp-warehouse'); // Key của group Kho
+    if (pathname.startsWith('/admin') && pathname !== '/admin/users') keys.push('grp-system'); // Key của group Hệ thống
+    
+    // Chỉ set nếu chưa có (để tránh conflict khi user tự đóng mở)
+    if (keys.length > 0) setOpenKeys(prev => [...new Set([...prev, ...keys])]);
+  }, [location.pathname]);
+
+  const onOpenChange = (keys: string[]) => {
+    setOpenKeys(keys);
+  };
+
+  // --- 2. FETCH DATA ---
   useEffect(() => {
     const fetchMenus = async () => {
         try {
@@ -99,16 +124,16 @@ const MainLayout: React.FC = () => {
       }
   };
 
-  // --- 3. LOGIC PHÂN QUYỀN MENU (ĐÃ CẬP NHẬT THEO CSV) ---
+  // --- 3. CẤU HÌNH MENU ITEMS ---
   const menuItems = useMemo<MenuProps['items']>(() => {
     const items: MenuProps['items'] = [];
 
-    // 1. Dashboard
+    // Dashboard
     if (user?.roleId !== 'ROLE-USER') {
       items.push({ key: '/', icon: <DashboardOutlined />, label: 'Dashboard' });
     }
 
-    // 2. Tin tức
+    // Tin tức
     items.push({ 
         key: '/posts', icon: <ReadOutlined />, label: 'Tin tức & Thông báo',
         children: [
@@ -117,14 +142,12 @@ const MainLayout: React.FC = () => {
         ]
     });
     
-    // 3. Nhân sự (Theo CSV: USER_VIEW)
+    // Nhân sự
     if (hasPermission('USER_VIEW')) {
       items.push({ key: '/admin/users', icon: <TeamOutlined />, label: 'Nhân sự' });
     }
 
-    // 4. --- QUẢN LÝ KHO ---
-    // Điều kiện: Có quyền xem WMS hoặc quyền vật tư hoặc quyền duyệt
-    // Lưu ý: CSV không có ITEM_VIEW, ta dùng WMS_VIEW làm quyền cơ bản để xem kho/vật tư
+    // --- QUẢN LÝ KHO ---
     const canSeeWarehouse = hasPermission('WMS_VIEW') || hasPermission('WMS_APPROVE');
 
     if (canSeeWarehouse) {
@@ -132,20 +155,18 @@ const MainLayout: React.FC = () => {
       
       const warehouseChildren: MenuProps['items'] = [];
 
-      // Nhóm Master Data (Vật tư, Danh mục, NCC, Vị trí)
-      // Ai có quyền WMS_VIEW đều xem được danh sách (Admin, Manager, Leader, User, Kho)
       if (hasPermission('WMS_VIEW')) {
           warehouseChildren.push(
             { key: '/warehouse/items', icon: <BoxPlotOutlined />, label: 'Danh mục vật tư' },
             { key: '/warehouse/categories', icon: <TagsOutlined />, label: 'Nhóm vật tư' },
             { key: '/warehouse/suppliers', icon: <TeamOutlined />, label: 'Nhà cung cấp' }, 
-            { key: '/warehouse/locations', icon: <EnvironmentOutlined />, label: 'Vị trí lưu kho' },
+            // [CẬP NHẬT LABEL] Để phản ánh đúng việc module này quản lý cả Nhà máy
+            { key: '/warehouse/locations', icon: <EnvironmentOutlined />, label: 'Kho & Vị trí' },
             { key: '/warehouse/stock', icon: <DatabaseOutlined />, label: 'Tồn kho thực tế' },
             { key: '/warehouse/transactions', icon: <SwapOutlined />, label: 'Phiếu Nhập / Xuất' }
           );
       }
 
-      // Nhóm Phê duyệt (Theo CSV: WMS_APPROVE)
       if (hasPermission('WMS_APPROVE')) {
           warehouseChildren.push({ 
             key: '/warehouse/approvals', 
@@ -156,24 +177,22 @@ const MainLayout: React.FC = () => {
 
       if (warehouseChildren.length > 0) {
         items.push({
-            key: 'grp-warehouse', label: 'QUẢN LÝ KHO', type: 'group',
+            key: 'grp-warehouse', label: 'QUẢN LÝ KHO', type: 'group', // Key này dùng cho openKeys
             children: warehouseChildren
         });
       }
     }
 
-    // 5. --- HỆ THỐNG ---
+    // --- HỆ THỐNG ---
     const canSeeSystem = hasPermission('DEPT_VIEW') || hasPermission('ROLE_VIEW') || hasPermission('MENU_VIEW') || user?.roleId === 'ROLE-ADMIN';
     
     if (canSeeSystem) {
       items.push({ type: 'divider' });
       items.push({ 
-          key: 'grp-system', label: 'HỆ THỐNG', type: 'group',
+          key: 'grp-system', label: 'HỆ THỐNG', type: 'group', // Key này dùng cho openKeys
           children: [
               ...(hasPermission('DEPT_VIEW') ? [{ key: '/admin/departments', icon: <ApartmentOutlined />, label: 'Phòng ban' }] : []),
-              // Theo CSV, ROLE_VIEW dành cho Admin
               ...(hasPermission('ROLE_VIEW') ? [{ key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Phân quyền' }] : []),
-              // MENU_VIEW không có trong CSV snippet nhưng thường Admin có
               ...(user?.roleId === 'ROLE-ADMIN' ? [{ key: '/admin/menus', icon: <UnorderedListOutlined />, label: 'Quản lý Menu' }] : []),
           ]
       });
@@ -187,7 +206,7 @@ const MainLayout: React.FC = () => {
       if (isMobile) setMobileMenuOpen(false);
   };
 
-  // --- PHẦN RENDER UI (Giữ nguyên) ---
+  // --- UI COMPONENTS ---
   const notiContent = (
       <div className="w-80 max-h-96 overflow-y-auto">
           <List dataSource={notifications} renderItem={item => (
@@ -224,7 +243,15 @@ const MainLayout: React.FC = () => {
             style={{ background: isDarkMode ? '#111827' : '#001529' }}
             className="shadow-xl z-20"
           >
-            <SideMenu collapsed={collapsed} isMobile={false} locationPath={location.pathname} menuItems={menuItems} onMenuClick={handleMenuClick} />
+            <SideMenu 
+                collapsed={collapsed} 
+                isMobile={false} 
+                locationPath={location.pathname} 
+                openKeys={openKeys}
+                onOpenChange={onOpenChange}
+                menuItems={menuItems} 
+                onMenuClick={handleMenuClick} 
+            />
           </Sider>
       )}
 
@@ -232,7 +259,15 @@ const MainLayout: React.FC = () => {
         placement="left" onClose={() => setMobileMenuOpen(false)} open={mobileMenuOpen}
         styles={{ body: { padding: 0, background: '#001529' } }} width={260} closable={false}
       >
-         <SideMenu collapsed={false} isMobile={true} locationPath={location.pathname} menuItems={menuItems} onMenuClick={handleMenuClick} />
+         <SideMenu 
+            collapsed={false} 
+            isMobile={true} 
+            locationPath={location.pathname} 
+            openKeys={openKeys}
+            onOpenChange={onOpenChange}
+            menuItems={menuItems} 
+            onMenuClick={handleMenuClick} 
+        />
       </Drawer>
       
       <Layout>

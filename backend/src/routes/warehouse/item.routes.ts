@@ -13,6 +13,8 @@ router.post('/categories', hasPermission('ITEM_CREATE'), createCategory);
 router.patch('/categories/:id', hasPermission('ITEM_UPDATE'), updateCategory);
 router.delete('/categories/:id', hasPermission('ITEM_DELETE'), deleteCategory);
 
+router.get('/', searchItems);
+
 router.get('/search', searchItems); // Ai đăng nhập cũng được tìm kiếm để xem tồn kho
 router.post('/', hasPermission('ITEM_CREATE'), createItem);
 // Thêm route Sửa và Xóa
