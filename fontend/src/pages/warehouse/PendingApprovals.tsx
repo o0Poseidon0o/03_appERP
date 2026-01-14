@@ -123,7 +123,7 @@ const PendingApprovals: React.FC = () => {
         render: (_: any, r: any) => {
           // Hiển thị trạng thái Chờ xác nhận rõ ràng
           if (r.status === 'WAITING_CONFIRM') {
-             return <Tag icon={<SolutionOutlined />} color="processing">Chờ xác nhận</Tag>;
+              return <Tag icon={<SolutionOutlined />} color="processing">Chờ xác nhận</Tag>;
           }
 
           const approved = r.approvals.filter((a: any) => a.status === 'APPROVED').length;

@@ -76,7 +76,9 @@ const MainLayout: React.FC = () => {
   // Khi đường dẫn thay đổi, tự động xác định menu cha nào cần mở
   useEffect(() => {
     const pathname = location.pathname;
-    const keys = [];
+    // [FIX]: Khai báo rõ kiểu string[] để tránh lỗi TS7034
+    const keys: string[] = []; 
+    
     if (pathname.startsWith('/posts')) keys.push('/posts'); // Key của submenu Tin tức
     if (pathname.startsWith('/warehouse')) keys.push('grp-warehouse'); // Key của group Kho
     if (pathname.startsWith('/admin') && pathname !== '/admin/users') keys.push('grp-system'); // Key của group Hệ thống
