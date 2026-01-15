@@ -7,17 +7,12 @@ import { AppError } from '../../utils/AppError';
 // =============================================================================
 export const getAllWarehouses = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // --- [LOGIC MỚI]: KHÔNG LỌC THEO NHÀ MÁY NỮA ---
-    // Theo yêu cầu của bạn: Ai có quyền WMS_VIEW (đã qua middleware) thì xem được hết.
-    
+    // Logic mới: Không lọc, lấy tất cả
     const warehouses = await prisma.warehouse.findMany({
-      // Bỏ whereCondition lọc theo user.factoryId
       where: {}, 
-      
       orderBy: { 
-          name: 'asc' // Sắp xếp theo tên A-Z
+          name: 'asc' 
       },
-      
       include: { 
         factory: {
             select: { id: true, name: true }
@@ -37,11 +32,12 @@ export const getAllWarehouses = async (req: Request, res: Response, next: NextFu
 };
 
 // =============================================================================
-// 2. TẠO KHO MỚI
+// 2. TẠO KHO MỚI (UPDATE: THÊM TYPE VÀ DESCRIPTION)
 // =============================================================================
 export const createWarehouse = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, warehouseCode, factoryId } = req.body;
+    // --- [UPDATE]: Thêm type và description vào body ---
+    const { name, warehouseCode, factoryId, type, description } = req.body;
 
     if (!name || !warehouseCode || !factoryId) {
         return next(new AppError('Vui lòng nhập đủ: Tên, Mã kho và Nhà máy', 400));
@@ -53,7 +49,13 @@ export const createWarehouse = async (req: Request, res: Response, next: NextFun
     }
 
     const newWarehouse = await prisma.warehouse.create({
-      data: { name, warehouseCode, factoryId },
+      data: { 
+        name, 
+        warehouseCode, 
+        factoryId,
+        type: type || 'PHYSICAL', // Mặc định là PHYSICAL nếu không gửi
+        description 
+      },
     });
     
     res.status(201).json({ status: 'success', data: newWarehouse });
@@ -64,11 +66,12 @@ export const createWarehouse = async (req: Request, res: Response, next: NextFun
 };
 
 // =============================================================================
-// 3. THÊM VỊ TRÍ (BIN) VÀO KHO
+// 3. THÊM VỊ TRÍ (BIN) VÀO KHO (UPDATE: THÊM RACK, LEVEL, BIN)
 // =============================================================================
 export const addLocation = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { warehouseId, locationCode } = req.body;
+    // --- [UPDATE]: Thêm rack, level, bin ---
+    const { warehouseId, locationCode, rack, level, bin } = req.body;
     
     const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
     if (!warehouse) return next(new AppError('Kho không tồn tại', 404));
@@ -79,7 +82,10 @@ export const addLocation = async (req: Request, res: Response, next: NextFunctio
       data: { 
           warehouseId, 
           locationCode: locationCode.toUpperCase(), 
-          qrCode 
+          qrCode,
+          rack,   // Lưu Kệ
+          level,  // Lưu Tầng
+          bin     // Lưu Ngăn (nếu có)
       }
     });
 
@@ -93,16 +99,22 @@ export const addLocation = async (req: Request, res: Response, next: NextFunctio
 };
 
 // =============================================================================
-// 4. CẬP NHẬT THÔNG TIN KHO
+// 4. CẬP NHẬT THÔNG TIN KHO (UPDATE: CHO PHÉP SỬA TYPE VÀ DESC)
 // =============================================================================
 export const updateWarehouse = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { name, factoryId } = req.body;
+    // --- [UPDATE]: Nhận thêm type và description ---
+    const { name, factoryId, type, description } = req.body;
     
     const updated = await prisma.warehouse.update({
       where: { id },
-      data: { name, factoryId }
+      data: { 
+        name, 
+        factoryId,
+        type,
+        description
+      }
     });
     
     res.status(200).json({ status: 'success', data: updated });
@@ -112,7 +124,7 @@ export const updateWarehouse = async (req: Request, res: Response, next: NextFun
 };
 
 // =============================================================================
-// 5. XÓA KHO
+// 5. XÓA KHO (GIỮ NGUYÊN)
 // =============================================================================
 export const deleteWarehouse = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -131,7 +143,7 @@ export const deleteWarehouse = async (req: Request, res: Response, next: NextFun
 };
 
 // =============================================================================
-// 6. LẤY TẤT CẢ VỊ TRÍ
+// 6. LẤY TẤT CẢ VỊ TRÍ (UPDATE: TRẢ VỀ THÊM RACK, LEVEL...)
 // =============================================================================
 export const getAllLocations = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -148,7 +160,12 @@ export const getAllLocations = async (req: Request, res: Response, next: NextFun
       id: loc.id,
       locationCode: loc.locationCode,
       qrCode: loc.qrCode,
-      displayName: `${loc.warehouse.warehouseCode} - ${loc.locationCode}`
+      displayName: `${loc.warehouse.warehouseCode} - ${loc.locationCode}`,
+      // --- [UPDATE]: Trả về thông tin chi tiết ---
+      rack: loc.rack,
+      level: loc.level,
+      bin: loc.bin,
+      warehouseName: loc.warehouse.name
     }));
 
     res.status(200).json({ status: 'success', data: formattedData });
@@ -158,7 +175,7 @@ export const getAllLocations = async (req: Request, res: Response, next: NextFun
 };
 
 // =============================================================================
-// 7. XÓA VỊ TRÍ KHO
+// 7. XÓA VỊ TRÍ KHO (GIỮ NGUYÊN)
 // =============================================================================
 export const deleteLocation = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -179,12 +196,13 @@ export const deleteLocation = async (req: Request, res: Response, next: NextFunc
 };
 
 // =============================================================================
-// 8. CẬP NHẬT VỊ TRÍ (SỬA BIN)
+// 8. CẬP NHẬT VỊ TRÍ (UPDATE: SỬA CẢ RACK, LEVEL, BIN)
 // =============================================================================
 export const updateLocation = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { locationCode } = req.body;
+    // --- [UPDATE]: Nhận thêm rack, level, bin ---
+    const { locationCode, rack, level, bin } = req.body;
 
     const currentLocation = await prisma.location.findUnique({
         where: { id },
@@ -201,7 +219,10 @@ export const updateLocation = async (req: Request, res: Response, next: NextFunc
       where: { id },
       data: {
         locationCode: locationCode.toUpperCase(),
-        qrCode: newQrCode
+        qrCode: newQrCode,
+        rack,   // Cập nhật Kệ
+        level,  // Cập nhật Tầng
+        bin     // Cập nhật Ngăn
       }
     });
 

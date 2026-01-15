@@ -13,7 +13,7 @@ import QRScannerModal from './QRScannerModal';
 
 const { Text, Title } = Typography;
 
-// Định nghĩa Interface
+// --- INTERFACES ---
 interface Item {
   id: string;
   itemCode: string;
@@ -31,14 +31,21 @@ interface Supplier {
   name: string;
 }
 
+interface UsageCategory {
+  id: string;
+  code: string;
+  name: string;
+}
+
 interface TransactionDetail {
   key: string;
   itemId: string | null;
   quantity: number;
   fromLocationId: string | null;
   toLocationId: string | null;
-  currentStock?: number; // Tồn kho KHẢ DỤNG (Available) sau khi check
-  physicalStock?: number; // Tồn kho THỰC TẾ (Physical) để hiển thị tham khảo
+  usageCategoryId: string | null; // [MỚI] Loại hàng sử dụng
+  currentStock?: number; 
+  physicalStock?: number; 
   unit?: string;
 }
 
@@ -50,17 +57,14 @@ const StockTransactionCreate: React.FC = () => {
   // States
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]); // List full location (cho dropdown Đích)
+  const [locations, setLocations] = useState<Location[]>([]); 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [usageCategories, setUsageCategories] = useState<UsageCategory[]>([]); // [MỚI]
   const [selectedItems, setSelectedItems] = useState<TransactionDetail[]>([]);
   
-  // [MỚI]: State lưu danh sách Option Vị trí nguồn cho từng dòng (Key: rowKey, Value: Options[])
   const [rowLocationOptions, setRowLocationOptions] = useState<Record<string, any[]>>({});
-
-  // State cho QR Scanner
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-  // Lấy thông tin User
   const userStr = localStorage.getItem('user');
   const currentUser = userStr ? JSON.parse(userStr) : {};
   const isLeader = ['ROLE-LEADER', 'ROLE-MANAGER'].includes(currentUser.roleId);
@@ -71,15 +75,17 @@ const StockTransactionCreate: React.FC = () => {
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
-        const [resItems, resLocs, resSups] = await Promise.all([
+        const [resItems, resLocs, resSups, resUsage] = await Promise.all([
           axiosClient.get('/items'), 
           axiosClient.get('/warehouses/locations/all'), 
-          axiosClient.get('/suppliers')
+          axiosClient.get('/suppliers'),
+          axiosClient.get('/items/usage-categories') // [MỚI] Lấy danh sách loại sử dụng
         ]);
 
         setItems(resItems.data?.data || []);
         setLocations(resLocs.data?.data || []);
         setSuppliers(resSups.data?.data || []);
+        setUsageCategories(resUsage.data?.data || []);
 
       } catch (error) {
         console.error("Lỗi tải dữ liệu nguồn:", error);
@@ -97,25 +103,23 @@ const StockTransactionCreate: React.FC = () => {
   const addRow = () => {
     const newKey = `row_${Date.now()}`;
     setSelectedItems([...selectedItems, { 
-      key: newKey, itemId: null, quantity: 1, fromLocationId: null, toLocationId: null, currentStock: undefined 
+      key: newKey, itemId: null, quantity: 1, 
+      fromLocationId: null, toLocationId: null, usageCategoryId: null, // Default null
+      currentStock: undefined 
     }]);
   };
 
   const removeRow = (key: string) => {
     setSelectedItems(selectedItems.filter(item => item.key !== key));
-    // Clear options của dòng đã xóa để nhẹ bộ nhớ
     const newOptions = { ...rowLocationOptions };
     delete newOptions[key];
     setRowLocationOptions(newOptions);
   };
 
-  // ============================================================
-  // LOGIC TÍNH TOÁN TỒN KHO KHẢ DỤNG (Frontend Calculation)
-  // ============================================================
+  // LOGIC TÍNH TOÁN TỒN KHO KHẢ DỤNG
   const getAvailableStockForLine = (record: TransactionDetail) => {
     if (transactionType === 'IMPORT' || record.currentStock === undefined) return 999999;
 
-    // Tính tổng số lượng đang nhập ở CÁC DÒNG KHÁC (cùng Item + cùng Kho Nguồn)
     const usedInOtherLines = selectedItems.reduce((total, item) => {
         if (
             item.key !== record.key && 
@@ -131,44 +135,32 @@ const StockTransactionCreate: React.FC = () => {
     return available > 0 ? available : 0;
   };
 
-  // ============================================================
-  // [MỚI] HÀM LẤY DANH SÁCH VỊ TRÍ CÓ HÀNG (KHI CHỌN VẬT TƯ)
-  // ============================================================
+  // LẤY DANH SÁCH VỊ TRÍ CÓ HÀNG (KHI CHỌN VẬT TƯ CHO EXPORT/TRANSFER)
   const fetchStockLocationsForItem = async (rowKey: string, itemId: string) => {
     try {
         const selectedItem = items.find(i => i.id === itemId);
         if(!selectedItem) return;
 
-        // Gọi API lấy tồn kho thực tế của Item này (Dùng API getStockActual hoặc tương tự)
-        // Giả sử API là /stock-transactions/actual (như code cũ của bạn) hoặc /stocks
-        // Cần truyền itemCode vào search để lọc
         const res = await axiosClient.get('/stock-transactions/actual', {
             params: { search: selectedItem.itemCode, limit: 100 } 
         });
 
         const stocks = res.data.data || [];
         
-        // Map ra danh sách options cho Select
         const options = stocks.map((s: any) => ({
             value: s.locationId,
-            // Hiển thị: Mã Vị Trí (Tồn: 10)
             label: `${s.locationCode} (Tồn: ${s.quantity})`,
-            quantity: s.quantity // Lưu lại để tham khảo nếu cần
+            quantity: s.quantity 
         }));
 
-        setRowLocationOptions(prev => ({
-            ...prev,
-            [rowKey]: options
-        }));
+        setRowLocationOptions(prev => ({ ...prev, [rowKey]: options }));
 
     } catch (error) {
         console.error("Lỗi lấy vị trí tồn kho:", error);
     }
   };
 
-  // ============================================================
-  // CẬP NHẬT DÒNG & CHECK TỒN KHO KHẢ DỤNG (API)
-  // ============================================================
+  // CẬP NHẬT DÒNG
   const updateRow = async (key: string, field: keyof TransactionDetail, value: any) => {
     const newData = [...selectedItems];
     const index = newData.findIndex(item => item.key === key);
@@ -181,35 +173,28 @@ const StockTransactionCreate: React.FC = () => {
         const selectedItem = items.find(i => i.id === value);
         if (selectedItem) row.unit = selectedItem.unit;
         
-        // Reset các trường liên quan
         row.fromLocationId = null;
         row.currentStock = undefined;
         row.physicalStock = undefined;
 
-        // [MỚI] Tải danh sách kho có hàng ngay lập tức nếu là Xuất/Chuyển
         if (['EXPORT', 'TRANSFER'].includes(transactionType)) {
             fetchStockLocationsForItem(key, value);
         }
       }
 
-      // 2. KHI CHỌN VỊ TRÍ NGUỒN (Check lại Available chính xác từ Backend)
+      // 2. KHI CHỌN VỊ TRÍ NGUỒN (Check Stock)
       if (transactionType !== 'IMPORT') {
         const currentItemId = field === 'itemId' ? value : row.itemId;
         const currentLocationId = field === 'fromLocationId' ? value : row.fromLocationId;
 
         if (currentItemId && currentLocationId) {
-          // Chỉ gọi API check nếu thay đổi Item hoặc Location
           if (field === 'itemId' || field === 'fromLocationId') {
               try {
-                // Gọi API check stock (Backend đã trừ hàng pending)
                 const res = await axiosClient.get('/stock-transactions/check-stock', {
                   params: { itemId: currentItemId, locationId: currentLocationId }
                 });
-                
-                // Backend trả về: quantity (Available), physical (Thực tế), pending
                 row.currentStock = res.data.quantity; 
                 row.physicalStock = res.data.physical; 
-
               } catch (error) {
                 row.currentStock = 0;
               }
@@ -241,11 +226,11 @@ const StockTransactionCreate: React.FC = () => {
         quantity: 1,
         fromLocationId: null, 
         toLocationId: null,
+        usageCategoryId: null,
         unit: foundItem.unit,
         currentStock: undefined
       };
       
-      // Nếu là Xuất, tự động load location options cho dòng mới này
       if (['EXPORT', 'TRANSFER'].includes(transactionType)) {
           fetchStockLocationsForItem(newKey, foundItem.id);
       }
@@ -265,6 +250,7 @@ const StockTransactionCreate: React.FC = () => {
       if (!item.itemId) return message.error('Vui lòng chọn vật tư cho tất cả các dòng');
       if (item.quantity <= 0) return message.error('Số lượng phải lớn hơn 0');
       
+      // Validate Location
       if (['EXPORT', 'TRANSFER'].includes(transactionType) && !item.fromLocationId) {
         return message.error('Vui lòng chọn Vị trí xuất hàng (Nguồn)');
       }
@@ -272,6 +258,7 @@ const StockTransactionCreate: React.FC = () => {
         return message.error('Vui lòng chọn Vị trí nhập hàng (Đích)');
       }
       
+      // Validate Stock
       const available = getAvailableStockForLine(item);
       if (transactionType !== 'IMPORT' && item.quantity > available) {
          return message.error(`Vật tư dòng ${selectedItems.indexOf(item) + 1} vượt quá tồn kho khả dụng (Còn lại: ${available})!`);
@@ -287,7 +274,8 @@ const StockTransactionCreate: React.FC = () => {
           itemId: item.itemId!, 
           quantity: item.quantity,
           fromLocationId: item.fromLocationId || null,
-          toLocationId: item.toLocationId || null
+          toLocationId: item.toLocationId || null,
+          usageCategoryId: item.usageCategoryId || null // Gửi loại hàng sử dụng lên
         }))
       };
       
@@ -333,6 +321,7 @@ const StockTransactionCreate: React.FC = () => {
                 options={items.map(i => ({ value: i.id, label: `[${i.itemCode}] ${i.itemName}` }))}
                 filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
             />
+            {/* Hiển thị tồn kho khả dụng */}
             {transactionType !== 'IMPORT' && record.itemId && record.fromLocationId && (
                 <div style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between' }}>
                    {record.currentStock !== undefined ? (
@@ -350,9 +339,27 @@ const StockTransactionCreate: React.FC = () => {
         </Space>
       )}
     },
+    // [MỚI] Cột Loại hàng sử dụng
+    {
+        title: 'Mục đích / Loại hàng',
+        dataIndex: 'usageCategoryId',
+        width: '15%',
+        render: (_: any, record: TransactionDetail) => (
+            <Select
+                style={{ width: '100%' }}
+                placeholder="VD: 11020..."
+                value={record.usageCategoryId}
+                onChange={(v) => updateRow(record.key, 'usageCategoryId', v)}
+                options={usageCategories.map(u => ({ value: u.id, label: `${u.code} - ${u.name}` }))}
+                showSearch
+                optionFilterProp="label"
+            />
+        )
+    },
     {
       title: 'Kho Nguồn (Xuất)',
       dataIndex: 'fromLocationId',
+      // Ẩn nếu là IMPORT
       className: transactionType === 'IMPORT' ? 'hidden-col' : '', 
       render: (_: any, record: TransactionDetail) => (
         <Select
@@ -361,11 +368,8 @@ const StockTransactionCreate: React.FC = () => {
             disabled={transactionType === 'IMPORT' || !record.itemId}
             value={record.fromLocationId}
             onChange={(v) => updateRow(record.key, 'fromLocationId', v)}
-            // [MỚI]: Sử dụng danh sách vị trí riêng của từng dòng
             options={rowLocationOptions[record.key] || []}
-            // Fallback: Nếu không có options (do lỗi mạng hoặc chưa load), hiển thị list full location
             onDropdownVisibleChange={(open) => {
-                // Nếu mở dropdown mà chưa có options và đã chọn item -> thử load lại
                 if (open && (!rowLocationOptions[record.key] || rowLocationOptions[record.key].length === 0) && record.itemId) {
                     fetchStockLocationsForItem(record.key, record.itemId);
                 }
@@ -378,6 +382,7 @@ const StockTransactionCreate: React.FC = () => {
     {
         title: 'Kho Đích (Nhập)',
         dataIndex: 'toLocationId',
+        // Ẩn nếu là EXPORT
         className: transactionType === 'EXPORT' ? 'hidden-col' : '',
         render: (_: any, record: TransactionDetail) => (
           <Select
@@ -387,13 +392,15 @@ const StockTransactionCreate: React.FC = () => {
               value={record.toLocationId}
               onChange={(v) => updateRow(record.key, 'toLocationId', v)}
               options={locations.map(l => ({ value: l.id, label: l.locationCode }))}
+              showSearch
+              optionFilterProp="label"
           />
         )
       },
     {
       title: 'Số lượng',
       dataIndex: 'quantity',
-      width: '15%',
+      width: '12%',
       render: (_: any, record: TransactionDetail) => {
         const available = getAvailableStockForLine(record);
         const maxVal = transactionType !== 'IMPORT' ? available : undefined;
@@ -482,7 +489,7 @@ const StockTransactionCreate: React.FC = () => {
                     <Form.Item name="isEmergency" label={
                         <Space>
                             Mức độ ưu tiên
-                            <Tooltip title="Tính năng đang được phát triển. Vui lòng liên hệ Admin để biết thêm chi tiết.">
+                            <Tooltip title="Tính năng đang được phát triển.">
                                 <QuestionCircleOutlined style={{ color: '#faad14', cursor: 'help' }} />
                             </Tooltip>
                         </Space>

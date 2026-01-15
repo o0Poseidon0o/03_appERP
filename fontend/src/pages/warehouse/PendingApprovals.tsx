@@ -121,7 +121,6 @@ const PendingApprovals: React.FC = () => {
     { 
         title: 'Trạng thái / Tiến độ', key: 'progress',
         render: (_: any, r: any) => {
-          // Hiển thị trạng thái Chờ xác nhận rõ ràng
           if (r.status === 'WAITING_CONFIRM') {
               return <Tag icon={<SolutionOutlined />} color="processing">Chờ xác nhận</Tag>;
           }
@@ -150,7 +149,6 @@ const PendingApprovals: React.FC = () => {
         <Button 
           type="primary" 
           size="small" 
-          // Đổi màu nút nếu là người tạo đang cần xác nhận
           className={r.isRequesterStep ? "bg-green-600 hover:bg-green-500" : ""}
           icon={r.isRequesterStep ? <CheckCircleOutlined /> : <EyeOutlined />} 
           onClick={() => { setSelectedTicket(r); setIsModalOpen(true); }}
@@ -284,7 +282,7 @@ const PendingApprovals: React.FC = () => {
         }
         open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
-        width={850}
+        width={900} // Tăng chiều rộng để hiển thị bảng chi tiết rõ hơn
         confirmLoading={submitting}
         footer={[
           <Button key="close" onClick={() => setIsModalOpen(false)}>Đóng</Button>,
@@ -323,15 +321,40 @@ const PendingApprovals: React.FC = () => {
                 )}
             </div>
 
-            {/* FIX: Sử dụng 'as any' để tránh lỗi kiểm tra kiểu nghiêm ngặt của TS với Divider orientation */}
             <Divider orientation={"left" as any}><Text strong>Chi tiết vật tư</Text></Divider>
             
             <Table 
               dataSource={selectedTicket.details} 
               pagination={false} size="small" bordered rowKey="id"
               columns={[
-                { title: 'Vật tư', render: (_: any, r: any) => <div><Text strong>{r.item?.itemName}</Text><br/><Text type="secondary" style={{ fontSize: '11px' }}>{r.item?.itemCode}</Text></div>},
-                { title: 'Số lượng', dataIndex: 'quantity', align: 'center', render: (v: any, r: any) => <b>{v} {r.item?.unit}</b> },
+                { 
+                    title: 'Vật tư', 
+                    render: (_: any, r: any) => (
+                        <div>
+                            <Text strong>{r.item?.itemName}</Text>
+                            <br/>
+                            <Text type="secondary" style={{ fontSize: '11px' }}>{r.item?.itemCode}</Text>
+                        </div>
+                    )
+                },
+                // [MỚI] Hiển thị Loại hàng sử dụng
+                {
+                    title: 'Mục đích / Loại hàng',
+                    render: (_: any, r: any) => (
+                        r.usageCategory ? (
+                            <Tag color="cyan" style={{ whiteSpace: 'normal', fontSize: '11px' }}>
+                                <b>{r.usageCategory.code}</b>: {r.usageCategory.name}
+                            </Tag>
+                        ) : <Text type="secondary" italic>--</Text>
+                    )
+                },
+                { 
+                    title: 'Số lượng', 
+                    dataIndex: 'quantity', 
+                    align: 'center', 
+                    width: 100,
+                    render: (v: any, r: any) => <b>{v} {r.item?.unit}</b> 
+                },
                 { 
                     title: 'Lộ trình kho', 
                     render: (_: any, row: any) => {

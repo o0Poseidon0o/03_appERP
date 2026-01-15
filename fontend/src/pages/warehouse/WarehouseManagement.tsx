@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Table, Button, Input, Tag, Space, 
   Modal, Form, Select, Popconfirm, 
-  App as AntdApp, Badge, Typography, Tabs
+  App as AntdApp, Badge, Typography, Tabs, Col, Row, Empty, Tooltip
 } from 'antd';
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
   DeleteOutlined, ReloadOutlined, DatabaseOutlined, 
-  PrinterOutlined, EnvironmentOutlined, BankOutlined, ApartmentOutlined
+  PrinterOutlined, EnvironmentOutlined, BankOutlined, ApartmentOutlined,
+  QrcodeOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { QRCodeSVG } from 'qrcode.react'; 
@@ -15,14 +16,21 @@ import { useReactToPrint } from 'react-to-print';
 import axiosClient from '../../api/axiosClient';
 import { useHasPermission } from '../../hooks/useHasPermission';
 
-const { Text, Title } = Typography;
+// Import Modal Quét QR (Đảm bảo file này nằm cùng thư mục)
+import QRScannerModal from './QRScannerModal'; 
+
+const { Text, Title, Paragraph } = Typography;
+const { TextArea } = Input;
 
 // --- INTERFACES ---
 interface WarehouseLocation {
   id: string;
   locationCode: string;
   qrCode: string;
-  warehouseId?: string; 
+  warehouseId?: string;
+  rack?: string;
+  level?: string;
+  bin?: string;
 }
 
 interface Warehouse {
@@ -31,6 +39,8 @@ interface Warehouse {
   warehouseCode: string;
   factoryId: string;
   factory?: { name: string };
+  type?: string; 
+  description?: string;
   locations?: WarehouseLocation[];
   _count?: { locations: number };
 }
@@ -55,27 +65,27 @@ const WarehouseManagement: React.FC = () => {
   const canUpdateFactory = hasPermission('FACTORY_UPDATE');
   const canDeleteFactory = hasPermission('FACTORY_DELETE');
 
-  // States
+  // States Dữ liệu
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [factories, setFactories] = useState<Factory[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
 
-  // Modals
+  // States Modal
   const [isWhModalOpen, setIsWhModalOpen] = useState(false);
   const [isLocModalOpen, setIsLocModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isFactoryModalOpen, setIsFactoryModalOpen] = useState(false);
-  
-  // Selection & Editing States
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+
+  // States Selection
   const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null);
   const [editingFactory, setEditingFactory] = useState<Factory | null>(null);
   const [selectedWarehouseForLoc, setSelectedWarehouseForLoc] = useState<Warehouse | null>(null);
   const [editingLocation, setEditingLocation] = useState<WarehouseLocation | null>(null); 
   const [selectedLocForPrint, setSelectedLocForPrint] = useState<WarehouseLocation | null>(null);
   
-  // State quản lý các dòng đang mở rộng (Expanded Rows)
-  // Để khi thêm Bin xong, bảng không bị đóng lại
+  // State mở rộng dòng (Accordion)
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
 
   // Forms
@@ -89,6 +99,26 @@ const WarehouseManagement: React.FC = () => {
     documentTitle: `BinLabel_${selectedLocForPrint?.locationCode}`,
   });
 
+  // --- TỰ ĐỘNG SINH MÃ LOCATION (CHỈ KHI TẠO MỚI) ---
+  const rackValue = Form.useWatch('rack', locForm);
+  const levelValue = Form.useWatch('level', locForm);
+  const binValue = Form.useWatch('bin', locForm);
+
+  useEffect(() => {
+    // Chỉ tự động sinh mã khi đang mở modal VÀ không phải chế độ sửa
+    if (isLocModalOpen && !editingLocation) {
+      const parts = [];
+      if (rackValue) parts.push(rackValue);
+      if (levelValue) parts.push(levelValue);
+      if (binValue) parts.push(binValue);
+      
+      const generatedCode = parts.join('-').toUpperCase();
+      if (generatedCode) {
+         locForm.setFieldsValue({ locationCode: generatedCode });
+      }
+    }
+  }, [rackValue, levelValue, binValue, isLocModalOpen, editingLocation, locForm]);
+
   // --- FETCH DATA ---
   const fetchData = async () => {
     setLoading(true);
@@ -100,7 +130,6 @@ const WarehouseManagement: React.FC = () => {
         setWarehouses(whRes.data?.data || []);
         setFactories(factoryRes.data?.data || []);
     } catch (error) {
-        // console.error(error);
         message.warning("Có lỗi khi tải dữ liệu");
     } finally {
         setLoading(false);
@@ -109,14 +138,44 @@ const WarehouseManagement: React.FC = () => {
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- HANDLERS KHO ---
+  // --- [OPTIMIZED] XỬ LÝ KHI QUÉT QR THÀNH CÔNG ---
+  const handleScanSuccess = (decodedText: string) => {
+    const text = decodedText.trim().toUpperCase();
+    setSearchText(text); // 1. Điền vào ô tìm kiếm
+
+    // 2. Tìm xem mã này nằm ở kho nào
+    const targetWarehouse = warehouses.find(w => 
+        w.warehouseCode === text || 
+        w.locations?.some(l => l.qrCode === text || l.locationCode === text)
+    );
+
+    if (targetWarehouse) {
+        // 3. Tự động mở rộng dòng kho đó ra
+        setExpandedRowKeys(prev => {
+            const newKeys = new Set([...prev, targetWarehouse.id]);
+            return Array.from(newKeys);
+        });
+        message.success(`Đã tìm thấy: ${text}`);
+
+        // 4. [NEW] Scroll tới vị trí tìm thấy (UX improvement)
+        setTimeout(() => {
+            const element = document.getElementById(`row-${targetWarehouse.id}`);
+            if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+    } else {
+        message.warning(`Không tìm thấy mã: ${text} trong hệ thống`);
+    }
+  };
+
+  // --- HANDLERS CRUD ---
   const handleWhSubmit = async (values: any) => {
     try {
+      const payload = { ...values, warehouseCode: values.warehouseCode.toUpperCase() };
       if (editingWarehouse) {
-        await axiosClient.patch(`/warehouses/${editingWarehouse.id}`, values);
+        await axiosClient.patch(`/warehouses/${editingWarehouse.id}`, payload);
         message.success('Đã cập nhật kho');
       } else {
-        await axiosClient.post('/warehouses', values);
+        await axiosClient.post('/warehouses', payload);
         message.success('Tạo kho thành công');
       }
       setIsWhModalOpen(false);
@@ -126,33 +185,35 @@ const WarehouseManagement: React.FC = () => {
     }
   };
 
-  // --- HANDLERS VỊ TRÍ (BIN) ---
   const handleLocSubmit = async (values: any) => {
     try {
+      const payload = {
+          ...values,
+          locationCode: values.locationCode.toUpperCase(),
+          rack: values.rack?.toUpperCase(),
+          level: values.level?.toUpperCase(),
+          bin: values.bin?.toUpperCase()
+      };
+
       if (editingLocation) {
-        // SỬA BIN
-        await axiosClient.patch(`/warehouses/location/${editingLocation.id}`, {
-            locationCode: values.locationCode
-        });
-        message.success(`Đã cập nhật vị trí thành: ${values.locationCode}`);
+        await axiosClient.patch(`/warehouses/location/${editingLocation.id}`, payload);
+        message.success(`Đã cập nhật vị trí`);
       } else {
-        // THÊM BIN
         await axiosClient.post('/warehouses/location', { 
-            ...values, 
+            ...payload, 
             warehouseId: selectedWarehouseForLoc?.id 
         });
-        message.success(`Đã thêm vị trí ${values.locationCode}`);
+        message.success(`Đã thêm vị trí`);
         
-        // Mở rộng dòng kho vừa thêm để user thấy ngay kết quả
+        // Mở kho ngay khi thêm mới
         if (selectedWarehouseForLoc && !expandedRowKeys.includes(selectedWarehouseForLoc.id)) {
             setExpandedRowKeys(prev => [...prev, selectedWarehouseForLoc.id]);
         }
       }
-      
       setIsLocModalOpen(false);
       setEditingLocation(null); 
       locForm.resetFields();
-      fetchData(); 
+      await fetchData(); 
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Không thể thao tác vị trí');
     }
@@ -168,7 +229,6 @@ const WarehouseManagement: React.FC = () => {
       }
   };
 
-  // --- HANDLERS NHÀ MÁY ---
   const handleFactorySubmit = async (values: any) => {
     try {
       if (editingFactory) {
@@ -195,97 +255,150 @@ const WarehouseManagement: React.FC = () => {
     }
   };
 
-  // --- EXPANDED ROW RENDER (HIỂN THỊ DANH SÁCH BIN) ---
+  // --- RENDER CHI TIẾT VÀ HIGHLIGHT ---
   const expandedRowRender = (record: Warehouse) => {
-    // Logic: Lấy dữ liệu mới nhất từ state 'warehouses' thay vì dùng record cũ
-    // Điều này giúp bảng con tự update khi thêm Bin mới
     const currentWarehouse = warehouses.find(w => w.id === record.id) || record;
 
-    const locColumns: ColumnsType<WarehouseLocation> = [
-      { 
-        title: 'Mã vị trí (Bin)', dataIndex: 'locationCode', 
-        render: (text) => <Space><EnvironmentOutlined className="text-amber-500" /><b className="text-indigo-600 font-mono">{text}</b></Space> 
-      },
-      { title: 'QR Data', dataIndex: 'qrCode', render: (text) => <Text type="secondary" copyable>{text}</Text> },
-      {
-        title: 'Thao tác', align: 'right',
-        render: (_, loc) => (
-            <Space>
-                <Button size="small" icon={<PrinterOutlined />} onClick={() => { setSelectedLocForPrint(loc); setIsPrintModalOpen(true); }}>In</Button>
-                
-                {/* Nút Sửa Bin */}
-                {canUpdate && (
-                    <Button 
-                        size="small" 
-                        icon={<EditOutlined className="text-blue-600" />} 
-                        onClick={() => { 
-                            setEditingLocation(loc); 
-                            setSelectedWarehouseForLoc(record);
-                            locForm.setFieldsValue({ locationCode: loc.locationCode }); 
-                            setIsLocModalOpen(true); 
-                        }} 
-                    />
-                )}
-                
-                {/* Nút Xóa Bin */}
-                {canDelete && (
-                    <Popconfirm title="Xóa vị trí này?" onConfirm={() => handleDeleteLocation(loc.id)}>
-                        <Button size="small" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>
-                )}
-            </Space>
-        )
-      }
-    ];
+    if (!currentWarehouse.locations || currentWarehouse.locations.length === 0) {
+        return <Empty description="Chưa có vị trí nào được thiết lập" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+    }
 
     return (
-        <Table 
-            columns={locColumns} 
-            dataSource={currentWarehouse.locations} 
-            pagination={false} 
-            rowKey="id" 
-            size="small" 
-            locale={{ emptyText: "Chưa có vị trí nào trong kho này" }}
-        />
+      <div className="p-4 bg-slate-50 border-t border-slate-200 rounded-b-lg">
+        <div className="flex items-center mb-3">
+            <EnvironmentOutlined className="text-indigo-600 mr-2" />
+            <Text strong className="text-indigo-800">Danh sách vị trí trong {record.name}</Text>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {currentWarehouse.locations.map(loc => {
+                const isHighlight = searchText && (
+                    loc.qrCode.toLowerCase() === searchText.toLowerCase().trim() || 
+                    loc.locationCode.toLowerCase() === searchText.toLowerCase().trim()
+                );
+
+                const humanAddress = (
+                    <span className="text-orange-700 font-semibold">
+                        {record.factory?.name}:{record.name}
+                        {loc.rack ? ` - Kệ ${loc.rack}` : ''}
+                        {loc.level ? ` - Tầng ${loc.level}` : ''}
+                        {loc.bin ? ` - Hộc ${loc.bin}` : ''}
+                    </span>
+                );
+
+                const systemCode = `${record.warehouseCode}-${loc.locationCode}`;
+
+                return (
+                    <div 
+                        key={loc.id} 
+                        // Scroll target
+                        id={`loc-${loc.id}`}
+                        className={`p-3 rounded-lg border shadow-sm flex justify-between group transition-all duration-500
+                            ${isHighlight 
+                                ? 'bg-yellow-100 border-yellow-500 ring-2 ring-yellow-400 shadow-lg scale-105 z-10' 
+                                : 'bg-white border-slate-200 hover:shadow-md'
+                            }`}
+                    >
+                        {/* THÔNG TIN */}
+                        <div className="flex-1 pr-2 flex flex-col justify-center">
+                            <div className="mb-1 text-sm border-b border-dashed border-slate-200 pb-1">
+                                {humanAddress}
+                            </div>
+                            <div className="flex items-center mt-1">
+                                <Tag color={isHighlight ? "red" : "blue"} className="font-mono m-0 font-bold text-sm">
+                                    {systemCode}
+                                </Tag>
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1 italic">
+                                *Mã dùng để quét Scanner
+                            </div>
+                        </div>
+
+                        {/* QR & BUTTONS */}
+                        <div className="flex flex-col items-center justify-between border-l border-slate-100 pl-3">
+                             <div 
+                                className="bg-white p-1 border rounded cursor-pointer hover:border-indigo-500" 
+                                onClick={() => { setSelectedLocForPrint(loc); setIsPrintModalOpen(true); }}
+                                title="Bấm để in tem"
+                             >
+                                <QRCodeSVG value={loc.qrCode} size={48} />
+                             </div>
+                             
+                             <Space size={2} className="mt-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                {canUpdate && (
+                                    <Button 
+                                        size="small" type="text" 
+                                        icon={<EditOutlined className="text-blue-600" />} 
+                                        onClick={() => { 
+                                            setEditingLocation(loc); 
+                                            setSelectedWarehouseForLoc(record);
+                                            locForm.setFieldsValue({
+                                                locationCode: loc.locationCode,
+                                                rack: loc.rack,
+                                                level: loc.level,
+                                                bin: loc.bin
+                                            });
+                                            setIsLocModalOpen(true); 
+                                        }} 
+                                    />
+                                )}
+                                {canDelete && (
+                                    <Popconfirm title="Xóa vị trí?" onConfirm={() => handleDeleteLocation(loc.id)}>
+                                        <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                                    </Popconfirm>
+                                )}
+                             </Space>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+      </div>
     );
   };
 
+  // --- COLUMNS ---
   const warehouseColumns: ColumnsType<Warehouse> = [
     { 
-      title: 'Kho / Nhà máy', key: 'info',
+      title: 'Kho / Nhà máy', key: 'info', width: 350,
       render: (_, record) => (
-        <div>
-          <Tag color="blue" className="mb-1 font-mono uppercase">{record.warehouseCode}</Tag>
-          <br /><Text strong>{record.name}</Text>
-          <div className="text-xs text-slate-400">{record.factory?.name || '---'}</div>
+        <div id={`row-${record.id}`}> {/* Đánh dấu ID để scroll tới */}
+          <Space className="mb-1">
+             <Tag color="blue" className="font-mono uppercase font-bold">{record.warehouseCode}</Tag>
+             {record.type === 'VIRTUAL' && <Tag color="purple">KHO ẢO</Tag>}
+             {record.type === 'SHARED' && <Tag color="orange">KHO CHUNG</Tag>}
+          </Space>
+          <br /><Text strong style={{ fontSize: 16 }}>{record.name}</Text>
+          <div className="text-xs text-slate-500 flex items-center mt-1">
+             <BankOutlined className="mr-1"/> {record.factory?.name || '---'}
+          </div>
+          {record.description && (
+             <div className="text-xs text-gray-500 italic mt-1 border-l-2 border-gray-300 pl-2 bg-gray-50 p-1 rounded-r">
+                <Paragraph ellipsis={{ rows: 2, expandable: true, symbol: 'xem thêm' }} className="m-0 text-gray-500">{record.description}</Paragraph>
+             </div>
+          )}
         </div>
       )
     },
     { 
-      title: 'Vị trí (Bin)', align: 'center',
-      render: (_, record) => <Badge count={record._count?.locations || 0} showZero color={record._count?.locations ? '#6366f1' : '#d1d5db'} />
+      title: 'Số lượng Vị trí', align: 'center',
+      render: (_, record) => (
+          <Badge count={record._count?.locations || 0} showZero overflowCount={999} style={{ backgroundColor: record._count?.locations ? '#52c41a' : '#d9d9d9' }} />
+      )
     },
     {
       title: 'Thao tác', align: 'right',
       render: (_, record) => (
         <Space size="small">
           {canCreate && (
-            <Button 
-                size="small" 
-                icon={<PlusOutlined />} 
-                onClick={() => { 
-                    setSelectedWarehouseForLoc(record); 
-                    setEditingLocation(null); 
-                    locForm.resetFields(); 
-                    setIsLocModalOpen(true); 
-                }}
-            >
-                Thêm Bin
-            </Button>
+            <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => { 
+                  setSelectedWarehouseForLoc(record); 
+                  setEditingLocation(null); 
+                  locForm.resetFields(); 
+                  setIsLocModalOpen(true); 
+                }}>Thêm Bin</Button>
           )}
-          
           {canUpdate && <Button size="small" icon={<EditOutlined />} onClick={() => { setEditingWarehouse(record); form.setFieldsValue(record); setIsWhModalOpen(true); }} />}
-          
           {canDelete && <Popconfirm title="Xóa kho?" onConfirm={() => axiosClient.delete(`/warehouses/${record.id}`).then(fetchData)}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm>}
         </Space>
       )
@@ -306,19 +419,38 @@ const WarehouseManagement: React.FC = () => {
     }
   ];
 
+  // --- FILTERED DATA (DEBOUNCED OPTIMIZATION) ---
+  const filteredWarehouses = useMemo(() => {
+    const txt = searchText.toLowerCase().trim();
+    if (!txt) return warehouses;
+
+    return warehouses.filter(w => {
+        // 1. Tìm theo tên/mã kho
+        const matchWarehouse = w.name.toLowerCase().includes(txt) || w.warehouseCode.toLowerCase().includes(txt);
+        
+        // 2. Tìm theo vị trí con
+        const matchLocation = w.locations?.some(l => 
+            l.locationCode.toLowerCase().includes(txt) || 
+            l.qrCode.toLowerCase().includes(txt)
+        );
+
+        return matchWarehouse || matchLocation;
+    });
+  }, [searchText, warehouses]);
+
   return (
     <div className="p-6 bg-slate-50 min-h-screen">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <Title level={3} className="m-0"><DatabaseOutlined className="text-indigo-600 mr-2" />Hạ tầng Kho bãi</Title>
-          <Text type="secondary">Quản lý Nhà máy, Kho và Vị trí lưu trữ</Text>
+          <Title level={3} className="m-0 text-indigo-700"><DatabaseOutlined className="mr-2" />Hạ tầng Kho bãi</Title>
+          <Text type="secondary">Quản lý Nhà máy, Kho và Vị trí lưu trữ vật tư</Text>
         </div>
         <Space>
            <Button icon={<ReloadOutlined />} onClick={fetchData}>Làm mới</Button>
         </Space>
       </div>
 
-      <div className="bg-white p-4 rounded-xl shadow-sm">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
@@ -330,21 +462,39 @@ const WarehouseManagement: React.FC = () => {
         items={[
             {
                 key: 'warehouses',
-                label: <span><ApartmentOutlined /> Danh sách Kho & Vị trí</span>,
+                label: <span className="text-base"><ApartmentOutlined /> Danh sách Kho & Vị trí</span>,
                 children: (
                     <>
-                        <Input prefix={<SearchOutlined />} placeholder="Tìm kho..." className="mb-4 max-w-md" onChange={e => setSearchText(e.target.value)} />
+                        {/* INPUT TÌM KIẾM TÍCH HỢP QUÉT QR */}
+                        <Input 
+                            prefix={<SearchOutlined />} 
+                            placeholder="Nhập tên/mã kho hoặc quét QR..." 
+                            className="mb-4 max-w-md" 
+                            value={searchText} 
+                            onChange={e => setSearchText(e.target.value)} 
+                            allowClear 
+                            size="large"
+                            suffix={
+                                <Tooltip title="Quét mã QR">
+                                    <QrcodeOutlined 
+                                        className="text-xl text-gray-400 hover:text-indigo-600 cursor-pointer transition-colors"
+                                        onClick={() => setIsScannerOpen(true)}
+                                    />
+                                </Tooltip>
+                            }
+                        />
+
+                        {/* TABLE KHO */}
                         <Table 
                             columns={warehouseColumns} 
-                            dataSource={warehouses.filter(w => w.name.toLowerCase().includes(searchText.toLowerCase()))} 
+                            dataSource={filteredWarehouses} 
                             rowKey="id" 
                             loading={loading} 
-                            // Config mở rộng bảng
                             expandable={{ 
                                 expandedRowRender, 
-                                expandedRowKeys: expandedRowKeys,
-                                onExpand: (expanded, record) => {
-                                    setExpandedRowKeys(keys => expanded ? [...keys, record.id] : keys.filter(k => k !== record.id));
+                                expandedRowKeys: expandedRowKeys, 
+                                onExpand: (expanded, record) => { 
+                                    setExpandedRowKeys(keys => expanded ? [...keys, record.id] : keys.filter(k => k !== record.id)); 
                                 }
                             }} 
                         />
@@ -353,63 +503,92 @@ const WarehouseManagement: React.FC = () => {
             },
             {
                 key: 'factories',
-                label: <span><BankOutlined /> Danh sách Nhà máy</span>,
-                children: (
-                    <Table columns={factoryColumns} dataSource={factories} rowKey="id" loading={loading} pagination={false} />
-                )
+                label: <span className="text-base"><BankOutlined /> Danh sách Nhà máy</span>,
+                children: <Table columns={factoryColumns} dataSource={factories} rowKey="id" loading={loading} pagination={false} />
             }
         ]}
       />
       </div>
 
-      {/* MODAL KHO */}
-      <Modal title={editingWarehouse ? "Sửa Kho" : "Tạo Kho"} open={isWhModalOpen} onOk={() => form.submit()} onCancel={() => setIsWhModalOpen(false)}>
-        <Form form={form} layout="vertical" onFinish={handleWhSubmit}>
-          <Form.Item name="warehouseCode" label="Mã Kho" rules={[{ required: true }]}><Input disabled={!!editingWarehouse} /></Form.Item>
-          <Form.Item name="name" label="Tên Kho" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="factoryId" label="Nhà máy" rules={[{ required: true }]}>
-            <Select options={factories.map(f => ({ label: f.name, value: f.id }))} />
+      {/* --- CÁC MODAL --- */}
+      
+      {/* 1. Modal Kho */}
+      <Modal title={editingWarehouse ? "Cập nhật Kho" : "Tạo Kho Mới"} open={isWhModalOpen} onOk={() => form.submit()} onCancel={() => setIsWhModalOpen(false)}>
+        <Form form={form} layout="vertical" onFinish={handleWhSubmit} initialValues={{ type: 'PHYSICAL' }}>
+          <Form.Item name="warehouseCode" label="Mã Kho (Viết tắt)" rules={[{ required: true }]} help="Ví dụ: X1-WH01">
+             <Input disabled={!!editingWarehouse} placeholder="Nhập mã kho..." onInput={(e) => e.currentTarget.value = e.currentTarget.value.toUpperCase()} />
           </Form.Item>
+          <Form.Item name="name" label="Tên Kho đầy đủ" rules={[{ required: true }]}><Input placeholder="Ví dụ: Kho Vật Tư 1" /></Form.Item>
+          <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="factoryId" label="Thuộc Nhà máy" rules={[{ required: true }]}>
+                    <Select placeholder="Chọn nhà máy" options={factories.map(f => ({ label: f.name, value: f.id }))} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="type" label="Loại hình kho">
+                    <Select options={[{ value: 'PHYSICAL', label: 'Kho Vật lý (Thực)' }, { value: 'VIRTUAL', label: 'Kho Ảo / Tạm' }, { value: 'SHARED', label: 'Kho Dùng chung' }]} />
+                </Form.Item>
+              </Col>
+          </Row>
+          <Form.Item name="description" label="Ghi chú thêm"><TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
 
-      {/* MODAL VỊ TRÍ (BIN) */}
-      <Modal 
-        title={editingLocation ? "Cập nhật Vị trí" : "Thêm Vị trí mới"} 
-        open={isLocModalOpen} 
-        onOk={() => locForm.submit()} 
-        onCancel={() => setIsLocModalOpen(false)}
-      >
-        <div className="mb-4 text-gray-500">
-            Kho: <b>{selectedWarehouseForLoc?.name}</b> {editingLocation && <span>| Đang sửa: <b>{editingLocation.locationCode}</b></span>}
-        </div>
+      {/* 2. Modal Vị trí */}
+      <Modal title={editingLocation ? "Sửa Vị trí" : "Thêm Vị trí (Bin)"} open={isLocModalOpen} onOk={() => locForm.submit()} onCancel={() => setIsLocModalOpen(false)}>
+        <div className="mb-4 bg-blue-50 p-3 rounded border border-blue-100 text-blue-700">Đang thao tác tại: <b>{selectedWarehouseForLoc?.name}</b></div>
         <Form form={locForm} layout="vertical" onFinish={handleLocSubmit}>
-          <Form.Item name="locationCode" label="Mã Bin (Vị trí)" rules={[{ required: true }]} tooltip="Ví dụ: A-01-01">
-            <Input placeholder="Nhập mã vị trí..." />
+          <div className="grid grid-cols-3 gap-3 mb-2">
+              <Form.Item name="rack" label="Kệ (Rack)" help="VD: 05"><Input placeholder="05" autoFocus onInput={(e) => e.currentTarget.value = e.currentTarget.value.toUpperCase()} /></Form.Item>
+              <Form.Item name="level" label="Tầng (Level)" help="VD: 01"><Input placeholder="01" onInput={(e) => e.currentTarget.value = e.currentTarget.value.toUpperCase()} /></Form.Item>
+              <Form.Item name="bin" label="Hộc (Bin)" help="VD: 02"><Input placeholder="02" onInput={(e) => e.currentTarget.value = e.currentTarget.value.toUpperCase()} /></Form.Item>
+          </div>
+          <Form.Item name="locationCode" label="Mã Bin (Tự động)" rules={[{ required: true }]} tooltip="Mã này sẽ dùng để tạo QR Code">
+            <Input prefix={<QrcodeOutlined />} placeholder="05-01-02" onInput={(e) => e.currentTarget.value = e.currentTarget.value.toUpperCase()} />
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* MODAL NHÀ MÁY */}
-      <Modal title={editingFactory ? "Sửa Nhà máy" : "Thêm Nhà máy"} open={isFactoryModalOpen} onOk={() => factoryForm.submit()} onCancel={() => setIsFactoryModalOpen(false)}>
+      {/* 3. Modal Nhà máy */}
+      <Modal title={editingFactory ? "Sửa Nhà máy" : "Thêm Nhà máy Mới"} open={isFactoryModalOpen} onOk={() => factoryForm.submit()} onCancel={() => setIsFactoryModalOpen(false)}>
         <Form form={factoryForm} layout="vertical" onFinish={handleFactorySubmit}>
-            <Form.Item name="name" label="Tên nhà máy" rules={[{required: true}]}><Input /></Form.Item>
-            <Form.Item name="address" label="Địa chỉ"><Input /></Form.Item>
+            <Form.Item name="name" label="Tên nhà máy" rules={[{required: true}]} help="Ví dụ: X1, X2..."><Input /></Form.Item>
+            <Form.Item name="address" label="Địa chỉ / Mô tả vị trí"><Input /></Form.Item>
         </Form>
       </Modal>
 
-      {/* MODAL IN */}
-      <Modal title="In nhãn Bin" open={isPrintModalOpen} onCancel={() => setIsPrintModalOpen(false)} footer={null} width={300} centered>
+      {/* 4. Modal In Tem */}
+      <Modal title="In Tem Nhãn" open={isPrintModalOpen} onCancel={() => setIsPrintModalOpen(false)} footer={null} width={350} centered>
          <div className="flex flex-col items-center">
-            <div ref={contentToPrint} className="p-4 border-2 border-black mb-4 flex flex-col items-center justify-center bg-white">
-                <div className="text-xs font-bold mb-1">LOCATION BIN</div>
-                <QRCodeSVG value={selectedLocForPrint?.qrCode || ''} size={160} />
-                <div className="text-xl font-bold mt-2 font-mono">{selectedLocForPrint?.locationCode}</div>
-                <div className="text-[10px] mt-1">{selectedLocForPrint?.qrCode}</div>
+            <div ref={contentToPrint} className="p-4 border-2 border-black mb-4 flex flex-col items-center justify-center bg-white w-full">
+                <div className="text-sm font-bold mb-2 uppercase border-b-2 border-black w-full text-center pb-1">LOCATION TAG</div>
+                <QRCodeSVG value={selectedLocForPrint?.qrCode || ''} size={180} />
+                
+                <div className="text-3xl font-bold mt-2 font-mono text-center tracking-tighter">
+                    {selectedLocForPrint?.locationCode}
+                </div>
+                
+                <div className="text-sm font-bold mt-2 text-center w-full bg-black text-white py-1">
+                    {selectedLocForPrint?.rack ? `KỆ ${selectedLocForPrint.rack}` : ''} 
+                    {selectedLocForPrint?.level ? ` - TẦNG ${selectedLocForPrint.level}` : ''}
+                    {selectedLocForPrint?.bin ? ` - HỘC ${selectedLocForPrint.bin}` : ''}
+                </div>
+                
+                <div className="text-[10px] mt-2 text-center text-gray-500 font-mono">
+                    {selectedLocForPrint?.qrCode}
+                </div>
             </div>
-            <Button type="primary" icon={<PrinterOutlined />} onClick={() => handlePrint()} size="large">In ngay</Button>
+            <Button type="primary" icon={<PrinterOutlined />} onClick={() => handlePrint()} size="large" block>In Tem Ngay</Button>
          </div>
       </Modal>
+
+      {/* 5. Modal Quét QR (Nằm ở cuối) */}
+      <QRScannerModal 
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanSuccess={handleScanSuccess}
+      />
     </div>
   );
 };

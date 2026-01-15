@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { Modal, Button, App as AntdApp } from 'antd';
-import { Html5Qrcode } from 'html5-qrcode';
+import React, { useEffect, useRef, useState } from 'react';
+import { Modal, Button, App as AntdApp, Spin } from 'antd';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 interface QRScannerModalProps {
   isOpen: boolean;
@@ -10,76 +10,121 @@ interface QRScannerModalProps {
 
 const QRScannerModal: React.FC<QRScannerModalProps> = ({ isOpen, onClose, onScanSuccess }) => {
   const { message } = AntdApp.useApp();
-  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  useEffect(() => {
-    if (isOpen) {
-      const timer = setTimeout(async () => {
-        try {
-          // Khởi tạo instance
-          const scanner = new Html5Qrcode("reader");
-          html5QrCodeRef.current = scanner;
-
-          // Cấu hình quét
-          const config = { 
-            fps: 15, 
-            qrbox: { width: 300, height: 300 } 
-          };
-
-          // Bắt đầu quét với camera sau (environment) hoặc camera mặc định
-          await scanner.start(
-            { facingMode: "environment" }, 
-            config,
-            (decodedText) => {
-              onScanSuccess(decodedText);
-              handleClose();
-            },
-            () => { /* Quét liên tục */ }
-          );
-        } catch (err: any) {
-          console.error("Lỗi khởi động Camera:", err);
-          message.error("Không thể truy cập Camera. Hãy kiểm tra quyền trình duyệt!");
+  // Hàm dọn dẹp scanner an toàn
+  const cleanupScanner = async () => {
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
         }
-      }, 500); // Tăng thời gian chờ để Modal ổn định
-
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
-
-  const handleClose = async () => {
-    try {
-      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-        await html5QrCodeRef.current.stop();
+        scannerRef.current.clear();
+      } catch (error) {
+        console.warn("Cleanup warning:", error);
       }
-    } catch (err) {
-      console.error("Lỗi khi dừng camera:", err);
-    } finally {
-      onClose();
+      scannerRef.current = null;
     }
   };
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const startScanner = async () => {
+      // Chỉ chạy trên HTTPS hoặc Localhost
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+        message.error("Camera yêu cầu HTTPS!");
+        return;
+      }
+
+      if (isOpen) {
+        setIsInitializing(true);
+        // Chờ DOM render div id="reader"
+        await new Promise(r => setTimeout(r, 300));
+
+        try {
+          await cleanupScanner(); // Reset trước khi chạy mới
+          
+          if (!isMounted) return;
+
+          const scanner = new Html5Qrcode("reader", {
+            formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+            verbose: false
+          });
+          
+          scannerRef.current = scanner;
+
+          await scanner.start(
+            { facingMode: "environment" }, // Ưu tiên cam sau
+            { 
+              fps: 10, 
+              qrbox: { width: 250, height: 250 },
+              aspectRatio: 1.0
+            },
+            (decodedText) => {
+              if (isMounted) {
+                // Tắt camera ngay khi tìm thấy mã
+                cleanupScanner().then(() => {
+                    onScanSuccess(decodedText);
+                    onClose(); // Đóng modal
+                });
+              }
+            },
+            () => {} // Bỏ qua lỗi quét từng frame
+          );
+        } catch (err: any) {
+          console.error("Camera Error:", err);
+          if (isMounted) {
+             message.error("Không thể mở Camera. Vui lòng cấp quyền!");
+             onClose(); 
+          }
+        } finally {
+          if (isMounted) setIsInitializing(false);
+        }
+      } else {
+        cleanupScanner();
+      }
+    };
+
+    startScanner();
+
+    return () => {
+      isMounted = false;
+      cleanupScanner();
+    };
+  }, [isOpen]);
+
   return (
     <Modal
-      title="QUÉT MÃ QR VẬT TƯ"
+      title="QUÉT MÃ TÌM KIẾM"
       open={isOpen}
-      onCancel={handleClose}
-      footer={[
-        <Button key="close" type="primary" danger onClick={handleClose} block size="large">
-          ĐÓNG CAMERA
-        </Button>
-      ]}
+      onCancel={() => { cleanupScanner(); onClose(); }}
+      footer={null}
       destroyOnClose
-      width={500}
+      width={400}
       centered
+      maskClosable={false}
+      styles={{ body: { padding: 0 } }} // Antd v5
     >
-      <div className="relative overflow-hidden rounded-xl border-4 border-indigo-500 bg-black">
-        <div id="reader" className="w-full"></div>
-        {/* Lớp overlay trang trí để người dùng biết chỗ để mã */}
-        <div className="absolute inset-0 pointer-events-none border-[60px] border-black/30"></div>
+      <div className="relative bg-black overflow-hidden h-[350px] flex items-center justify-center flex-col">
+        {isInitializing && <Spin tip="Đang bật Camera..." className="absolute z-10 text-white" />}
+        
+        <div id="reader" className="w-full h-full" />
+        
+        {/* Nút hủy nằm đè lên camera */}
+        <div className="absolute bottom-5 w-full flex justify-center z-20">
+             <Button 
+                danger 
+                type="primary"
+                shape="round"
+                size="large"
+                onClick={() => { cleanupScanner(); onClose(); }}
+            >
+                ĐÓNG CAMERA
+            </Button>
+        </div>
       </div>
-      <p className="mt-4 text-center text-slate-500">
-        Vui lòng cấp quyền Camera và đưa mã vào vùng sáng chính giữa.
-      </p>
     </Modal>
   );
 };

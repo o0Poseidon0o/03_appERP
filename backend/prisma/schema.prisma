@@ -12,18 +12,18 @@ datasource db {
 // ==========================================
 
 model User {
-  id                 String                @id
-  email              String                @unique
+  id                 String   @id
+  email              String   @unique
   password           String
   fullName           String
-  isActive           Boolean               @default(true)
-  mustChangePassword Boolean               @default(false)
+  isActive           Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
   
   roleId             String
-  role               Role                  @relation(fields: [roleId], references: [id])
+  role               Role     @relation(fields: [roleId], references: [id])
   
   departmentId       String
-  department         Department            @relation(fields: [departmentId], references: [id])
+  department         Department @relation(fields: [departmentId], references: [id])
   
   userPermissions    UserPermission[]
   posts              Post[]
@@ -37,7 +37,7 @@ model User {
 }
 
 model Role {
-  id            String           @id
+  id            String         @id
   name          String
   description   String?
   users         User[]
@@ -70,39 +70,44 @@ model UserPermission {
 }
 
 model Department {
-  id            String           @id // ID từ XML (1100, 7110...)
-  name          String
-  name_content  String           @default("Chưa có nội dung") // Khôi phục nguyên vẹn của bạn
+  id           String    @id
+  name         String
+  name_content String    @default("Chưa có nội dung")
   
-  // Kết nối dài hạn: Phòng ban thuộc Nhà máy nào (Vật lý)
-  factoryId     String?
-  factory       Factory?         @relation(fields: [factoryId], references: [id])
+  factoryId    String?
+  factory      Factory?  @relation(fields: [factoryId], references: [id])
 
-  users         User[]
+  users        User[]
   targetedPosts PostDepartment[]
 }
 
 // ==========================================
-// 2. NHÓM QUẢN LÝ VẬT LÝ (FACTORY - WAREHOUSE - LOCATION)
+// 2. NHÓM QUẢN LÝ VẬT LÝ
 // ==========================================
 
 model Factory {
   id          String      @id @default(uuid())
+  
+  // Dùng tên làm mã định danh luôn (VD: X1, X2) cho tiện
   name        String      @unique 
   address     String?
+  
   warehouses  Warehouse[] 
-  departments Department[] // Để biết nhà máy này có những phòng ban nào đang ngồi
+  departments Department[]
+  transactions StockTransaction[] // Liên kết phiếu xuất/nhập
+  
   createdAt   DateTime    @default(now())
 }
 
 model Warehouse {
-  id            String     @id @default(uuid())
-  warehouseCode String     @unique 
+  id            String   @id @default(uuid())
+  warehouseCode String   @unique 
   name          String
+  type          String   @default("PHYSICAL") 
+  description   String?
   
-  factoryId     String     
-  factory       Factory    @relation(fields: [factoryId], references: [id])
-  
+  factoryId     String   
+  factory       Factory  @relation(fields: [factoryId], references: [id])
   locations     Location[]
 }
 
@@ -110,6 +115,10 @@ model Location {
   id           String    @id @default(uuid())
   locationCode String    @unique 
   qrCode       String    @unique 
+  rack         String?
+  level        String?
+  bin          String?
+
   warehouseId  String
   warehouse    Warehouse @relation(fields: [warehouseId], references: [id])
   
@@ -119,22 +128,24 @@ model Location {
 }
 
 // ==========================================
-// 3. NHÓM VẬT TƯ & TỒN KHO
+// 3. NHÓM VẬT TƯ & DANH MỤC
 // ==========================================
 
 model Item {
-  id          String   @id @default(uuid())
-  itemCode    String   @unique
-  itemName    String
-  unit        String
-  qrCode      String   @unique
-  categoryId  String
-  minStock    Float    @default(0) // Số lượng tồn kho tối thiểu để cảnh báo
+  id           String   @id @default(uuid())
+  itemCode     String   @unique
+  itemName     String   
+  unit         String
+  qrCode       String   @unique
+  minStock     Float    @default(0)
   
-  category    ItemCategory @relation(fields: [categoryId], references: [id])
-  stocks      Stock[]
-  suppliers   ItemSupplier[]
-  details     TransactionDetail[]
+  // ItemCategory: Phân loại tính chất vật tư (VD: Văn phòng phẩm, Máy móc)
+  categoryId   String
+  category     ItemCategory @relation(fields: [categoryId], references: [id])
+  
+  stocks       Stock[]
+  suppliers    ItemSupplier[]
+  details      TransactionDetail[]
 }
 
 model ItemCategory {
@@ -143,9 +154,23 @@ model ItemCategory {
   items Item[]
 }
 
+// UsageCategory: Phân loại mục đích sử dụng (VD: 99990, 11020...)
+// Độc lập hoàn toàn với ItemCategory
+model UsageCategory {
+  id          String   @id @default(uuid())
+  code        String   @unique 
+  name        String   
+  description String? 
+
+  transactionDetails TransactionDetail[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model Supplier {
-  id           String   @id @default(uuid())
-  supplierCode String   @unique
+  id           String    @id @default(uuid())
+  supplierCode String    @unique
   name         String
   items        ItemSupplier[]
   stocks       Stock[]
@@ -161,14 +186,14 @@ model ItemSupplier {
 }
 
 model Stock {
-  id         String    @id @default(uuid())
+  id         String   @id @default(uuid())
   itemId     String
   locationId String
   supplierId String?
-  quantity   Float     @default(0)
+  quantity   Float    @default(0)
   
-  item       Item      @relation(fields: [itemId], references: [id])
-  location   Location  @relation(fields: [locationId], references: [id])
+  item       Item     @relation(fields: [itemId], references: [id])
+  location   Location @relation(fields: [locationId], references: [id])
   supplier   Supplier? @relation(fields: [supplierId], references: [id])
 
   @@unique([itemId, locationId, supplierId])
@@ -178,31 +203,36 @@ model Stock {
 // 4. NHÓM PHÊ DUYỆT & GIAO DỊCH
 // ==========================================
 
-// ==========================================
-// CẬP NHẬT GIAO DỊCH (Thêm loại giao dịch & Ghi chú)
-// ==========================================
+// Bảng đếm số phiếu (Backend tự quy định key, VD: "COUNTER_X1_2026_01")
+model TransactionCounter {
+  key       String   @id 
+  count     Int      
+  updatedAt DateTime @updatedAt
+}
+
 model StockTransaction {
   id                String   @id @default(uuid())
-  code              String   @unique
-  type              String   // IMPORT (Nhập), EXPORT (Xuất), TRANSFER (Điều chuyển)
-  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
+  code              String   @unique // Backend tự sinh: "26-01-001 | X1"
+  type              String   
+  status            String   @default("PENDING")
   isEmergency       Boolean  @default(false)
-  description       String?  // Ghi chú tổng quát của phiếu
+  description       String?
+
+  // Liên kết với Nhà máy
+  factoryId         String
+  factory           Factory  @relation(fields: [factoryId], references: [id])
 
   creatorId         String
   creator           User     @relation("CreatedBy", fields: [creatorId], references: [id])
-
   warehouseKeeperId String?
   warehouseKeeper   User?    @relation("WarehouseKeeper", fields: [warehouseKeeperId], references: [id])
-
-  receiverId         String?
-  receiver           User?    @relation("Receiver", fields: [receiverId], references: [id])
-
-  supplierId         String?
-  supplier           Supplier? @relation(fields: [supplierId], references: [id])
+  receiverId        String?
+  receiver          User?    @relation("Receiver", fields: [receiverId], references: [id])
+  supplierId        String?
+  supplier          Supplier? @relation(fields: [supplierId], references: [id])
 
   createdAt         DateTime @default(now())
-  completedAt       DateTime? // Ngày thực nhập/thực xuất kho sau khi duyệt xong
+  completedAt       DateTime?
   
   details           TransactionDetail[]
   approvals         TransactionApproval[]
@@ -210,13 +240,13 @@ model StockTransaction {
 }
 
 model ApprovalStep {
-  id          String   @id @default(uuid())
-  name        String
-  order       Int
-  roleId      String
-  role        Role     @relation(fields: [roleId], references: [id])
-  type        String
-  approvals   TransactionApproval[]
+  id        String   @id @default(uuid())
+  name      String
+  order     Int
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  type      String
+  approvals TransactionApproval[]
 }
 
 model TransactionApproval {
@@ -240,6 +270,10 @@ model TransactionDetail {
   quantity       Float
   fromLocationId String?
   toLocationId   String?
+
+  // Liên kết lỏng lẻo với UsageCategory (Mục đích sử dụng)
+  usageCategoryId String?
+  usageCategory   UsageCategory? @relation(fields: [usageCategoryId], references: [id])
 
   transaction    StockTransaction @relation(fields: [transactionId], references: [id])
   item           Item             @relation(fields: [itemId], references: [id])
@@ -283,14 +317,14 @@ model Post {
 }
 
 model Menu {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   title     String
   slug      String?
-  order     Int      @default(0)
-  isVisible Boolean  @default(true)
+  order     Int     @default(0)
+  isVisible Boolean @default(true)
   parentId  Int?
-  parent    Menu?    @relation("MenuHierarchy", fields: [parentId], references: [id])
-  children  Menu[]   @relation("MenuHierarchy")
+  parent    Menu?   @relation("MenuHierarchy", fields: [parentId], references: [id])
+  children  Menu[]  @relation("MenuHierarchy")
   posts     Post[]
 
   @@map("menus")
