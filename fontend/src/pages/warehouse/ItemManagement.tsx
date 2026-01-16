@@ -196,7 +196,7 @@ const ItemManagement: React.FC = () => {
     },
     { 
         title: 'ĐVT Cơ Sở', 
-        dataIndex: 'baseUnit',
+        dataIndex: 'baseUnit', 
         align: 'center',
         render: (text) => <Tag color="geekblue">{text}</Tag>
     },
@@ -249,8 +249,10 @@ const ItemManagement: React.FC = () => {
           {canUpdate && (
             <Button size="small" type="text" className="text-blue-600" icon={<EditOutlined />} onClick={() => {
               setEditingItem(record);
+              // [UPDATE] Set dữ liệu vào form, bao gồm cả conversions
               form.setFieldsValue({
                   ...record,
+                  // Map lại conversions nếu cần thiết
                   conversions: record.conversions
               });
               setIsModalOpen(true);
@@ -316,7 +318,7 @@ const ItemManagement: React.FC = () => {
         onCancel={() => setIsModalOpen(false)} 
         onOk={() => form.submit()} 
         confirmLoading={loading} 
-        width={700} 
+        width={700} // Tăng độ rộng modal để chứa bảng quy đổi
         centered
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-4">
@@ -339,8 +341,8 @@ const ItemManagement: React.FC = () => {
             <Col span={12}><Form.Item name="minStock" label="Ngưỡng tồn tối thiểu" initialValue={5}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
           </Row>
 
-          {/* SỬA LỖI TẠI ĐÂY: Thêm 'as const' để ép kiểu chuỗi thành literal type hợp lệ */}
-         <Divider orientation="start" plain><span className="text-xs text-gray-500">Đơn vị quy đổi (Tùy chọn)</span></Divider>
+          {/* SỬA LỖI TẠI ĐÂY: Thêm 'as const' */}
+          <Divider orientation={"left" as const} plain><span className="text-xs text-gray-500">Đơn vị quy đổi (Tùy chọn)</span></Divider>
 
           <Form.List name="conversions">
             {(fields, { add, remove }) => (
@@ -381,6 +383,7 @@ const ItemManagement: React.FC = () => {
                   </Row>
                 ))}
                 
+                {/* Chỉ cho phép thêm quy đổi khi TẠO MỚI (để đơn giản hoá logic update) */}
                 {!editingItem && (
                     <Form.Item>
                     <Button type="dashed" onClick={() => add()} block icon={<PlusCircleOutlined />}>
@@ -388,9 +391,10 @@ const ItemManagement: React.FC = () => {
                     </Button>
                     </Form.Item>
                 )}
+                {/* Nếu đang Edit thì hiển thị thông báo (vì logic update conversion phức tạp hơn) */}
                 {editingItem && (
                     <div className="text-xs text-orange-500 mb-4 bg-orange-50 p-2 rounded">
-                        * Để sửa/xóa đơn vị quy đổi, vui lòng xóa vật tư và tạo lại hoặc liên hệ quản trị viên.
+                        * Để sửa/xóa đơn vị quy đổi, vui lòng xóa vật tư và tạo lại hoặc liên hệ quản trị viên (Tính năng đang cập nhật).
                     </div>
                 )}
               </>
