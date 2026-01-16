@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, type FC } from 'react';
 import { 
   Table, Card, Button, Input, Tag, Space, 
   Modal, Form, Select, Tooltip, Popconfirm, 
@@ -49,7 +49,7 @@ interface Item {
   conversions?: ItemConversion[];
 }
 
-const ItemManagement: React.FC = () => {
+const ItemManagement: FC = () => {
   const { message } = AntdApp.useApp();
   const { hasPermission } = useHasPermission();
   
@@ -158,6 +158,7 @@ const ItemManagement: React.FC = () => {
       if (editingItem) {
         // API Update
         await axiosClient.patch(`/items/${editingItem.id}`, values);
+        
         message.success('Cập nhật thành công');
       } else {
         // API Create
@@ -196,7 +197,7 @@ const ItemManagement: React.FC = () => {
     },
     { 
         title: 'ĐVT Cơ Sở', 
-        dataIndex: 'baseUnit', 
+        dataIndex: 'baseUnit',
         align: 'center',
         render: (text) => <Tag color="geekblue">{text}</Tag>
     },
@@ -339,8 +340,8 @@ const ItemManagement: React.FC = () => {
             <Col span={12}><Form.Item name="minStock" label="Ngưỡng tồn tối thiểu" initialValue={5}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
           </Row>
 
-          {/* SỬA LỖI TẠI ĐÂY: Thêm 'as "left"' hoặc 'orientation="left"' */}
-          <Divider orientation="left" plain><span className="text-xs text-gray-500">Đơn vị quy đổi (Tùy chọn)</span></Divider>
+          {/* SỬA LỖI TẠI ĐÂY: Thêm 'as const' để TypeScript hiểu đúng kiểu Literal */}
+          <Divider orientation={"left" as const} plain><span className="text-xs text-gray-500">Đơn vị quy đổi (Tùy chọn)</span></Divider>
 
           <Form.List name="conversions">
             {(fields, { add, remove }) => (
