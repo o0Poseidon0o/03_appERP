@@ -17,7 +17,7 @@ import QRScannerModal from './QRScannerModal';
 
 const { Text } = Typography;
 
-// --- INTERFACES (CẬP NHẬT THEO SCHEMA MỚI) ---
+// --- INTERFACES ---
 interface Category {
   id: string;
   name: string;
@@ -29,7 +29,6 @@ interface Stock {
   location: { locationCode: string };
 }
 
-// [MỚI] Interface cho đơn vị quy đổi
 interface ItemConversion {
   id?: string;
   unitName: string;
@@ -41,13 +40,13 @@ interface Item {
   id: string;
   itemCode: string;
   itemName: string;
-  baseUnit: string; // [UPDATE] Đổi từ unit -> baseUnit
+  baseUnit: string;
   categoryId: string;
   minStock: number;
   
   category?: Category;
   stocks?: Stock[];
-  conversions?: ItemConversion[]; // [MỚI] Danh sách quy đổi
+  conversions?: ItemConversion[];
 }
 
 const ItemManagement: React.FC = () => {
@@ -90,7 +89,7 @@ const ItemManagement: React.FC = () => {
     fetchData();
   }, []);
 
-  // --- HÀM IN TEM (CẬP NHẬT baseUnit) ---
+  // --- HÀM IN TEM ---
   const handlePrintLabel = (item: Item) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -159,11 +158,6 @@ const ItemManagement: React.FC = () => {
       if (editingItem) {
         // API Update
         await axiosClient.patch(`/items/${editingItem.id}`, values);
-        
-        // [LƯU Ý] Nếu muốn sửa danh sách conversions, cần gọi API riêng hoặc backend phải hỗ trợ update nested.
-        // Ở đây giả định backend createItem hỗ trợ tạo nested conversions, còn update thì chỉ update thông tin cơ bản.
-        // Bạn có thể mở rộng logic này để gọi API thêm/xóa conversion nếu cần.
-        
         message.success('Cập nhật thành công');
       } else {
         // API Create
@@ -202,7 +196,7 @@ const ItemManagement: React.FC = () => {
     },
     { 
         title: 'ĐVT Cơ Sở', 
-        dataIndex: 'baseUnit', // [UPDATE]
+        dataIndex: 'baseUnit', 
         align: 'center',
         render: (text) => <Tag color="geekblue">{text}</Tag>
     },
@@ -255,10 +249,8 @@ const ItemManagement: React.FC = () => {
           {canUpdate && (
             <Button size="small" type="text" className="text-blue-600" icon={<EditOutlined />} onClick={() => {
               setEditingItem(record);
-              // [UPDATE] Set dữ liệu vào form, bao gồm cả conversions
               form.setFieldsValue({
                   ...record,
-                  // Map lại conversions nếu cần thiết
                   conversions: record.conversions
               });
               setIsModalOpen(true);
@@ -324,7 +316,7 @@ const ItemManagement: React.FC = () => {
         onCancel={() => setIsModalOpen(false)} 
         onOk={() => form.submit()} 
         confirmLoading={loading} 
-        width={700} // Tăng độ rộng modal để chứa bảng quy đổi
+        width={700} 
         centered
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-4">
@@ -340,7 +332,6 @@ const ItemManagement: React.FC = () => {
           
           <Row gutter={16}>
             <Col span={12}>
-                {/* [UPDATE] Đổi name="unit" -> name="baseUnit" */}
                 <Form.Item name="baseUnit" label="Đơn Vị Cơ Sở (Nhỏ nhất)" rules={[{ required: true }]} tooltip="Đơn vị dùng để tính tồn kho (VD: Cái, Kg)">
                     <Input placeholder="VD: Cái" />
                 </Form.Item>
@@ -348,9 +339,9 @@ const ItemManagement: React.FC = () => {
             <Col span={12}><Form.Item name="minStock" label="Ngưỡng tồn tối thiểu" initialValue={5}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
           </Row>
 
+          {/* SỬA LỖI TẠI ĐÂY: Thêm 'as "left"' hoặc 'orientation="left"' */}
           <Divider orientation="left" plain><span className="text-xs text-gray-500">Đơn vị quy đổi (Tùy chọn)</span></Divider>
 
-          {/* [MỚI] Form List cho Đơn vị quy đổi */}
           <Form.List name="conversions">
             {(fields, { add, remove }) => (
               <>
@@ -390,7 +381,6 @@ const ItemManagement: React.FC = () => {
                   </Row>
                 ))}
                 
-                {/* Chỉ cho phép thêm quy đổi khi TẠO MỚI (để đơn giản hoá logic update) */}
                 {!editingItem && (
                     <Form.Item>
                     <Button type="dashed" onClick={() => add()} block icon={<PlusCircleOutlined />}>
@@ -398,10 +388,9 @@ const ItemManagement: React.FC = () => {
                     </Button>
                     </Form.Item>
                 )}
-                {/* Nếu đang Edit thì hiển thị thông báo (vì logic update conversion phức tạp hơn) */}
                 {editingItem && (
                     <div className="text-xs text-orange-500 mb-4 bg-orange-50 p-2 rounded">
-                        * Để sửa/xóa đơn vị quy đổi, vui lòng xóa vật tư và tạo lại hoặc liên hệ quản trị viên (Tính năng đang cập nhật).
+                        * Để sửa/xóa đơn vị quy đổi, vui lòng xóa vật tư và tạo lại hoặc liên hệ quản trị viên.
                     </div>
                 )}
               </>

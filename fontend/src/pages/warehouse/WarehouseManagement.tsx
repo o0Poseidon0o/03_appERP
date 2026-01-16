@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Table, Button, Input, Tag, Space, 
   Modal, Form, Select, Popconfirm, 
-  App as AntdApp, Badge, Typography, Tabs, Col, Row, Empty, Tooltip
+  App as AntdApp, Badge, Typography, Tabs, Empty, Tooltip
 } from 'antd';
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
@@ -249,6 +249,7 @@ const WarehouseManagement: React.FC = () => {
         await axiosClient.delete(`/factories/${id}`);
         message.success("Đã xóa nhà máy");
         fetchData();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
         message.error("Không thể xóa (có thể đang chứa kho/phòng ban)");
     }

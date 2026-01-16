@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Card, DatePicker, Button, Typography, Table, Tag, App, Row, Col, Statistic } from 'antd'; // [SỬA 1] Bỏ import message, thêm App
+import { useState } from 'react'; // [SỬA LỖI TS6133] Bỏ 'React' vì không dùng
+import { Card, DatePicker, Button, Typography, Table, Tag, App, Row, Col, Statistic } from 'antd';
 import { FileExcelOutlined, SearchOutlined, BarChartOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
@@ -8,7 +8,7 @@ import axiosClient from '../../api/axiosClient';
 const { Title, Text } = Typography;
 
 const MonthlyReport = () => {
-  // [SỬA 1] Sử dụng hook của Antd App để hiện thông báo đúng chuẩn
+  // Sử dụng hook của Antd App để hiện thông báo đúng chuẩn Theme
   const { message } = App.useApp(); 
   
   const [loading, setLoading] = useState(false);
@@ -25,6 +25,7 @@ const MonthlyReport = () => {
           year: selectedMonth.year()
         }
       });
+      // Backend trả về mảng các object có trường 'finalQuantity'
       setReportData(response.data.data || []);
       message.success(`Đã tải dữ liệu chốt tháng ${selectedMonth.format('MM/YYYY')}`);
     } catch (error) {
@@ -34,7 +35,7 @@ const MonthlyReport = () => {
     }
   };
 
-  // 2. Xuất Excel chuẩn Format File Mẫu
+  // 2. Xuất Excel chuẩn Format
   const handleExportExcel = () => {
     if (reportData.length === 0) {
         message.warning("Chưa có dữ liệu để xuất!");
@@ -47,7 +48,8 @@ const MonthlyReport = () => {
       "Mã vật tư": item.itemCode,
       "Tên vật tư": item.itemName,
       "Đvt": item.unit,
-      [`TỒN CUỐI THÁNG ${selectedMonth.format('MM/YYYY')}`]: item.quantity, // Đảm bảo backend trả về đúng key (finalQuantity hoặc quantity)
+      // [FIX] Dùng 'finalQuantity' cho khớp với dữ liệu hiển thị trên bảng
+      [`TỒN CUỐI THÁNG ${selectedMonth.format('MM/YYYY')}`]: item.finalQuantity, 
       "Nhà máy": item.factoryName,
       "Kho": item.warehouseName,
       "Kệ": item.rack, 
@@ -82,12 +84,10 @@ const MonthlyReport = () => {
     { title: 'ĐVT', dataIndex: 'unit', align: 'center' as const },
     { 
         title: `Tồn Cuối T${selectedMonth.format('MM')}`, 
-        // Lưu ý: Backend controller nãy tôi code trả về 'quantity' (hoặc 'finalQuantity'). 
-        // Hãy đảm bảo dataIndex khớp với backend trả về. Ở đây tôi dùng finalQuantity theo controller.
-        dataIndex: 'finalQuantity', 
+        dataIndex: 'finalQuantity', // Khớp với Backend trả về
         align: 'right' as const,
         render: (val: number | undefined | null) => {
-            // [SỬA 2] Fix lỗi crash 'toLocaleString' bằng cách kiểm tra giá trị null/undefined
+            // [FIX] Xử lý an toàn để tránh lỗi .toLocaleString() của undefined
             const safeVal = val ?? 0; 
             return <Tag color="green" className="text-base font-bold mr-0">{safeVal.toLocaleString()}</Tag>;
         }
@@ -144,7 +144,7 @@ const MonthlyReport = () => {
                     <Statistic title="Tổng số dòng hàng" value={reportData.length} />
                 </Col>
                 <Col span={6}>
-                    {/* [SỬA 3] Fix lỗi valueStyle deprecated */}
+                    {/* [FIX] Sử dụng 'styles' thay cho 'valueStyle' đã cũ */}
                     <Statistic 
                         title="Tổng số lượng tồn" 
                         value={totalStock} 
