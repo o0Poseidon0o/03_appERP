@@ -196,7 +196,7 @@ const ItemManagement: React.FC = () => {
     },
     { 
         title: 'ĐVT Cơ Sở', 
-        dataIndex: 'baseUnit', 
+        dataIndex: 'baseUnit',
         align: 'center',
         render: (text) => <Tag color="geekblue">{text}</Tag>
     },
@@ -339,7 +339,7 @@ const ItemManagement: React.FC = () => {
             <Col span={12}><Form.Item name="minStock" label="Ngưỡng tồn tối thiểu" initialValue={5}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
           </Row>
 
-          {/* SỬA LỖI TẠI ĐÂY: Dùng 'as const' để ép kiểu chuỗi thành literal type */}
+          {/* SỬA LỖI TẠI ĐÂY: Thêm 'as const' để ép kiểu chuỗi thành literal type hợp lệ */}
           <Divider orientation={"left" as const} plain><span className="text-xs text-gray-500">Đơn vị quy đổi (Tùy chọn)</span></Divider>
 
           <Form.List name="conversions">
