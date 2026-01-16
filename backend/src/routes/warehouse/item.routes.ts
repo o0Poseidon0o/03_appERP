@@ -6,6 +6,10 @@ import {
     searchItems, 
     updateItem, 
     
+    // [MỚI] Controller cho Unit Conversion
+    addConversionUnit,
+    deleteConversionUnit,
+
     // Category Controller
     getAllCategories, 
     createCategory, 
@@ -23,7 +27,7 @@ import { protect, hasPermission } from '../../middlewares/authMiddleware';
 
 const router = Router();
 
-// Yêu cầu đăng nhập
+// Yêu cầu đăng nhập cho toàn bộ routes
 router.use(protect);
 
 // ==========================================
@@ -50,11 +54,23 @@ router.delete('/usage-categories/:id', hasPermission('ITEM_DELETE'), deleteUsage
 // ==========================================
 // 3. ROUTES CHO VẬT TƯ (ITEM)
 // ==========================================
+// Tìm kiếm & Lấy danh sách
 router.get('/', searchItems); 
 router.get('/search', searchItems); 
 
+// CRUD Vật tư
 router.post('/', hasPermission('ITEM_CREATE'), createItem);
 router.patch('/:id', hasPermission('ITEM_UPDATE'), updateItem);
 router.delete('/:id', hasPermission('ITEM_DELETE'), deleteItem);
+
+// ==========================================
+// 4. ROUTES CHO ĐƠN VỊ QUY ĐỔI (UNIT CONVERSION) - [MỚI]
+// ==========================================
+// Thêm đơn vị quy đổi mới cho một vật tư cụ thể (VD: Thêm "Thùng" cho "Ốc A")
+// Dùng quyền ITEM_UPDATE vì đây là hành động chỉnh sửa cấu hình vật tư
+router.post('/:itemId/conversions', hasPermission('ITEM_UPDATE'), addConversionUnit);
+
+// Xóa một đơn vị quy đổi
+router.delete('/conversions/:conversionId', hasPermission('ITEM_UPDATE'), deleteConversionUnit);
 
 export default router;

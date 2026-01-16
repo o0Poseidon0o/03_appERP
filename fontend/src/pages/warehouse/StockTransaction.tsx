@@ -5,7 +5,8 @@ import {
 } from 'antd';
 import { 
   PlusOutlined, DeleteOutlined, QrcodeOutlined,
-  SwapOutlined, InfoCircleOutlined, ShopOutlined, SendOutlined, QuestionCircleOutlined 
+  SwapOutlined, InfoCircleOutlined, ShopOutlined, SendOutlined, QuestionCircleOutlined,
+  CheckCircleFilled
 } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 import { useNavigate } from 'react-router-dom';
@@ -13,12 +14,18 @@ import QRScannerModal from './QRScannerModal';
 
 const { Text, Title } = Typography;
 
-// --- INTERFACES ---
+// --- INTERFACES (CẬP NHẬT THEO SCHEMA MỚI) ---
+interface ItemConversion {
+  unitName: string;
+  factor: number;
+}
+
 interface Item {
   id: string;
   itemCode: string;
   itemName: string;
-  unit: string;
+  baseUnit: string; // [UPDATE] baseUnit
+  conversions?: ItemConversion[]; // [UPDATE] Danh sách quy đổi
 }
 
 interface Location {
@@ -40,13 +47,19 @@ interface UsageCategory {
 interface TransactionDetail {
   key: string;
   itemId: string | null;
-  quantity: number;
+  
+  // [UPDATE] Logic số lượng & Quy đổi
+  inputQuantity: number; // Số lượng người dùng nhập (VD: 1)
+  selectedUnit: string;  // Đơn vị người dùng chọn (VD: Thùng)
+  conversionFactor: number; // Hệ số quy đổi (VD: 24)
+  quantity: number;      // Số lượng chuẩn Base Unit (VD: 24)
+
   fromLocationId: string | null;
   toLocationId: string | null;
-  usageCategoryId: string | null; // [MỚI] Loại hàng sử dụng
+  usageCategoryId: string | null;
+  
   currentStock?: number; 
   physicalStock?: number; 
-  unit?: string;
 }
 
 const StockTransactionCreate: React.FC = () => {
@@ -59,7 +72,7 @@ const StockTransactionCreate: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [locations, setLocations] = useState<Location[]>([]); 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [usageCategories, setUsageCategories] = useState<UsageCategory[]>([]); // [MỚI]
+  const [usageCategories, setUsageCategories] = useState<UsageCategory[]>([]);
   const [selectedItems, setSelectedItems] = useState<TransactionDetail[]>([]);
   
   const [rowLocationOptions, setRowLocationOptions] = useState<Record<string, any[]>>({});
@@ -79,7 +92,7 @@ const StockTransactionCreate: React.FC = () => {
           axiosClient.get('/items'), 
           axiosClient.get('/warehouses/locations/all'), 
           axiosClient.get('/suppliers'),
-          axiosClient.get('/items/usage-categories') // [MỚI] Lấy danh sách loại sử dụng
+          axiosClient.get('/items/usage-categories')
         ]);
 
         setItems(resItems.data?.data || []);
@@ -103,8 +116,15 @@ const StockTransactionCreate: React.FC = () => {
   const addRow = () => {
     const newKey = `row_${Date.now()}`;
     setSelectedItems([...selectedItems, { 
-      key: newKey, itemId: null, quantity: 1, 
-      fromLocationId: null, toLocationId: null, usageCategoryId: null, // Default null
+      key: newKey, 
+      itemId: null, 
+      inputQuantity: 1, 
+      selectedUnit: '', 
+      conversionFactor: 1, 
+      quantity: 1,
+      fromLocationId: null, 
+      toLocationId: null, 
+      usageCategoryId: null,
       currentStock: undefined 
     }]);
   };
@@ -116,7 +136,7 @@ const StockTransactionCreate: React.FC = () => {
     setRowLocationOptions(newOptions);
   };
 
-  // LOGIC TÍNH TOÁN TỒN KHO KHẢ DỤNG
+  // LOGIC TÍNH TOÁN TỒN KHO KHẢ DỤNG (Dựa trên Base Unit)
   const getAvailableStockForLine = (record: TransactionDetail) => {
     if (transactionType === 'IMPORT' || record.currentStock === undefined) return 999999;
 
@@ -126,7 +146,7 @@ const StockTransactionCreate: React.FC = () => {
             item.itemId === record.itemId && 
             item.fromLocationId === record.fromLocationId
         ) {
-            return total + (item.quantity || 0);
+            return total + (item.quantity || 0); // Cộng dồn số lượng Base Unit
         }
         return total;
     }, 0);
@@ -135,7 +155,7 @@ const StockTransactionCreate: React.FC = () => {
     return available > 0 ? available : 0;
   };
 
-  // LẤY DANH SÁCH VỊ TRÍ CÓ HÀNG (KHI CHỌN VẬT TƯ CHO EXPORT/TRANSFER)
+  // LẤY DANH SÁCH VỊ TRÍ CÓ HÀNG
   const fetchStockLocationsForItem = async (rowKey: string, itemId: string) => {
     try {
         const selectedItem = items.find(i => i.id === itemId);
@@ -146,32 +166,37 @@ const StockTransactionCreate: React.FC = () => {
         });
 
         const stocks = res.data.data || [];
-        
         const options = stocks.map((s: any) => ({
             value: s.locationId,
-            label: `${s.locationCode} (Tồn: ${s.quantity})`,
+            label: `${s.locationCode} (Tồn: ${s.quantity} ${selectedItem.baseUnit})`, // Hiển thị tồn theo baseUnit
             quantity: s.quantity 
         }));
 
         setRowLocationOptions(prev => ({ ...prev, [rowKey]: options }));
-
     } catch (error) {
         console.error("Lỗi lấy vị trí tồn kho:", error);
     }
   };
 
-  // CẬP NHẬT DÒNG
-  const updateRow = async (key: string, field: keyof TransactionDetail, value: any) => {
+  // CẬP NHẬT DÒNG (Logic cốt lõi đã update)
+  const updateRow = async (key: string, field: keyof TransactionDetail | 'unitChange', value: any) => {
     const newData = [...selectedItems];
     const index = newData.findIndex(item => item.key === key);
     
     if (index > -1) {
-      const row = { ...newData[index], [field]: value };
-      
+      const row = { ...newData[index] };
+
       // 1. KHI CHỌN VẬT TƯ
       if (field === 'itemId') {
         const selectedItem = items.find(i => i.id === value);
-        if (selectedItem) row.unit = selectedItem.unit;
+        row.itemId = value;
+        if (selectedItem) {
+            // Mặc định chọn Base Unit
+            row.selectedUnit = selectedItem.baseUnit;
+            row.conversionFactor = 1;
+            row.inputQuantity = 1;
+            row.quantity = 1; // 1 * 1
+        }
         
         row.fromLocationId = null;
         row.currentStock = undefined;
@@ -182,14 +207,41 @@ const StockTransactionCreate: React.FC = () => {
         }
       }
 
-      // 2. KHI CHỌN VỊ TRÍ NGUỒN (Check Stock)
-      if (transactionType !== 'IMPORT') {
-        const currentItemId = field === 'itemId' ? value : row.itemId;
-        const currentLocationId = field === 'fromLocationId' ? value : row.fromLocationId;
+      // 2. KHI THAY ĐỔI SỐ LƯỢNG NHẬP
+      else if (field === 'inputQuantity') {
+          row.inputQuantity = value;
+          row.quantity = value * row.conversionFactor;
+      }
 
-        if (currentItemId && currentLocationId) {
-          if (field === 'itemId' || field === 'fromLocationId') {
-              try {
+      // 3. KHI THAY ĐỔI ĐƠN VỊ TÍNH
+      else if (field === 'unitChange') { // value here is unitName
+          const selectedItem = items.find(i => i.id === row.itemId);
+          if (selectedItem) {
+              row.selectedUnit = value;
+              // Tìm hệ số quy đổi
+              if (value === selectedItem.baseUnit) {
+                  row.conversionFactor = 1;
+              } else {
+                  const conversion = selectedItem.conversions?.find(c => c.unitName === value);
+                  row.conversionFactor = conversion ? conversion.factor : 1;
+              }
+              // Tính lại tổng quantity theo Base Unit
+              row.quantity = row.inputQuantity * row.conversionFactor;
+          }
+      }
+
+      // 4. CÁC TRƯỜNG KHÁC
+      else {
+          (row as any)[field] = value;
+      }
+
+      // CHECK STOCK LOGIC (Giữ nguyên)
+      if (transactionType !== 'IMPORT') {
+        const currentItemId = row.itemId;
+        const currentLocationId = row.fromLocationId;
+
+        if (currentItemId && currentLocationId && (field === 'itemId' || field === 'fromLocationId')) {
+             try {
                 const res = await axiosClient.get('/stock-transactions/check-stock', {
                   params: { itemId: currentItemId, locationId: currentLocationId }
                 });
@@ -198,12 +250,6 @@ const StockTransactionCreate: React.FC = () => {
               } catch (error) {
                 row.currentStock = 0;
               }
-          }
-        } else {
-            if (field === 'itemId' || field === 'fromLocationId') {
-                row.currentStock = undefined;
-                row.physicalStock = undefined;
-            }
         }
       }
       
@@ -223,11 +269,13 @@ const StockTransactionCreate: React.FC = () => {
       const newRow: TransactionDetail = {
         key: newKey,
         itemId: foundItem.id,
+        inputQuantity: 1,
+        selectedUnit: foundItem.baseUnit, // Mặc định baseUnit
+        conversionFactor: 1,
         quantity: 1,
         fromLocationId: null, 
         toLocationId: null,
         usageCategoryId: null,
-        unit: foundItem.unit,
         currentStock: undefined
       };
       
@@ -250,7 +298,6 @@ const StockTransactionCreate: React.FC = () => {
       if (!item.itemId) return message.error('Vui lòng chọn vật tư cho tất cả các dòng');
       if (item.quantity <= 0) return message.error('Số lượng phải lớn hơn 0');
       
-      // Validate Location
       if (['EXPORT', 'TRANSFER'].includes(transactionType) && !item.fromLocationId) {
         return message.error('Vui lòng chọn Vị trí xuất hàng (Nguồn)');
       }
@@ -258,10 +305,11 @@ const StockTransactionCreate: React.FC = () => {
         return message.error('Vui lòng chọn Vị trí nhập hàng (Đích)');
       }
       
-      // Validate Stock
+      // Check tồn kho (So sánh Quantity chuẩn với Available chuẩn)
       const available = getAvailableStockForLine(item);
       if (transactionType !== 'IMPORT' && item.quantity > available) {
-         return message.error(`Vật tư dòng ${selectedItems.indexOf(item) + 1} vượt quá tồn kho khả dụng (Còn lại: ${available})!`);
+         const itemInfo = items.find(i => i.id === item.itemId);
+         return message.error(`Vật tư dòng ${selectedItems.indexOf(item) + 1} vượt quá tồn kho khả dụng! (Cần: ${item.quantity} ${itemInfo?.baseUnit}, Có: ${available} ${itemInfo?.baseUnit})`);
       }
     }
 
@@ -272,19 +320,34 @@ const StockTransactionCreate: React.FC = () => {
         isEmergency: false, 
         details: selectedItems.map(item => ({
           itemId: item.itemId!, 
+          
+          // [IMPORTANT] Gửi số lượng chuẩn Base Unit xuống DB
           quantity: item.quantity,
+          
+          // [IMPORTANT] Gửi thông tin nhập liệu để lưu lịch sử
+          inputUnit: item.selectedUnit,
+          inputQuantity: item.inputQuantity,
+
           fromLocationId: item.fromLocationId || null,
           toLocationId: item.toLocationId || null,
-          usageCategoryId: item.usageCategoryId || null // Gửi loại hàng sử dụng lên
+          usageCategoryId: item.usageCategoryId || null
         }))
       };
       
       const res = await axiosClient.post('/stock-transactions', payload);
       
-      notification.success({
-        message: 'Tạo phiếu thành công', 
-        description: `Mã phiếu: ${res.data.data.code}. Đang chờ phê duyệt.`
-      });
+      if (values.type === 'IMPORT') {
+          notification.success({
+            message: 'Nhập kho hoàn tất', 
+            description: `Mã phiếu: ${res.data.data.code}. Tồn kho đã được cập nhật.`,
+            icon: <CheckCircleFilled style={{ color: '#52c41a' }} />,
+          });
+      } else {
+          notification.info({
+            message: 'Đã gửi yêu cầu', 
+            description: `Mã phiếu: ${res.data.data.code}. Đang chờ phê duyệt.`,
+          });
+      }
 
       form.resetFields();
       setSelectedItems([]);
@@ -305,10 +368,11 @@ const StockTransactionCreate: React.FC = () => {
     {
       title: 'Vật tư',
       dataIndex: 'itemId',
-      width: '30%',
+      width: '28%',
       render: (_: any, record: TransactionDetail) => {
         const available = getAvailableStockForLine(record);
-        
+        const selectedItemInfo = items.find(i => i.id === record.itemId);
+
         return (
         <Space direction="vertical" style={{ width: '100%' }} size={2}>
             <Select
@@ -321,27 +385,69 @@ const StockTransactionCreate: React.FC = () => {
                 options={items.map(i => ({ value: i.id, label: `[${i.itemCode}] ${i.itemName}` }))}
                 filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
             />
-            {/* Hiển thị tồn kho khả dụng */}
             {transactionType !== 'IMPORT' && record.itemId && record.fromLocationId && (
                 <div style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between' }}>
                    {record.currentStock !== undefined ? (
                        <>
                            <span style={{ color: '#8c8c8c' }}>
-                               Thực tế: {record.physicalStock ?? '...'}
+                               Tồn: {record.physicalStock ?? '...'}
                            </span>
                            <span style={{ color: available < record.quantity ? 'red' : 'green', fontWeight: 500 }}>
-                               Khả dụng: {available} {record.unit}
+                               Khả dụng: {available} {selectedItemInfo?.baseUnit}
                            </span>
                        </>
-                   ) : <span style={{color: '#faad14'}}>Đang kiểm tra tồn...</span>}
+                   ) : <span style={{color: '#faad14'}}>Kiểm tra tồn...</span>}
                 </div>
             )}
         </Space>
       )}
     },
-    // [MỚI] Cột Loại hàng sử dụng
     {
-        title: 'Mục đích / Loại hàng',
+        title: 'Số lượng & ĐVT',
+        dataIndex: 'inputQuantity',
+        width: '18%',
+        render: (_: any, record: TransactionDetail) => {
+            const itemInfo = items.find(i => i.id === record.itemId);
+            // Tạo danh sách đơn vị: BaseUnit + Conversions
+            const unitOptions = itemInfo ? [
+                { value: itemInfo.baseUnit, label: itemInfo.baseUnit },
+                ...(itemInfo.conversions?.map(c => ({ value: c.unitName, label: c.unitName })) || [])
+            ] : [];
+
+            return (
+                <Input.Group compact>
+                    <InputNumber 
+                        style={{ width: '60%' }} 
+                        min={0.1}
+                        value={record.inputQuantity}
+                        onChange={(v) => updateRow(record.key, 'inputQuantity', v)}
+                    />
+                    <Select 
+                        style={{ width: '40%' }} 
+                        value={record.selectedUnit}
+                        onChange={(v) => updateRow(record.key, 'unitChange', v)}
+                        options={unitOptions}
+                        disabled={!record.itemId}
+                    />
+                </Input.Group>
+            )
+        }
+    },
+    {
+        title: 'Tổng quy đổi',
+        width: '10%',
+        align: 'center' as const,
+        render: (_: any, record: TransactionDetail) => {
+             const itemInfo = items.find(i => i.id === record.itemId);
+             return (
+                 <div className="text-gray-500 font-semibold">
+                     {record.quantity} {itemInfo?.baseUnit}
+                 </div>
+             )
+        }
+    },
+    {
+        title: 'Mục đích',
         dataIndex: 'usageCategoryId',
         width: '15%',
         render: (_: any, record: TransactionDetail) => (
@@ -350,21 +456,21 @@ const StockTransactionCreate: React.FC = () => {
                 placeholder="VD: 11020..."
                 value={record.usageCategoryId}
                 onChange={(v) => updateRow(record.key, 'usageCategoryId', v)}
-                options={usageCategories.map(u => ({ value: u.id, label: `${u.code} - ${u.name}` }))}
+                options={usageCategories.map(u => ({ value: u.id, label: `${u.code}` }))}
                 showSearch
                 optionFilterProp="label"
+                allowClear
             />
         )
     },
     {
       title: 'Kho Nguồn (Xuất)',
       dataIndex: 'fromLocationId',
-      // Ẩn nếu là IMPORT
       className: transactionType === 'IMPORT' ? 'hidden-col' : '', 
       render: (_: any, record: TransactionDetail) => (
         <Select
             style={{ width: '100%' }}
-            placeholder={record.itemId ? "Chọn vị trí có hàng..." : "Chọn vật tư trước"}
+            placeholder={record.itemId ? "Chọn vị trí..." : "--"}
             disabled={transactionType === 'IMPORT' || !record.itemId}
             value={record.fromLocationId}
             onChange={(v) => updateRow(record.key, 'fromLocationId', v)}
@@ -375,14 +481,12 @@ const StockTransactionCreate: React.FC = () => {
                 }
             }}
             loading={!rowLocationOptions[record.key] && !!record.itemId}
-            notFoundContent={record.itemId ? "Hết hàng hoặc chưa nhập kho" : "Vui lòng chọn vật tư"}
         />
       )
     },
     {
         title: 'Kho Đích (Nhập)',
         dataIndex: 'toLocationId',
-        // Ẩn nếu là EXPORT
         className: transactionType === 'EXPORT' ? 'hidden-col' : '',
         render: (_: any, record: TransactionDetail) => (
           <Select
@@ -398,46 +502,24 @@ const StockTransactionCreate: React.FC = () => {
         )
       },
     {
-      title: 'Số lượng',
-      dataIndex: 'quantity',
-      width: '12%',
-      render: (_: any, record: TransactionDetail) => {
-        const available = getAvailableStockForLine(record);
-        const maxVal = transactionType !== 'IMPORT' ? available : undefined;
-        
-        return (
-        <Space>
-             <InputNumber 
-                min={1} 
-                max={maxVal}
-                value={record.quantity}
-                onChange={(v) => updateRow(record.key, 'quantity', v)}
-                status={transactionType !== 'IMPORT' && record.currentStock !== undefined && record.quantity > available ? 'error' : ''}
-            />
-            <span style={{color: '#888'}}>{record.unit || '...'}</span>
-        </Space>
-      )}
-    },
-    {
       title: '',
       dataIndex: 'action',
       width: '50px',
       render: (_: any, record: TransactionDetail) => (
-        <Button 
-            type="text" danger icon={<DeleteOutlined />} 
-            onClick={() => removeRow(record.key)}
-        />
+        <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removeRow(record.key)} />
       )
     }
   ].filter(col => !col.className?.includes('hidden-col')); 
 
   const getProcessDescription = () => {
       switch(transactionType) {
-          case 'IMPORT': return '1. Thủ kho kiểm đếm \u2192 2. Xác nhận nhập kho.';
-          case 'TRANSFER': return '1. Quản lý kho duyệt lệnh \u2192 2. Thủ kho chuyển hàng.';
+          case 'IMPORT': 
+            return <span className="text-green-600 font-semibold">Tự động duyệt & Cộng tồn kho ngay lập tức.</span>;
+          case 'TRANSFER': 
+            return '1. Trừ kho nguồn ngay lập tức \u2192 2. Kho đích xác nhận để cộng kho.';
           case 'EXPORT': 
             if(isLeader) return (
-                <span><Tag color="gold">Quyền Ưu Tiên</Tag> {'1. Thủ kho xuất hàng \u2192 2. Bạn xác nhận nhận đủ.'}</span>
+                <span><Tag color="gold">Ưu tiên</Tag> {'1. Thủ kho xuất hàng \u2192 2. Bạn xác nhận nhận đủ.'}</span>
             );
             return '1. Trưởng bộ phận duyệt \u2192 2. Thủ kho xuất hàng \u2192 3. Người tạo xác nhận.';
           default: return '';
@@ -494,11 +576,7 @@ const StockTransactionCreate: React.FC = () => {
                             </Tooltip>
                         </Space>
                     } valuePropName="checked">
-                          <Switch 
-                            checkedChildren="Khẩn cấp" 
-                            unCheckedChildren="Bình thường" 
-                            disabled={true} 
-                          />
+                          <Switch checkedChildren="Khẩn cấp" unCheckedChildren="Bình thường" disabled={true} />
                     </Form.Item>
                 </Col>
             </Row>
@@ -531,7 +609,9 @@ const StockTransactionCreate: React.FC = () => {
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                     <Button size="large" onClick={() => navigate(-1)}>Hủy bỏ</Button>
-                    <Button type="primary" htmlType="submit" size="large" icon={<SendOutlined />} loading={loading}>Gửi Yêu Cầu</Button>
+                    <Button type="primary" htmlType="submit" size="large" icon={<SendOutlined />} loading={loading}>
+                        {transactionType === 'IMPORT' ? 'Nhập kho ngay' : 'Gửi Yêu Cầu'}
+                    </Button>
                 </div>
             </div>
           </Form>

@@ -29,6 +29,8 @@ import WarehouseManagement from "./pages/warehouse/WarehouseManagement"; // Đã
 import PendingApprovals from "./pages/warehouse/PendingApprovals";
 import StockTransaction from "./pages/warehouse/StockTransaction";
 import StockActual from "./pages/warehouse/StockActual";
+// [MỚI] Import trang báo cáo tồn kho theo tháng
+import MonthlyReport from "./pages/warehouse/MonthlyReport"; 
 
 // 5. Security Component
 import RoleRoute from "./components/RoleRoute";
@@ -119,9 +121,6 @@ const AppContent = () => {
             </Route>
 
             {/* C. HẠ TẦNG & KHO: Cần quyền WMS_VIEW (Admin/KHO/Leader) */}
-            {/* - WarehouseManagement: Giờ đây quản lý cả Kho và Nhà máy (Tab) 
-                - Backend đã mở API GET /factories nên ROLE-KHO vào đây vẫn thấy dữ liệu Nhà máy
-            */}
             <Route element={<RoleRoute requiredPermission="WMS_VIEW" />}>
               <Route path="warehouse/locations" element={<WarehouseManagement />} /> 
               <Route path="warehouse/items" element={<ItemManagement />} />
@@ -129,6 +128,9 @@ const AppContent = () => {
               <Route path="warehouse/stock" element={<StockActual />} />
               <Route path="warehouse/suppliers" element={<SupplierPage />} />
               <Route path="warehouse/transactions" element={<StockTransaction />} />
+              
+              {/* [MỚI] Route Báo cáo tồn kho theo tháng (Xuất Excel) */}
+              <Route path="warehouse/report/monthly" element={<MonthlyReport />} />
             </Route>
 
             {/* D. PHÊ DUYỆT PHIẾU: Cần quyền WMS_APPROVE (Leader/Manager) */}

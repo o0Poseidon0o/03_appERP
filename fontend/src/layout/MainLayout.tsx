@@ -10,7 +10,8 @@ import {
   UnorderedListOutlined,
   TagsOutlined,
   EnvironmentOutlined, SwapOutlined, 
-  BoxPlotOutlined, DatabaseOutlined
+  BoxPlotOutlined, DatabaseOutlined,
+  BarChartOutlined // [MỚI] Icon cho Báo cáo
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -26,7 +27,7 @@ interface SideMenuProps {
     collapsed: boolean;
     isMobile: boolean;
     locationPath: string;
-    openKeys: string[]; // Thêm props để quản lý mở menu cha
+    openKeys: string[]; 
     onOpenChange: (keys: string[]) => void;
     menuItems: MenuProps['items'];
     onMenuClick: MenuProps['onClick'];
@@ -44,7 +45,7 @@ const SideMenu: React.FC<SideMenuProps> = ({ collapsed, isMobile, locationPath, 
           theme="dark" 
           mode="inline" 
           selectedKeys={[locationPath]} 
-          openKeys={openKeys} // Điều khiển mở menu cha
+          openKeys={openKeys} 
           onOpenChange={onOpenChange}
           items={menuItems} 
           onClick={onMenuClick}
@@ -73,21 +74,36 @@ const MainLayout: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
 
   // --- 1. LOGIC GIỮ MENU LUÔN MỞ KHI RELOAD ---
-  // Khi đường dẫn thay đổi, tự động xác định menu cha nào cần mở
   useEffect(() => {
     const pathname = location.pathname;
-    // [FIX]: Khai báo rõ kiểu string[] để tránh lỗi TS7034
     const keys: string[] = []; 
     
-    if (pathname.startsWith('/posts')) keys.push('/posts'); // Key của submenu Tin tức
-    if (pathname.startsWith('/warehouse')) keys.push('grp-warehouse'); // Key của group Kho
-    if (pathname.startsWith('/admin') && pathname !== '/admin/users') keys.push('grp-system'); // Key của group Hệ thống
+    // Logic mapping path -> group key
+    if (pathname.startsWith('/posts')) keys.push('grp-posts'); 
+    if (pathname.startsWith('/warehouse')) keys.push('grp-warehouse'); 
+    if (pathname.startsWith('/admin') && pathname !== '/admin/users') keys.push('grp-system'); 
     
-    // Chỉ set nếu chưa có (để tránh conflict khi user tự đóng mở)
-    if (keys.length > 0) setOpenKeys(prev => [...new Set([...prev, ...keys])]);
+    // Chỉ set khi component mount lần đầu hoặc user đổi trang bằng link trực tiếp
+    // (để tránh conflict khi user đang tự đóng mở menu thủ công)
+    setOpenKeys(prev => {
+        // Nếu đã mở rồi thì giữ nguyên, nếu chưa thì thêm vào
+        const uniqueKeys = new Set([...prev, ...keys]);
+        return Array.from(uniqueKeys);
+    });
   }, [location.pathname]);
 
+  // Xử lý khi user click mở/đóng menu cha
   const onOpenChange = (keys: string[]) => {
+    // Nếu muốn chế độ Accordion (chỉ mở 1 cái 1 lúc), dùng logic này:
+    // const latestOpenKey = keys.find(key => openKeys.indexOf(key) === -1);
+    // const rootSubmenuKeys = ['grp-posts', 'grp-warehouse', 'grp-system'];
+    // if (rootSubmenuKeys.indexOf(latestOpenKey!) === -1) {
+    //   setOpenKeys(keys);
+    // } else {
+    //   setOpenKeys(latestOpenKey ? [latestOpenKey] : []);
+    // }
+    
+    // Chế độ mở nhiều menu cùng lúc (thân thiện hơn):
     setOpenKeys(keys);
   };
 
@@ -137,7 +153,7 @@ const MainLayout: React.FC = () => {
 
     // Tin tức
     items.push({ 
-        key: '/posts', icon: <ReadOutlined />, label: 'Tin tức & Thông báo',
+        key: 'grp-posts', icon: <ReadOutlined />, label: 'Tin tức & Thông báo',
         children: [
             { key: '/posts', label: 'Tất cả tin tức' }, 
             ...dynamicMenus.map(m => ({ key: `/posts?menuId=${m.id}`, label: m.title, icon: <FileTextOutlined /> }))
@@ -159,13 +175,14 @@ const MainLayout: React.FC = () => {
 
       if (hasPermission('WMS_VIEW')) {
           warehouseChildren.push(
+            { key: '/warehouse/stock', icon: <DatabaseOutlined />, label: 'Tồn kho thực tế' },
+            { key: '/warehouse/transactions', icon: <SwapOutlined />, label: 'Phiếu Nhập / Xuất' },
+            { key: '/warehouse/locations', icon: <EnvironmentOutlined />, label: 'Kho & Vị trí' },
             { key: '/warehouse/items', icon: <BoxPlotOutlined />, label: 'Danh mục vật tư' },
             { key: '/warehouse/categories', icon: <TagsOutlined />, label: 'Nhóm vật tư' },
-            { key: '/warehouse/suppliers', icon: <TeamOutlined />, label: 'Nhà cung cấp' }, 
-            // [CẬP NHẬT LABEL] Để phản ánh đúng việc module này quản lý cả Nhà máy
-            { key: '/warehouse/locations', icon: <EnvironmentOutlined />, label: 'Kho & Vị trí' },
-            { key: '/warehouse/stock', icon: <DatabaseOutlined />, label: 'Tồn kho thực tế' },
-            { key: '/warehouse/transactions', icon: <SwapOutlined />, label: 'Phiếu Nhập / Xuất' }
+            { key: '/warehouse/suppliers', icon: <TeamOutlined />, label: 'Nhà cung cấp' },
+            // [MỚI] Menu Báo cáo
+            { key: '/warehouse/report/monthly', icon: <BarChartOutlined />, label: 'Báo cáo tồn tháng' }
           );
       }
 
@@ -179,7 +196,7 @@ const MainLayout: React.FC = () => {
 
       if (warehouseChildren.length > 0) {
         items.push({
-            key: 'grp-warehouse', label: 'QUẢN LÝ KHO', type: 'group', // Key này dùng cho openKeys
+            key: 'grp-warehouse', label: 'QUẢN LÝ KHO', icon: <DatabaseOutlined />, // Thêm icon cho group cha nếu muốn
             children: warehouseChildren
         });
       }
@@ -191,9 +208,9 @@ const MainLayout: React.FC = () => {
     if (canSeeSystem) {
       items.push({ type: 'divider' });
       items.push({ 
-          key: 'grp-system', label: 'HỆ THỐNG', type: 'group', // Key này dùng cho openKeys
+          key: 'grp-system', label: 'HỆ THỐNG', icon: <ApartmentOutlined />,
           children: [
-              ...(hasPermission('DEPT_VIEW') ? [{ key: '/admin/departments', icon: <ApartmentOutlined />, label: 'Phòng ban' }] : []),
+              ...(hasPermission('DEPT_VIEW') ? [{ key: '/admin/departments', label: 'Phòng ban' }] : []),
               ...(hasPermission('ROLE_VIEW') ? [{ key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Phân quyền' }] : []),
               ...(user?.roleId === 'ROLE-ADMIN' ? [{ key: '/admin/menus', icon: <UnorderedListOutlined />, label: 'Quản lý Menu' }] : []),
           ]

@@ -19,6 +19,7 @@ const { Text } = Typography;
 // --- INTERFACES ---
 interface Category {
   id: string;
+  code: string; // [UPDATE] Thêm trường code
   name: string;
   _count?: { items: number };
 }
@@ -74,8 +75,25 @@ const CategoryTab: React.FC = () => {
   };
 
   const columns: ColumnsType<Category> = [
-    { title: 'Tên danh mục', dataIndex: 'name', key: 'name', render: (t) => <Text strong>{t}</Text> },
-    { title: 'Số lượng VT', dataIndex: ['_count', 'items'], align: 'center', render: (c) => <span className="text-gray-500">{c || 0}</span> },
+    { 
+        title: 'Mã nhóm', 
+        dataIndex: 'code', 
+        key: 'code', 
+        width: 150,
+        render: (t) => <Text strong className="text-blue-600">{t}</Text> 
+    },
+    { 
+        title: 'Tên danh mục', 
+        dataIndex: 'name', 
+        key: 'name', 
+        render: (t) => <Text strong>{t}</Text> 
+    },
+    { 
+        title: 'Số lượng VT', 
+        dataIndex: ['_count', 'items'], 
+        align: 'center', 
+        render: (c) => <span className="text-gray-500">{c || 0}</span> 
+    },
     {
       title: 'Thao tác', key: 'action', align: 'center', width: 120,
       render: (_, record) => (
@@ -97,15 +115,46 @@ const CategoryTab: React.FC = () => {
     <>
       <div className="flex justify-between items-center mb-4">
         <Space>
-          <Input placeholder="Tìm nhóm..." prefix={<SearchOutlined />} onChange={e => setSearchText(e.target.value)} />
+          <Input 
+            placeholder="Tìm theo mã hoặc tên..." 
+            prefix={<SearchOutlined />} 
+            onChange={e => setSearchText(e.target.value)} 
+          />
           <Button icon={<ReloadOutlined />} onClick={fetchCategories} />
         </Space>
         {canManage && <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingCat(null); form.resetFields(); setIsModalOpen(true); }}>Thêm Nhóm</Button>}
       </div>
-      <Table columns={columns} dataSource={categories.filter(c => c.name.toLowerCase().includes(searchText.toLowerCase()))} rowKey="id" loading={loading} pagination={{ pageSize: 8 }} size="middle" />
+      
+      <Table 
+        columns={columns} 
+        dataSource={categories.filter(c => 
+            c.name.toLowerCase().includes(searchText.toLowerCase()) || 
+            (c.code && c.code.toLowerCase().includes(searchText.toLowerCase()))
+        )} 
+        rowKey="id" 
+        loading={loading} 
+        pagination={{ pageSize: 8 }} 
+        size="middle" 
+      />
+
       <Modal title={editingCat ? "Sửa nhóm" : "Thêm nhóm mới"} open={isModalOpen} onCancel={() => setIsModalOpen(false)} onOk={() => form.submit()} confirmLoading={loading}>
         <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-4">
-          <Form.Item name="name" label="Tên nhóm" rules={[{ required: true, message: 'Vui lòng nhập tên nhóm' }]}> <Input /> </Form.Item>
+          <Form.Item 
+            name="code" 
+            label="Mã nhóm" 
+            rules={[{ required: true, message: 'Vui lòng nhập mã!' }]} 
+            help="Ví dụ: VPP, IT, MOC..."
+          > 
+             <Input placeholder="Mã viết tắt" style={{ textTransform: 'uppercase'}} /> 
+          </Form.Item>
+          
+          <Form.Item 
+            name="name" 
+            label="Tên nhóm" 
+            rules={[{ required: true, message: 'Vui lòng nhập tên nhóm' }]}
+          > 
+             <Input placeholder="Tên đầy đủ" /> 
+          </Form.Item>
         </Form>
       </Modal>
     </>
@@ -158,14 +207,11 @@ const UsageCategoryTab: React.FC = () => {
   const handleCustomRequest = (options: any) => {
     const { file, onSuccess, onError } = options;
     
-    // Đọc file CSV ngay tại trình duyệt
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       complete: async (results) => {
         try {
-          console.log("Dữ liệu CSV đọc được:", results.data); // Debug xem console nếu cần
-
           // Gửi dữ liệu lên Server
           await axiosClient.post('/items/usage-categories/import', {
              data: results.data

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import axiosClient from '../../api/axiosClient'; // Đã cập nhật import đúng chuẩn của bạn
+import axiosClient from '../../api/axiosClient'; 
 import { FiSearch, FiDownload, FiAlertTriangle, FiRefreshCw, FiFilter } from 'react-icons/fi';
+import * as XLSX from 'xlsx'; // [QUAN TRỌNG] Nhớ npm install xlsx
 
 // 1. Định nghĩa kiểu dữ liệu khớp với Backend trả về
 interface StockItem {
@@ -26,6 +27,7 @@ const StockActual = () => {
   const [stocks, setStocks] = useState<StockItem[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false); // [MỚI] State loading khi xuất excel
   
   // State bộ lọc
   const [filters, setFilters] = useState({
@@ -45,9 +47,7 @@ const StockActual = () => {
   useEffect(() => {
     const fetchWarehouses = async () => {
       try {
-        // Gọi API lấy danh sách kho
         const response = await axiosClient.get('/warehouses'); 
-        // Lưu ý: Cấu trúc response.data.data dựa trên controller của bạn
         setWarehouses(response.data?.data || []); 
       } catch (error) {
         console.error("Không tải được danh sách kho", error);
@@ -56,11 +56,10 @@ const StockActual = () => {
     fetchWarehouses();
   }, []);
 
-  // 3. Gọi API lấy dữ liệu Tồn kho thực tế
+  // 3. Gọi API lấy dữ liệu Tồn kho thực tế (để hiển thị bảng)
   const fetchStocks = async () => {
     setLoading(true);
     try {
-      // Sử dụng axiosClient gọi đúng endpoint đã gộp
       const response = await axiosClient.get('/stock-transactions/actual', { 
         params: {
           page: filters.page,
@@ -88,6 +87,77 @@ const StockActual = () => {
     return () => clearTimeout(timer);
   }, [filters]);
 
+  // --- [MỚI] HÀM XUẤT EXCEL ---
+  const handleExportExcel = async () => {
+    try {
+        setExporting(true);
+        
+        // Bước 1: Gọi API lấy TOÀN BỘ dữ liệu (limit cực lớn để lấy hết)
+        // Lưu ý: Giữ nguyên các điều kiện lọc (search, warehouseId...)
+        const response = await axiosClient.get('/stock-transactions/actual', { 
+            params: {
+              page: 1,
+              limit: 99999, // Lấy tất cả, không phân trang
+              search: filters.search,
+              warehouseId: filters.warehouseId || undefined,
+              isLowStock: filters.isLowStock ? 'true' : undefined 
+            } 
+        });
+
+        const allData = response.data?.data || [];
+
+        if (allData.length === 0) {
+            alert("Không có dữ liệu để xuất!");
+            return;
+        }
+
+        // Bước 2: Format dữ liệu cho đẹp
+        const excelData = allData.map((item: StockItem, index: number) => ({
+            "STT": index + 1,
+            "Mã Vật Tư": item.itemCode,
+            "Tên Vật Tư": item.itemName,
+            "Danh Mục": item.category,
+            "Vị Trí (Bin)": item.locationCode,
+            "Kho": item.warehouseName,
+            "Số Lượng Tồn": item.quantity,
+            "Đơn Vị": item.unit,
+            "Cảnh Báo": item.isLow ? "Tồn thấp" : "Ổn định",
+            "Mức Tối Thiểu": item.minStock,
+            "Nhà Cung Cấp": item.supplierName
+        }));
+
+        // Bước 3: Tạo file Excel
+        const worksheet = XLSX.utils.json_to_sheet(excelData);
+        
+        // Tinh chỉnh độ rộng cột
+        worksheet['!cols'] = [
+            { wch: 5 },  // STT
+            { wch: 15 }, // Mã
+            { wch: 30 }, // Tên
+            { wch: 15 }, // Danh mục
+            { wch: 15 }, // Vị trí
+            { wch: 15 }, // Kho
+            { wch: 12 }, // SL
+            { wch: 8 },  // ĐVT
+            { wch: 10 }, // Cảnh báo
+            { wch: 10 }, // Min
+            { wch: 25 }  // NCC
+        ];
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Ton_Kho_Thuc_Te");
+
+        // Xuất file
+        XLSX.writeFile(workbook, `Ton_Kho_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+    } catch (error) {
+        console.error("Lỗi xuất Excel:", error);
+        alert("Có lỗi khi xuất file. Vui lòng thử lại.");
+    } finally {
+        setExporting(false);
+    }
+  };
+
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilters({ ...filters, search: e.target.value, page: 1 });
   };
@@ -114,8 +184,22 @@ const StockActual = () => {
           >
             <FiRefreshCw /> Làm mới
           </button>
-          <button className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition shadow-md">
-            <FiDownload /> Xuất Excel
+          
+          {/* [CẬP NHẬT] Nút Xuất Excel đã gắn hàm xử lý */}
+          <button 
+            onClick={handleExportExcel}
+            disabled={exporting}
+            className={`flex items-center gap-2 text-white px-4 py-2 rounded-lg transition shadow-md ${exporting ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+          >
+            {exporting ? (
+                <>
+                    <FiRefreshCw className="animate-spin" /> Đang xuất...
+                </>
+            ) : (
+                <>
+                    <FiDownload /> Xuất Excel
+                </>
+            )}
           </button>
         </div>
       </div>
@@ -134,7 +218,7 @@ const StockActual = () => {
           />
         </div>
         
-        {/* Dropdown chọn kho (Dynamic Data) */}
+        {/* Dropdown chọn kho */}
         <div className="relative w-full md:w-auto">
             <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <select 

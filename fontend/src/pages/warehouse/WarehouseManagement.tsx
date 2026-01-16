@@ -39,7 +39,6 @@ interface Warehouse {
   warehouseCode: string;
   factoryId: string;
   factory?: { name: string };
-  type?: string; 
   description?: string;
   locations?: WarehouseLocation[];
   _count?: { locations: number };
@@ -157,7 +156,7 @@ const WarehouseManagement: React.FC = () => {
         });
         message.success(`Đã tìm thấy: ${text}`);
 
-        // 4. [NEW] Scroll tới vị trí tìm thấy (UX improvement)
+        // 4. Scroll tới vị trí tìm thấy
         setTimeout(() => {
             const element = document.getElementById(`row-${targetWarehouse.id}`);
             if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -291,7 +290,6 @@ const WarehouseManagement: React.FC = () => {
                 return (
                     <div 
                         key={loc.id} 
-                        // Scroll target
                         id={`loc-${loc.id}`}
                         className={`p-3 rounded-lg border shadow-sm flex justify-between group transition-all duration-500
                             ${isHighlight 
@@ -365,8 +363,6 @@ const WarehouseManagement: React.FC = () => {
         <div id={`row-${record.id}`}> {/* Đánh dấu ID để scroll tới */}
           <Space className="mb-1">
              <Tag color="blue" className="font-mono uppercase font-bold">{record.warehouseCode}</Tag>
-             {record.type === 'VIRTUAL' && <Tag color="purple">KHO ẢO</Tag>}
-             {record.type === 'SHARED' && <Tag color="orange">KHO CHUNG</Tag>}
           </Space>
           <br /><Text strong style={{ fontSize: 16 }}>{record.name}</Text>
           <div className="text-xs text-slate-500 flex items-center mt-1">
@@ -514,23 +510,16 @@ const WarehouseManagement: React.FC = () => {
       
       {/* 1. Modal Kho */}
       <Modal title={editingWarehouse ? "Cập nhật Kho" : "Tạo Kho Mới"} open={isWhModalOpen} onOk={() => form.submit()} onCancel={() => setIsWhModalOpen(false)}>
-        <Form form={form} layout="vertical" onFinish={handleWhSubmit} initialValues={{ type: 'PHYSICAL' }}>
+        <Form form={form} layout="vertical" onFinish={handleWhSubmit} initialValues={{}}>
           <Form.Item name="warehouseCode" label="Mã Kho (Viết tắt)" rules={[{ required: true }]} help="Ví dụ: X1-WH01">
              <Input disabled={!!editingWarehouse} placeholder="Nhập mã kho..." onInput={(e) => e.currentTarget.value = e.currentTarget.value.toUpperCase()} />
           </Form.Item>
           <Form.Item name="name" label="Tên Kho đầy đủ" rules={[{ required: true }]}><Input placeholder="Ví dụ: Kho Vật Tư 1" /></Form.Item>
-          <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="factoryId" label="Thuộc Nhà máy" rules={[{ required: true }]}>
-                    <Select placeholder="Chọn nhà máy" options={factories.map(f => ({ label: f.name, value: f.id }))} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="type" label="Loại hình kho">
-                    <Select options={[{ value: 'PHYSICAL', label: 'Kho Vật lý (Thực)' }, { value: 'VIRTUAL', label: 'Kho Ảo / Tạm' }, { value: 'SHARED', label: 'Kho Dùng chung' }]} />
-                </Form.Item>
-              </Col>
-          </Row>
+          
+          <Form.Item name="factoryId" label="Thuộc Nhà máy" rules={[{ required: true }]}>
+             <Select placeholder="Chọn nhà máy" options={factories.map(f => ({ label: f.name, value: f.id }))} />
+          </Form.Item>
+
           <Form.Item name="description" label="Ghi chú thêm"><TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>

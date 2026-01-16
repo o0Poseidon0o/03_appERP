@@ -3,16 +3,20 @@ import prisma from '../../config/prisma';
 import { AppError } from '../../utils/AppError';
 
 // =============================================================================
-// 1. LẤY DANH SÁCH KHO (UPDATE: BỎ LỌC, HIỂN THỊ TẤT CẢ)
+// 1. LẤY DANH SÁCH KHO
 // =============================================================================
 export const getAllWarehouses = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Logic mới: Không lọc, lấy tất cả
+    // [NÂNG CẤP]: Hỗ trợ lọc theo factoryId nếu Frontend gửi lên (VD: ?factoryId=xyz)
+    const { factoryId } = req.query;
+    const whereCondition = factoryId ? { factoryId: String(factoryId) } : {};
+
     const warehouses = await prisma.warehouse.findMany({
-      where: {}, 
-      orderBy: { 
-          name: 'asc' 
-      },
+      where: whereCondition, 
+      orderBy: [
+          { factory: { name: 'asc' } }, // Gom nhóm theo Nhà máy trước
+          { name: 'asc' }               // Sau đó mới xếp tên kho a-z
+      ],
       include: { 
         factory: {
             select: { id: true, name: true }
@@ -32,17 +36,17 @@ export const getAllWarehouses = async (req: Request, res: Response, next: NextFu
 };
 
 // =============================================================================
-// 2. TẠO KHO MỚI (UPDATE: THÊM TYPE VÀ DESCRIPTION)
+// 2. TẠO KHO MỚI
 // =============================================================================
 export const createWarehouse = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // --- [UPDATE]: Thêm type và description vào body ---
     const { name, warehouseCode, factoryId, type, description } = req.body;
 
     if (!name || !warehouseCode || !factoryId) {
         return next(new AppError('Vui lòng nhập đủ: Tên, Mã kho và Nhà máy', 400));
     }
 
+    // Kiểm tra trùng mã kho trên toàn hệ thống
     const exists = await prisma.warehouse.findUnique({ where: { warehouseCode } });
     if (exists) {
         return next(new AppError(`Mã kho '${warehouseCode}' đã tồn tại`, 400));
@@ -51,41 +55,41 @@ export const createWarehouse = async (req: Request, res: Response, next: NextFun
     const newWarehouse = await prisma.warehouse.create({
       data: { 
         name, 
-        warehouseCode, 
+        warehouseCode: warehouseCode.toUpperCase().trim(), 
         factoryId,
-        type: type || 'PHYSICAL', // Mặc định là PHYSICAL nếu không gửi
+        type: type || 'PHYSICAL', 
         description 
       },
     });
     
     res.status(201).json({ status: 'success', data: newWarehouse });
   } catch (error) {
-    console.error("Lỗi createWarehouse:", error);
     next(new AppError('Lỗi tạo kho mới', 500));
   }
 };
 
 // =============================================================================
-// 3. THÊM VỊ TRÍ (BIN) VÀO KHO (UPDATE: THÊM RACK, LEVEL, BIN)
+// 3. THÊM VỊ TRÍ (BIN/RACK) VÀO KHO
 // =============================================================================
 export const addLocation = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // --- [UPDATE]: Thêm rack, level, bin ---
     const { warehouseId, locationCode, rack, level, bin } = req.body;
     
     const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
     if (!warehouse) return next(new AppError('Kho không tồn tại', 404));
 
-    const qrCode = `${warehouse.warehouseCode}-${locationCode}`.toUpperCase();
+    // Tạo QR Code chuẩn: KHO-VITRI (VD: KHO1-A01)
+    const normalizedCode = locationCode.toUpperCase().trim();
+    const qrCode = `${warehouse.warehouseCode}-${normalizedCode}`;
 
     const location = await prisma.location.create({
       data: { 
           warehouseId, 
-          locationCode: locationCode.toUpperCase(), 
+          locationCode: normalizedCode, 
           qrCode,
-          rack,   // Lưu Kệ
-          level,  // Lưu Tầng
-          bin     // Lưu Ngăn (nếu có)
+          rack: rack || null,   // Kệ
+          level: level || null, // Tầng
+          bin: bin || null      // Ngăn
       }
     });
 
@@ -99,12 +103,11 @@ export const addLocation = async (req: Request, res: Response, next: NextFunctio
 };
 
 // =============================================================================
-// 4. CẬP NHẬT THÔNG TIN KHO (UPDATE: CHO PHÉP SỬA TYPE VÀ DESC)
+// 4. CẬP NHẬT THÔNG TIN KHO
 // =============================================================================
 export const updateWarehouse = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    // --- [UPDATE]: Nhận thêm type và description ---
     const { name, factoryId, type, description } = req.body;
     
     const updated = await prisma.warehouse.update({
@@ -124,14 +127,16 @@ export const updateWarehouse = async (req: Request, res: Response, next: NextFun
 };
 
 // =============================================================================
-// 5. XÓA KHO (GIỮ NGUYÊN)
+// 5. XÓA KHO
 // =============================================================================
 export const deleteWarehouse = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+
+    // Ràng buộc: Phải xóa hết vị trí con mới được xóa kho cha
     const locationCount = await prisma.location.count({ where: { warehouseId: id } });
     if (locationCount > 0) {
-        return next(new AppError(`Kho này đang chứa ${locationCount} vị trí kệ, không thể xóa!`, 400));
+        return next(new AppError(`Kho này đang chứa ${locationCount} vị trí kệ, vui lòng xóa vị trí trước!`, 400));
     }
 
     await prisma.warehouse.delete({ where: { id } });
@@ -143,7 +148,7 @@ export const deleteWarehouse = async (req: Request, res: Response, next: NextFun
 };
 
 // =============================================================================
-// 6. LẤY TẤT CẢ VỊ TRÍ (UPDATE: TRẢ VỀ THÊM RACK, LEVEL...)
+// 6. LẤY TẤT CẢ VỊ TRÍ
 // =============================================================================
 export const getAllLocations = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -153,7 +158,10 @@ export const getAllLocations = async (req: Request, res: Response, next: NextFun
           select: { warehouseCode: true, name: true }
         }
       },
-      orderBy: { locationCode: 'asc' }
+      orderBy: [
+          { warehouse: { warehouseCode: 'asc' } }, // Xếp theo kho trước
+          { locationCode: 'asc' }                  // Xếp theo mã vị trí sau
+      ]
     });
 
     const formattedData = locations.map(loc => ({
@@ -161,7 +169,6 @@ export const getAllLocations = async (req: Request, res: Response, next: NextFun
       locationCode: loc.locationCode,
       qrCode: loc.qrCode,
       displayName: `${loc.warehouse.warehouseCode} - ${loc.locationCode}`,
-      // --- [UPDATE]: Trả về thông tin chi tiết ---
       rack: loc.rack,
       level: loc.level,
       bin: loc.bin,
@@ -175,12 +182,13 @@ export const getAllLocations = async (req: Request, res: Response, next: NextFun
 };
 
 // =============================================================================
-// 7. XÓA VỊ TRÍ KHO (GIỮ NGUYÊN)
+// 7. XÓA VỊ TRÍ KHO
 // =============================================================================
 export const deleteLocation = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     
+    // Ràng buộc: Không xóa vị trí đang có hàng tồn
     const stockCount = await prisma.stock.count({ where: { locationId: id, quantity: { gt: 0 } } });
     
     if (stockCount > 0) {
@@ -196,12 +204,11 @@ export const deleteLocation = async (req: Request, res: Response, next: NextFunc
 };
 
 // =============================================================================
-// 8. CẬP NHẬT VỊ TRÍ (UPDATE: SỬA CẢ RACK, LEVEL, BIN)
+// 8. CẬP NHẬT VỊ TRÍ
 // =============================================================================
 export const updateLocation = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    // --- [UPDATE]: Nhận thêm rack, level, bin ---
     const { locationCode, rack, level, bin } = req.body;
 
     const currentLocation = await prisma.location.findUnique({
@@ -213,16 +220,18 @@ export const updateLocation = async (req: Request, res: Response, next: NextFunc
         return next(new AppError('Không tìm thấy vị trí này', 404));
     }
 
-    const newQrCode = `${currentLocation.warehouse.warehouseCode}-${locationCode}`.toUpperCase();
+    const normalizedCode = locationCode.toUpperCase().trim();
+    // Cập nhật lại QR Code nếu tên vị trí thay đổi
+    const newQrCode = `${currentLocation.warehouse.warehouseCode}-${normalizedCode}`;
 
     const updatedLocation = await prisma.location.update({
       where: { id },
       data: {
-        locationCode: locationCode.toUpperCase(),
+        locationCode: normalizedCode,
         qrCode: newQrCode,
-        rack,   // Cập nhật Kệ
-        level,  // Cập nhật Tầng
-        bin     // Cập nhật Ngăn
+        rack,
+        level,
+        bin
       }
     });
 

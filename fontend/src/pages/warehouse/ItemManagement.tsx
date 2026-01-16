@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { 
   Table, Card, Button, Input, Tag, Space, 
   Modal, Form, Select, Tooltip, Popconfirm, 
-  App as AntdApp, Row, Col, InputNumber, Badge, Typography 
+  App as AntdApp, Row, Col, InputNumber, Badge, Typography, Divider 
 } from 'antd';
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
   DeleteOutlined, ReloadOutlined, BoxPlotOutlined,
-  BarcodeOutlined, ScanOutlined, PrinterOutlined, DownloadOutlined 
+  BarcodeOutlined, ScanOutlined, PrinterOutlined, DownloadOutlined,
+  MinusCircleOutlined, PlusCircleOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import axiosClient from '../../api/axiosClient';
@@ -16,7 +17,7 @@ import QRScannerModal from './QRScannerModal';
 
 const { Text } = Typography;
 
-// --- INTERFACES ---
+// --- INTERFACES (CẬP NHẬT THEO SCHEMA MỚI) ---
 interface Category {
   id: string;
   name: string;
@@ -28,15 +29,25 @@ interface Stock {
   location: { locationCode: string };
 }
 
+// [MỚI] Interface cho đơn vị quy đổi
+interface ItemConversion {
+  id?: string;
+  unitName: string;
+  factor: number;
+  barcode?: string;
+}
+
 interface Item {
   id: string;
   itemCode: string;
   itemName: string;
-  unit: string;
+  baseUnit: string; // [UPDATE] Đổi từ unit -> baseUnit
   categoryId: string;
   minStock: number;
+  
   category?: Category;
   stocks?: Stock[];
+  conversions?: ItemConversion[]; // [MỚI] Danh sách quy đổi
 }
 
 const ItemManagement: React.FC = () => {
@@ -79,7 +90,7 @@ const ItemManagement: React.FC = () => {
     fetchData();
   }, []);
 
-  // --- HÀM IN TEM ---
+  // --- HÀM IN TEM (CẬP NHẬT baseUnit) ---
   const handlePrintLabel = (item: Item) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -103,7 +114,7 @@ const ItemManagement: React.FC = () => {
             <div class="d">
               <div class="t">${item.itemName.toUpperCase()}</div>
               <div class="i">${item.itemCode}</div>
-              <div class="u">ĐVT: ${item.unit}</div>
+              <div class="u">ĐVT: ${item.baseUnit}</div> 
             </div>
           </div>
         </body>
@@ -112,29 +123,21 @@ const ItemManagement: React.FC = () => {
     printWindow.document.close();
   };
 
-  // --- [MỚI] HÀM DOWNLOAD QR CODE ---
   const handleDownloadQR = async (item: Item) => {
     try {
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${item.itemCode}`;
-        
-        // Fetch ảnh về dạng Blob để tránh lỗi cross-origin khi download
         const response = await fetch(qrUrl);
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
-
-        // Tạo thẻ a ảo để kích hoạt download
         const link = document.createElement('a');
         link.href = url;
         link.download = `QR-${item.itemCode}.png`;
         document.body.appendChild(link);
         link.click();
-        
-        // Dọn dẹp
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
         message.success('Đã tải mã QR xuống!');
     } catch (error) {
-        console.error(error);
         message.error('Lỗi khi tải mã QR');
     }
   };
@@ -143,8 +146,7 @@ const ItemManagement: React.FC = () => {
   const expandedRowRender = (record: Item) => {
     const stockColumns = [
       { title: 'Vị trí kệ (Bin)', dataIndex: ['location', 'locationCode'], key: 'loc', render: (text: string) => <Tag color="blue">{text}</Tag> },
-      { title: 'Số lượng thực tế', dataIndex: 'quantity', key: 'qty', render: (val: number) => <Text strong>{val.toLocaleString()}</Text> },
-      // FIX: Thêm type annotation : any cho _
+      { title: `Số lượng (${record.baseUnit})`, dataIndex: 'quantity', key: 'qty', render: (val: number) => <Text strong>{val.toLocaleString()}</Text> },
       { title: 'Trạng thái', render: (_: any, s: any) => s.quantity > 0 ? <Badge status="success" text="Sẵn có" /> : <Badge status="default" text="Hết hàng" /> }
     ];
     return <Table columns={stockColumns} dataSource={record.stocks} pagination={false} size="small" rowKey="id" className="bg-slate-50" />;
@@ -155,9 +157,16 @@ const ItemManagement: React.FC = () => {
     setLoading(true);
     try {
       if (editingItem) {
+        // API Update
         await axiosClient.patch(`/items/${editingItem.id}`, values);
+        
+        // [LƯU Ý] Nếu muốn sửa danh sách conversions, cần gọi API riêng hoặc backend phải hỗ trợ update nested.
+        // Ở đây giả định backend createItem hỗ trợ tạo nested conversions, còn update thì chỉ update thông tin cơ bản.
+        // Bạn có thể mở rộng logic này để gọi API thêm/xóa conversion nếu cần.
+        
         message.success('Cập nhật thành công');
       } else {
+        // API Create
         await axiosClient.post('/items', values);
         message.success('Đã thêm vật tư mới');
       }
@@ -174,8 +183,7 @@ const ItemManagement: React.FC = () => {
     {
       title: 'Vật Tư / Mã Số',
       key: 'itemName',
-      // FIX: Thêm type annotation : any cho _
-      render: (_: any, record) => (
+      render: (_, record) => (
         <Space size="middle">
           <div className="p-1 bg-white border rounded">
             <img src={`https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=${record.itemCode}`} alt="QR" width={40} />
@@ -192,19 +200,38 @@ const ItemManagement: React.FC = () => {
       dataIndex: ['category', 'name'],
       render: (text) => <Tag className="rounded-md border-none bg-slate-100 text-slate-600">{text || 'Chưa phân loại'}</Tag>
     },
-    { title: 'ĐVT', dataIndex: 'unit', align: 'center' },
+    { 
+        title: 'ĐVT Cơ Sở', 
+        dataIndex: 'baseUnit', // [UPDATE]
+        align: 'center',
+        render: (text) => <Tag color="geekblue">{text}</Tag>
+    },
+    {
+        title: 'Quy Đổi',
+        key: 'conversions',
+        render: (_, record) => (
+            <div className="flex flex-col gap-1">
+                {record.conversions && record.conversions.length > 0 ? (
+                    record.conversions.map((conv) => (
+                        <Tag key={conv.id} color="orange" className="mr-0 w-fit text-xs">
+                           1 {conv.unitName} = {conv.factor} {record.baseUnit}
+                        </Tag>
+                    ))
+                ) : <span className="text-gray-300 text-xs">-</span>}
+            </div>
+        )
+    },
     {
       title: 'Tổng Tồn Kho',
       key: 'totalStock',
       align: 'right',
-      // FIX: Thêm type annotation : any cho _
-      render: (_: any, record) => {
+      render: (_, record) => {
         const total = record.stocks?.reduce((acc, s) => acc + s.quantity, 0) || 0;
         const isLow = total <= record.minStock;
         return (
           <Tooltip title={isLow ? `Thấp hơn mức tối thiểu (${record.minStock})` : 'Tồn kho ổn định'}>
             <div className={`px-3 py-1 rounded-full inline-block font-bold ${isLow ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-              {total.toLocaleString()}
+              {total.toLocaleString()} <span className="text-xs font-normal">{record.baseUnit}</span>
             </div>
           </Tooltip>
         );
@@ -214,11 +241,9 @@ const ItemManagement: React.FC = () => {
       title: 'Thao tác',
       key: 'action',
       align: 'center',
-      width: 180,
-      // FIX: Thêm type annotation : any cho _
-      render: (_: any, record) => (
-        <Space>
-           {/* Nút Download Mới */}
+      width: 150,
+      render: (_, record) => (
+        <Space size="small">
           <Tooltip title="Tải QR">
             <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadQR(record)} />
           </Tooltip>
@@ -230,7 +255,12 @@ const ItemManagement: React.FC = () => {
           {canUpdate && (
             <Button size="small" type="text" className="text-blue-600" icon={<EditOutlined />} onClick={() => {
               setEditingItem(record);
-              form.setFieldsValue(record);
+              // [UPDATE] Set dữ liệu vào form, bao gồm cả conversions
+              form.setFieldsValue({
+                  ...record,
+                  // Map lại conversions nếu cần thiết
+                  conversions: record.conversions
+              });
               setIsModalOpen(true);
             }} />
           )}
@@ -251,7 +281,7 @@ const ItemManagement: React.FC = () => {
           <div className="bg-indigo-600 p-2 rounded-lg"><BoxPlotOutlined className="text-white text-xl" /></div>
           <div>
             <h2 className="text-xl font-bold text-slate-800 m-0">Quản Lý Vật Tư</h2>
-            <Text type="secondary">Quản lý danh mục, tồn kho và in nhãn QR Code</Text>
+            <Text type="secondary">Quản lý danh mục, đơn vị quy đổi và mã vạch</Text>
           </div>
         </Space>
         {canCreate && (
@@ -288,7 +318,15 @@ const ItemManagement: React.FC = () => {
 
       <QRScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={(text) => { setSearchText(text); fetchData(text); }} />
 
-      <Modal title={editingItem ? "Cập nhật vật tư" : "Thêm vật tư mới"} open={isModalOpen} onCancel={() => setIsModalOpen(false)} onOk={() => form.submit()} confirmLoading={loading} width={600} centered>
+      <Modal 
+        title={editingItem ? "Cập nhật vật tư" : "Thêm vật tư mới"} 
+        open={isModalOpen} 
+        onCancel={() => setIsModalOpen(false)} 
+        onOk={() => form.submit()} 
+        confirmLoading={loading} 
+        width={700} // Tăng độ rộng modal để chứa bảng quy đổi
+        centered
+      >
         <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-4">
           <Row gutter={16}>
             <Col span={12}><Form.Item name="itemCode" label="Mã Vật Tư" rules={[{ required: true }]}><Input placeholder="Ví dụ: VT-1001" disabled={!!editingItem} /></Form.Item></Col>
@@ -299,10 +337,77 @@ const ItemManagement: React.FC = () => {
             </Col>
           </Row>
           <Form.Item name="itemName" label="Tên / Quy cách vật tư" rules={[{ required: true }]}><Input.TextArea rows={2} placeholder="Nhập tên chi tiết..." /></Form.Item>
+          
           <Row gutter={16}>
-            <Col span={12}><Form.Item name="unit" label="Đơn Vị Tính" rules={[{ required: true }]}><Input placeholder="Cái, Kg, Bộ..." /></Form.Item></Col>
+            <Col span={12}>
+                {/* [UPDATE] Đổi name="unit" -> name="baseUnit" */}
+                <Form.Item name="baseUnit" label="Đơn Vị Cơ Sở (Nhỏ nhất)" rules={[{ required: true }]} tooltip="Đơn vị dùng để tính tồn kho (VD: Cái, Kg)">
+                    <Input placeholder="VD: Cái" />
+                </Form.Item>
+            </Col>
             <Col span={12}><Form.Item name="minStock" label="Ngưỡng tồn tối thiểu" initialValue={5}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
           </Row>
+
+          <Divider orientation="left" plain><span className="text-xs text-gray-500">Đơn vị quy đổi (Tùy chọn)</span></Divider>
+
+          {/* [MỚI] Form List cho Đơn vị quy đổi */}
+          <Form.List name="conversions">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map(({ key, name, ...restField }) => (
+                  <Row key={key} gutter={8} align="middle" className="mb-2">
+                    <Col span={8}>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'unitName']}
+                        rules={[{ required: true, message: 'Nhập tên ĐVT' }]}
+                        noStyle
+                      >
+                        <Input placeholder="Tên ĐVT (VD: Thùng)" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={1}>
+                        <div className="text-center">=</div>
+                    </Col>
+                    <Col span={6}>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'factor']}
+                        rules={[{ required: true, message: 'Nhập hệ số' }]}
+                        noStyle
+                      >
+                        <InputNumber placeholder="Hệ số" style={{ width: '100%' }} min={1} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                         <div className="text-gray-400 text-sm pl-2">
+                            (Đơn vị cơ sở)
+                         </div>
+                    </Col>
+                    <Col span={1}>
+                      <MinusCircleOutlined onClick={() => remove(name)} className="text-red-500 cursor-pointer" />
+                    </Col>
+                  </Row>
+                ))}
+                
+                {/* Chỉ cho phép thêm quy đổi khi TẠO MỚI (để đơn giản hoá logic update) */}
+                {!editingItem && (
+                    <Form.Item>
+                    <Button type="dashed" onClick={() => add()} block icon={<PlusCircleOutlined />}>
+                        Thêm quy đổi (VD: Thùng, Hộp)
+                    </Button>
+                    </Form.Item>
+                )}
+                {/* Nếu đang Edit thì hiển thị thông báo (vì logic update conversion phức tạp hơn) */}
+                {editingItem && (
+                    <div className="text-xs text-orange-500 mb-4 bg-orange-50 p-2 rounded">
+                        * Để sửa/xóa đơn vị quy đổi, vui lòng xóa vật tư và tạo lại hoặc liên hệ quản trị viên (Tính năng đang cập nhật).
+                    </div>
+                )}
+              </>
+            )}
+          </Form.List>
+
         </Form>
       </Modal>
     </div>

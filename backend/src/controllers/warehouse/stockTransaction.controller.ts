@@ -4,35 +4,26 @@ import prisma from '../../config/prisma';
 import { AppError } from '../../utils/AppError';
 
 // ============================================================================
-// HÀM HỖ TRỢ: SINH MÃ PHIẾU TỰ ĐỘNG & RESET THEO THÁNG
-// Định dạng: YY-MM-XXX | FactoryName (Ví dụ: 26-01-001 | X1)
+// HÀM HỖ TRỢ: SINH MÃ PHIẾU TỰ ĐỘNG
 // ============================================================================
 const generateTransactionCode = async (tx: any, factoryName: string) => {
   const now = new Date();
-  // Lưu ý: Nếu server không ở VN, cần cộng múi giờ. Ở đây dùng giờ server.
-  const yy = String(now.getFullYear()).slice(-2); // 2026 -> 26
-  const mm = String(now.getMonth() + 1).padStart(2, '0'); // 0 -> 01
-
-  // Key định danh cho bộ đếm: Reset theo Nhà máy và Theo Tháng
-  // Ví dụ Key trong DB: "COUNTER_X1_2601"
+  const yy = String(now.getFullYear()).slice(-2); 
+  const mm = String(now.getMonth() + 1).padStart(2, '0'); 
   const counterKey = `COUNTER_${factoryName}_${yy}${mm}`;
 
-  // Upsert: Nếu chưa có key này (tháng mới) thì tạo count = 1. Nếu có rồi thì tăng lên.
   const counter = await tx.transactionCounter.upsert({
     where: { key: counterKey },
     update: { count: { increment: 1 } },
     create: { key: counterKey, count: 1 }
   });
 
-  // Format số thứ tự: 1 -> 001 (Pad 3 số 0 cho đẹp và dễ sort)
   const sequence = String(counter.count).padStart(3, '0');
-
-  // Trả về định dạng: 26-01-001 | X1
   return `${yy}-${mm}-${sequence} | ${factoryName}`;
 };
 
 // ============================================================================
-// 1. LẤY TỒN KHO THỰC TẾ (REPORT)
+// 1. LẤY TỒN KHO THỰC TẾ
 // ============================================================================
 export const getStockActual = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -89,11 +80,7 @@ export const getStockActual = async (req: Request, res: Response, next: NextFunc
     let finalData = formattedStocks;
     if (isLowStock === 'true') finalData = finalData.filter(s => s.isLow);
 
-    res.status(200).json({ 
-        status: 'success', 
-        data: finalData, 
-        pagination: { total, page: Number(page), limit: Number(limit), totalPages: Math.ceil(total / Number(limit)) } 
-    });
+    res.status(200).json({ status: 'success', data: finalData, pagination: { total, page: Number(page), limit: Number(limit), totalPages: Math.ceil(total / Number(limit)) } });
   } catch (error) {
     next(new AppError('Lỗi lấy dữ liệu tồn kho', 500));
   }
@@ -122,19 +109,14 @@ export const checkStock = async (req: Request, res: Response, next: NextFunction
     const pendingQty = pendingAggregation._sum.quantity || 0;
     const availableQty = physicalQty - pendingQty;
 
-    res.status(200).json({ 
-        status: 'success', 
-        quantity: availableQty > 0 ? availableQty : 0, 
-        physical: physicalQty, 
-        pending: pendingQty 
-    });
+    res.status(200).json({ status: 'success', quantity: availableQty > 0 ? availableQty : 0, physical: physicalQty, pending: pendingQty });
   } catch (error) {
     next(new AppError('Lỗi kiểm tra tồn kho', 500));
   }
 };
 
 // ============================================================================
-// 3. TẠO PHIẾU GIAO DỊCH (Đã cập nhật sinh mã mới)
+// 3. TẠO PHIẾU GIAO DỊCH (UPDATE: AUTO-IMPORT)
 // ============================================================================
 export const createTransaction = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -146,17 +128,17 @@ export const createTransaction = async (req: Request, res: Response, next: NextF
 
     if (!userFactoryId) return next(new AppError('Tài khoản chưa được gán Nhà máy.', 400));
 
-    // Lấy quy trình duyệt
+    // Lấy quy trình duyệt (Chỉ áp dụng cho EXPORT, vì IMPORT và TRANSFER logic khác)
     let steps: any[] = [];
-    if (type !== 'TRANSFER') {
+    if (type === 'EXPORT') {
         steps = await prisma.approvalStep.findMany({ where: { type }, orderBy: { order: 'asc' } });
-        if (type === 'EXPORT' && ['ROLE-LEADER', 'ROLE-MANAGER'].includes(user.roleId)) {
+        if (['ROLE-LEADER', 'ROLE-MANAGER'].includes(user.roleId)) {
             steps = steps.filter(step => step.roleId !== user.roleId);
         }
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // 1. KIỂM TRA & TRỪ TỒN KHO
+      // --- 1. LOGIC XUẤT/CHUYỂN (TRỪ KHO) ---
       if (['EXPORT', 'TRANSFER'].includes(type)) {
           for (const item of details) {
               if (!item.fromLocationId) continue;
@@ -164,6 +146,7 @@ export const createTransaction = async (req: Request, res: Response, next: NextF
               const stocks = await tx.stock.findMany({ where: { itemId: item.itemId, locationId: item.fromLocationId as string } });
               const physicalQty = stocks.reduce((sum, s) => sum + s.quantity, 0);
 
+              // Check pending EXPORT
               const pendingAgg = await tx.transactionDetail.aggregate({
                   _sum: { quantity: true },
                   where: {
@@ -178,11 +161,10 @@ export const createTransaction = async (req: Request, res: Response, next: NextF
                   throw new Error(`Vật tư "${itemInfo?.itemName}" không đủ tồn khả dụng.`);
               }
 
-              // Nếu là TRANSFER: Trừ kho ngay lập tức
+              // TRANSFER: Trừ kho ngay
               if (type === 'TRANSFER') {
                   let remaining = item.quantity;
                   const sortedStocks = stocks.sort((a, b) => b.quantity - a.quantity); 
-
                   for (const stockBatch of sortedStocks) {
                       if (remaining <= 0) break;
                       const deduct = Math.min(stockBatch.quantity, remaining);
@@ -194,41 +176,77 @@ export const createTransaction = async (req: Request, res: Response, next: NextF
           }
       }
 
-      // 2. SINH MÃ PHIẾU THEO YÊU CẦU: YY-MM-001 | X1
+      // --- 2. SINH MÃ PHIẾU ---
       const newCode = await generateTransactionCode(tx, userFactoryName);
 
-      // 3. TẠO PHIẾU
-      const initialStatus = type === 'TRANSFER' ? 'WAITING_CONFIRM' : 'PENDING';
+      // --- 3. XÁC ĐỊNH TRẠNG THÁI ---
+      let initialStatus = 'PENDING';
+      if (type === 'TRANSFER') initialStatus = 'WAITING_CONFIRM';
+      if (type === 'IMPORT') initialStatus = 'APPROVED'; // <--- [UPDATE] IMPORT tự động duyệt luôn
 
+      // --- 4. TẠO PHIẾU ---
       const ticket = await tx.stockTransaction.create({
         data: {
           code: newCode, 
           type, 
           isEmergency: isEmergency || false, 
           description,
-          creatorId: user.id, 
+          creatorId: user.id, // Người tạo (cũng là người nhập kho nếu là IMPORT)
           supplierId: supplierId || null,
           factoryId: userFactoryId, 
           status: initialStatus,
+          completedAt: type === 'IMPORT' ? new Date() : null, // Ghi nhận thời gian hoàn thành ngay
           details: {
             create: details.map((item: any) => ({
               itemId: item.itemId, 
               quantity: Number(item.quantity),
               fromLocationId: item.fromLocationId || null, 
               toLocationId: item.toLocationId || null,
-              usageCategoryId: item.usageCategoryId || null, // Lưu loại hàng sử dụng
+              usageCategoryId: item.usageCategoryId || null,
             }))
           }
         }
       });
 
-      // 4. TẠO BƯỚC DUYỆT
-      if (type !== 'TRANSFER' && steps.length > 0) {
+      // --- 5. LOGIC IMPORT: CỘNG TỒN KHO NGAY LẬP TỨC ---
+      if (type === 'IMPORT') {
+          for (const item of details) {
+              if (item.toLocationId) {
+                  // Cộng dồn vào kho đích
+                  await tx.stock.upsert({
+                      where: { 
+                          itemId_locationId_supplierId: { 
+                              itemId: item.itemId, 
+                              locationId: item.toLocationId, 
+                              supplierId: supplierId 
+                          } 
+                      },
+                      update: { quantity: { increment: Number(item.quantity) } },
+                      create: { 
+                          itemId: item.itemId, 
+                          locationId: item.toLocationId, 
+                          supplierId: supplierId, 
+                          quantity: Number(item.quantity) 
+                      }
+                  });
+              }
+          }
+          // Ghi log hệ thống
+          await tx.approvalLog.create({
+              data: { 
+                  transactionId: ticket.id, 
+                  userId: user.id, 
+                  action: 'AUTO_IMPORT', 
+                  comment: 'Hệ thống tự động nhập kho theo yêu cầu.' 
+              }
+          });
+      }
+
+      // --- 6. TẠO BƯỚC DUYỆT (CHỈ CHO EXPORT) ---
+      if (type === 'EXPORT' && steps.length > 0) {
         await tx.transactionApproval.createMany({
           data: steps.map(step => ({ transactionId: ticket.id, stepId: step.id, status: 'PENDING' }))
         });
-      } else if (type === 'IMPORT' && steps.length === 0) {
-         await tx.stockTransaction.update({ where: { id: ticket.id }, data: { status: 'APPROVED', completedAt: new Date() } });
       }
 
       return ticket;
@@ -337,32 +355,20 @@ export const approveStep = async (req: Request, res: Response, next: NextFunctio
 
         const isWarehouseStep = currentApproval.step.roleId.includes('KHO') || currentApproval.step.name.toUpperCase().includes('KHO');
 
-        // IMPORT/EXPORT: Xử lý kho ở bước duyệt của Thủ Kho
-        if (isWarehouseStep && ticket.type !== 'TRANSFER') {
-          for (const detail of ticket.details) {
-            if (ticket.type === 'IMPORT') {
-              if (detail.toLocationId) {
-                  const sId = ticket.supplierId as string;
-                  await tx.stock.upsert({
-                    where: { itemId_locationId_supplierId: { itemId: detail.itemId, locationId: detail.toLocationId!, supplierId: sId } },
-                    update: { quantity: { increment: detail.quantity } },
-                    create: { itemId: detail.itemId, locationId: detail.toLocationId!, supplierId: sId, quantity: detail.quantity }
-                  });
+        // CHỈ XỬ LÝ KHO CHO EXPORT (IMPORT đã tự động rồi)
+        if (isWarehouseStep && ticket.type === 'EXPORT') {
+              for (const detail of ticket.details) {
+                  const stockBatches = await tx.stock.findMany({ where: { itemId: detail.itemId, locationId: detail.fromLocationId!, quantity: { gt: 0 } }, orderBy: { quantity: 'desc' } });
+                  let remaining = detail.quantity;
+                  for (const batch of stockBatches) {
+                    if (remaining <= 0) break;
+                    const deduct = Math.min(batch.quantity, remaining);
+                    await tx.stock.update({ where: { id: batch.id }, data: { quantity: { decrement: deduct } } });
+                    remaining -= deduct;
+                  }
               }
-            } else if (ticket.type === 'EXPORT') {
-              const stockBatches = await tx.stock.findMany({ where: { itemId: detail.itemId, locationId: detail.fromLocationId!, quantity: { gt: 0 } }, orderBy: { quantity: 'desc' } });
-              let remaining = detail.quantity;
-              for (const batch of stockBatches) {
-                if (remaining <= 0) break;
-                const deduct = Math.min(batch.quantity, remaining);
-                await tx.stock.update({ where: { id: batch.id }, data: { quantity: { decrement: deduct } } });
-                remaining -= deduct;
-              }
-            }
-          }
         }
 
-        // Nếu là bước duyệt cuối cùng của EXPORT -> Chuyển sang WAITING_CONFIRM
         const isLastApprover = ticket.approvals[ticket.approvals.length - 1].id === currentApproval.id;
         if (isLastApprover && ticket.type === 'EXPORT') {
           await tx.stockTransaction.update({ where: { id: ticket.id }, data: { status: 'WAITING_CONFIRM' } });
@@ -382,7 +388,7 @@ export const approveStep = async (req: Request, res: Response, next: NextFunctio
 };
 
 // ============================================================================
-// 5. LẤY DANH SÁCH CẦN DUYỆT (Giữ nguyên logic của bạn)
+// 5. LẤY DANH SÁCH CẦN DUYỆT
 // ============================================================================
 export const getMyPendingApprovals = async (req: Request, res: Response, next: NextFunction) => {
     try {

@@ -1,17 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
-import prisma from '../../config/prisma';
+import prisma from '../../config/prisma'; // Đảm bảo đường dẫn đúng
 import { AppError } from '../../utils/AppError';
 
-// ==========================================
+// ==================================================================
 // 1. QUẢN LÝ DANH MỤC VẬT TƯ (ITEM CATEGORY)
-// ==========================================
+// ==================================================================
 
-// Lấy tất cả danh mục (Dùng cho Dropdown khi tạo Item)
+// Lấy tất cả danh mục
 export const getAllCategories = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const categories = await prisma.itemCategory.findMany({
-      orderBy: { name: 'asc' },
-      include: { _count: { select: { items: true } } } // Đếm xem mỗi loại có bao nhiêu vật tư
+      orderBy: { code: 'asc' }, 
+      include: { _count: { select: { items: true } } } 
     });
     res.status(200).json({ status: 'success', data: categories });
   } catch (error) {
@@ -19,38 +19,57 @@ export const getAllCategories = async (req: Request, res: Response, next: NextFu
   }
 };
 
+// Tạo mới danh mục
 export const createCategory = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name } = req.body;
-    if (!name) return next(new AppError('Tên danh mục không được để trống', 400));
+    const { code, name } = req.body;
 
-    const category = await prisma.itemCategory.create({ data: { name } });
+    if (!code || !name) {
+        return next(new AppError('Mã nhóm và Tên nhóm không được để trống', 400));
+    }
+
+    // Kiểm tra trùng mã
+    const existingCode = await prisma.itemCategory.findUnique({ where: { code: code.toString() } });
+    if (existingCode) {
+        return next(new AppError(`Mã nhóm '${code}' đã tồn tại!`, 400));
+    }
+
+    const category = await prisma.itemCategory.create({ 
+        data: { 
+            code: code.toUpperCase().trim(),
+            name: name.trim()
+        } 
+    });
     res.status(201).json({ status: 'success', data: category });
   } catch (error) {
-    next(new AppError('Tên danh mục đã tồn tại', 400));
+    next(new AppError('Tên danh mục hoặc Mã danh mục đã tồn tại', 400));
   }
 };
 
+// Cập nhật danh mục
 export const updateCategory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { name } = req.body;
+    const { code, name } = req.body;
     
     const updated = await prisma.itemCategory.update({
       where: { id },
-      data: { name }
+      data: { 
+          code: code ? code.toUpperCase().trim() : undefined,
+          name: name ? name.trim() : undefined
+      }
     });
     res.status(200).json({ status: 'success', data: updated });
   } catch (error) {
-    next(new AppError('Không tìm thấy danh mục hoặc tên đã tồn tại', 404));
+    next(new AppError('Không tìm thấy danh mục hoặc Mã/Tên đã bị trùng', 404));
   }
 };
 
+// Xóa danh mục
 export const deleteCategory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
-    // Kiểm tra xem có vật tư nào đang thuộc danh mục này không
     const itemUnderCategory = await prisma.item.count({ where: { categoryId: id } });
     if (itemUnderCategory > 0) {
       return next(new AppError('Không thể xóa danh mục đang có vật tư tồn tại', 400));
@@ -63,32 +82,53 @@ export const deleteCategory = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-// ==========================================
-// 2. QUẢN LÝ VẬT TƯ (ITEM)
-// ==========================================
+// ==================================================================
+// 2. QUẢN LÝ VẬT TƯ (ITEM) - [ĐÃ UPDATE CHO SCHEMA MỚI]
+// ==================================================================
 
 export const createItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { itemCode, itemName, unit, categoryId, minStock } = req.body;
+    // [CHANGE] Lấy baseUnit thay vì unit. Nhận thêm mảng conversions
+    const { itemCode, itemName, baseUnit, categoryId, minStock, conversions } = req.body;
 
-    // Tinh chỉnh QR: Dùng mã vật tư kết hợp timestamp rút gọn
+    if (!itemCode || !itemName || !baseUnit || !categoryId) {
+        return next(new AppError('Thiếu thông tin bắt buộc (Mã, Tên, ĐVT cơ sở, Nhóm)', 400));
+    }
+
     const uniqueSuffix = Date.now().toString(36).toUpperCase();
     const qrCode = `ITM-${itemCode}-${uniqueSuffix}`;
+
+    // Xử lý dữ liệu quy đổi đơn vị (nếu có)
+    // Client gửi lên dạng: [{ unitName: "Thùng", factor: 24, barcode: "..." }]
+    const conversionData = Array.isArray(conversions) ? conversions.map((c: any) => ({
+        unitName: c.unitName,
+        factor: parseFloat(c.factor),
+        barcode: c.barcode || null
+    })) : [];
 
     const item = await prisma.item.create({
       data: { 
         itemCode, 
         itemName, 
-        unit, 
+        baseUnit, // [IMPORTANT] Dùng baseUnit
         categoryId, 
         qrCode,
-        minStock: minStock ? parseFloat(minStock) : 0
+        minStock: minStock ? parseFloat(minStock) : 0,
+        
+        // Tạo luôn đơn vị quy đổi (Nested Write)
+        conversions: {
+            create: conversionData 
+        }
+      },
+      include: {
+          conversions: true // Trả về luôn để hiển thị
       }
     });
 
     res.status(201).json({ status: 'success', data: item });
   } catch (error) {
-    next(new AppError('Mã vật tư hoặc mã QR đã tồn tại', 400));
+    console.error("Create Item Error:", error);
+    next(new AppError('Mã vật tư, mã QR hoặc đơn vị quy đổi đã bị trùng', 400));
   }
 };
 
@@ -101,11 +141,19 @@ export const searchItems = async (req: Request, res: Response, next: NextFunctio
         OR: [
           { itemCode: { contains: String(q), mode: 'insensitive' } },
           { itemName: { contains: String(q), mode: 'insensitive' } },
-          { qrCode: { equals: String(q) } }
+          { qrCode: { equals: String(q) } },
+          // [NEW] Tìm kiếm cả trong mã vạch của đơn vị quy đổi (VD: Quét mã thùng)
+          { 
+            conversions: { 
+                some: { barcode: { equals: String(q) } } 
+            } 
+          }
         ]
-      } : {}, // Nếu không có từ khóa thì trả về tất cả
+      } : {}, 
       include: { 
         category: true, 
+        // [IMPORTANT] Lấy kèm bảng quy đổi để Frontend tính toán
+        conversions: true, 
         stocks: { 
           include: { location: true, supplier: true } 
         } 
@@ -121,13 +169,14 @@ export const searchItems = async (req: Request, res: Response, next: NextFunctio
 export const updateItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { itemName, unit, categoryId, minStock } = req.body;
+    // [CHANGE] baseUnit
+    const { itemName, baseUnit, categoryId, minStock } = req.body;
 
     const updatedItem = await prisma.item.update({
       where: { id },
       data: { 
         itemName, 
-        unit, 
+        baseUnit, 
         categoryId,
         minStock: minStock ? parseFloat(minStock) : undefined
       }
@@ -139,22 +188,59 @@ export const updateItem = async (req: Request, res: Response, next: NextFunction
   }
 };
 
+// [NEW API] Thêm đơn vị quy đổi lẻ (VD: Đã có Thùng, giờ thêm Hộp)
+export const addConversionUnit = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { itemId } = req.params;
+        const { unitName, factor, barcode } = req.body;
+
+        if(!unitName || !factor) {
+            return next(new AppError('Tên đơn vị và hệ số quy đổi là bắt buộc', 400));
+        }
+
+        const newUnit = await prisma.itemUnitConversion.create({
+            data: {
+                itemId,
+                unitName,
+                factor: parseFloat(factor),
+                barcode
+            }
+        });
+
+        res.status(201).json({ status: 'success', data: newUnit });
+    } catch (error) {
+        next(new AppError('Đơn vị quy đổi này đã tồn tại cho vật tư này', 400));
+    }
+};
+
+// [NEW API] Xóa đơn vị quy đổi
+export const deleteConversionUnit = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { conversionId } = req.params;
+        await prisma.itemUnitConversion.delete({ where: { id: conversionId }});
+        res.status(204).send();
+    } catch (error) {
+        next(new AppError('Lỗi khi xóa đơn vị quy đổi', 500));
+    }
+};
+
 export const deleteItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
-    // Ràng buộc 1: Không xóa nếu còn tồn kho thực tế
+    // Ràng buộc 1: Không xóa nếu còn tồn kho
     const stockCount = await prisma.stock.findMany({
       where: { itemId: id, quantity: { gt: 0 } }
     });
     if (stockCount.length > 0) return next(new AppError('Vật tư còn hàng tồn, không thể xóa!', 400));
 
-    // Ràng buộc 2: Không xóa nếu đã phát sinh phiếu nhập/xuất (để giữ lịch sử)
+    // Ràng buộc 2: Không xóa nếu đã có giao dịch
     const transactionCount = await prisma.transactionDetail.count({
       where: { itemId: id }
     });
     if (transactionCount > 0) return next(new AppError('Vật tư đã có lịch sử giao dịch, không thể xóa!', 400));
 
+    // Prisma tự động xóa conversions nhờ cascade
     await prisma.item.delete({ where: { id } });
     res.status(204).json({ status: 'success', data: null });
   } catch (error) {
@@ -162,15 +248,15 @@ export const deleteItem = async (req: Request, res: Response, next: NextFunction
   }
 };
 
-// ==========================================
-// 3. QUẢN LÝ LOẠI HÀNG SỬ DỤNG (USAGE CATEGORY) - [MỚI]
-// ==========================================
+// ==================================================================
+// 3. QUẢN LÝ LOẠI HÀNG SỬ DỤNG (USAGE CATEGORY)
+// ==================================================================
 
-// Lấy danh sách để hiển thị Dropdown chọn loại hàng (99990, 11020...)
+// Lấy danh sách (Dropdown)
 export const getAllUsageCategories = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const categories = await prisma.usageCategory.findMany({
-      orderBy: { code: 'asc' } // Sắp xếp theo mã 11020, 11030...
+      orderBy: { code: 'asc' }
     });
     res.status(200).json({ status: 'success', data: categories });
   } catch (error) {
@@ -178,7 +264,7 @@ export const getAllUsageCategories = async (req: Request, res: Response, next: N
   }
 };
 
-// Tạo mới thủ công 1 loại hàng
+// Tạo mới
 export const createUsageCategory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { code, name, description } = req.body;
@@ -193,7 +279,7 @@ export const createUsageCategory = async (req: Request, res: Response, next: Nex
   }
 };
 
-// Cập nhật loại hàng
+// Cập nhật
 export const updateUsageCategory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
@@ -209,12 +295,11 @@ export const updateUsageCategory = async (req: Request, res: Response, next: Nex
   }
 };
 
-// Xóa loại hàng
+// Xóa
 export const deleteUsageCategory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
-    // Kiểm tra ràng buộc: Nếu đã dùng trong phiếu xuất/nhập thì không được xóa
     const countUsed = await prisma.transactionDetail.count({
       where: { usageCategoryId: id }
     });
@@ -230,42 +315,38 @@ export const deleteUsageCategory = async (req: Request, res: Response, next: Nex
   }
 };
 
-// [QUAN TRỌNG] API Import hàng loạt từ file CSV (Client gửi lên mảng JSON)
+// Import Excel/CSV
 export const importUsageCategories = async (req: Request, res: Response, next: NextFunction) => {
   try {
-     const { data } = req.body; // Dữ liệu từ Frontend gửi lên
+     const { data } = req.body;
      
      if (!Array.isArray(data) || data.length === 0) {
         return next(new AppError('Dữ liệu import rỗng hoặc không hợp lệ', 400));
      }
 
-     // 1. Lọc và chuẩn hóa dữ liệu
      const validItems = [];
      for (const item of data) {
-        // Tự động map cột: product_category_code -> code, product_name -> name
-        // (Hỗ trợ cả trường hợp file dùng tên cột cũ là code/name)
         const rawCode = item.product_category_code || item.code;
         const rawName = item.product_name || item.name;
 
         if (rawCode && rawName) {
            validItems.push({
-              code: String(rawCode).trim(), // Chuyển thành chuỗi và xóa khoảng trắng thừa
+              code: String(rawCode).trim(), 
               name: String(rawName).trim()
            });
         }
      }
 
      if (validItems.length === 0) {
-         return next(new AppError('Lỗi: Không tìm thấy cột product_category_code và product_name trong file CSV!', 400));
+         return next(new AppError('Lỗi: Không tìm thấy cột mã và tên hợp lệ trong file!', 400));
      }
 
-     // 2. Thực hiện Import vào Database (Dùng Transaction để an toàn)
      const result = await prisma.$transaction(
         validItems.map((item) => 
            prisma.usageCategory.upsert({
-              where: { code: item.code }, // Tìm theo mã
-              update: { name: item.name }, // Nếu có rồi -> Cập nhật tên
-              create: {                    // Nếu chưa có -> Tạo mới
+              where: { code: item.code },
+              update: { name: item.name },
+              create: { 
                  code: item.code, 
                  name: item.name 
               }
