@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Layout, Menu, Button, Dropdown, Avatar, Badge, List, Popover, 
-  theme as antTheme, Switch, Drawer, type MenuProps, Typography, Tooltip 
+  theme as antTheme, Switch, Drawer, type MenuProps, Tooltip 
 } from 'antd';
+// [SỬA LỖI 1] Bỏ import Typography vì không dùng trong code này
+// import { Typography } from 'antd'; 
+
 import { 
   MenuFoldOutlined, MenuUnfoldOutlined, 
   UserOutlined, DashboardOutlined, 
@@ -26,7 +29,8 @@ import axiosClient from '../api/axiosClient';
 import useMediaQuery from '../hooks/useMediaQuery';
 
 const { Header, Sider, Content } = Layout;
-const { Text, Title } = Typography;
+// [SỬA LỖI 1] Xóa dòng destructuring không dùng đến
+// const { Text, Title } = Typography; 
 
 // --- MENU COMPONENT ---
 interface SideMenuProps {
@@ -72,7 +76,6 @@ interface AppLauncherProps {
 const AppLauncher: React.FC<AppLauncherProps> = ({ isOpen, onClose, menuItems, onNavigate, isDarkMode }) => {
     if (!isOpen) return null;
 
-    // Logic: Lấy các item chính hoặc group chính để hiển thị icon
     const appModules = menuItems.filter(item => item && item.type !== 'divider').map(item => {
         let link = item.key;
         if (item.children && item.children.length > 0) {
@@ -154,10 +157,8 @@ const MainLayout: React.FC = () => {
 
   // --- LOGIC 1: BẮT TÍN HIỆU TỪ TRANG LOGIN ĐỂ MỞ APP LAUNCHER ---
   useEffect(() => {
-    // Nếu có state openAppLauncher (từ login gửi sang) thì mở overlay lên
     if (location.state && location.state.openAppLauncher) {
         setAppLauncherOpen(true);
-        // Xóa state để khi refresh không bị mở lại (tùy chọn)
         window.history.replaceState({}, document.title);
     }
   }, [location]);
@@ -309,7 +310,7 @@ const MainLayout: React.FC = () => {
 
   const userDropdown: MenuProps = {
     items: [
-        { key: 'info', label: <div className="px-2 py-1"><div className="font-bold text-base">{user?.fullName}</div><div className="text-xs text-gray-500">@{user?.username}</div></div>, disabled: true },
+        { key: 'info', label: <div className="px-2 py-1"><div className="font-bold text-base">{user?.fullName}</div><div className="text-xs text-gray-500">@{(user as any)?.username}</div></div>, disabled: true },
         { type: 'divider' },
         { key: 'profile', icon: <UserOutlined />, label: 'Hồ sơ cá nhân', onClick: () => navigate('/profile') },
         { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', danger: true, onClick: logout },
@@ -318,7 +319,6 @@ const MainLayout: React.FC = () => {
 
   return (
     <Layout className="h-screen overflow-hidden">
-      {/* RENDER APP LAUNCHER OVERLAY */}
       <AppLauncher 
         isOpen={appLauncherOpen} 
         onClose={() => setAppLauncherOpen(false)} 
@@ -371,7 +371,6 @@ const MainLayout: React.FC = () => {
             className="flex justify-between items-center sticky top-0 z-10 backdrop-blur-sm"
         >
             <div className="flex items-center gap-3">
-                {/* Nút App Launcher */}
                 <Tooltip title="Ứng dụng">
                     <Button 
                         type="text"
@@ -384,7 +383,6 @@ const MainLayout: React.FC = () => {
                     />
                 </Tooltip>
 
-                {/* Nút Toggle Sidebar */}
                 <Button 
                     type="text" 
                     icon={collapsed || isMobile ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} 

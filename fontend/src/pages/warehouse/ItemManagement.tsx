@@ -2,20 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { 
   Table, Card, Button, Input, Tag, Space, 
   Modal, Form, Select, Popconfirm, 
-  App as AntdApp, Row, Col, InputNumber, Typography, Divider 
+  App as AntdApp, Row, Col, InputNumber, Divider 
 } from 'antd';
+// [SỬA LỖI 1] Bỏ import Typography vì không dùng
+// import { Typography } from 'antd'; 
+
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
   DeleteOutlined, ReloadOutlined, BoxPlotOutlined,
   ScanOutlined, PrinterOutlined, DownloadOutlined,
-  MinusCircleOutlined
+  MinusCircleOutlined, PlusCircleOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import axiosClient from '../../api/axiosClient';
 import { useHasPermission } from '../../hooks/useHasPermission';
 import QRScannerModal from './QRScannerModal';
 
-const { Text } = Typography;
+// [SỬA LỖI 1] Xóa dòng này vì biến Text không được sử dụng
+// const { Text } = Typography;
 
 // --- INTERFACES ---
 interface Category { id: string; name: string; }
@@ -290,7 +294,9 @@ const ItemManagement: React.FC = () => {
                 <Col span={12}><Form.Item name="minStock" label="Min Stock"><InputNumber className="w-full" min={0} /></Form.Item></Col>
            </Row>
            
-           <Divider orientation="left" plain className="m-2 text-xs">Đơn vị quy đổi</Divider>
+           {/* [SỬA LỖI 2] Bỏ orientation="left" để tránh lỗi TS, thêm style css inline nếu cần thiết */}
+           <Divider plain className="m-2 text-xs">Đơn vị quy đổi</Divider>
+           
            <Form.List name="conversions">
                 {(fields, { add, remove }) => (
                     <div className="flex flex-col gap-2">
@@ -302,7 +308,7 @@ const ItemManagement: React.FC = () => {
                                 <MinusCircleOutlined onClick={() => remove(name)} className="text-red-500" />
                             </div>
                         ))}
-                        <Button type="dashed" size="small" onClick={() => add()} block icon={<PlusOutlined />}>Thêm ĐVT</Button>
+                        <Button type="dashed" size="small" onClick={() => add()} block icon={<PlusCircleOutlined />}>Thêm ĐVT</Button>
                     </div>
                 )}
            </Form.List>

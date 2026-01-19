@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Card, DatePicker, Button, Typography, Table, Tag, App, Row, Col, Statistic, Space, Divider } from 'antd';
+// [SỬA LỖI] Xóa 'Card' và 'Space' khỏi dòng import này
+import { DatePicker, Button, Typography, Table, Tag, App, Row, Col, Statistic, Divider } from 'antd';
 import { FileExcelOutlined, SearchOutlined, BarChartOutlined, CalendarOutlined, DatabaseOutlined, AuditOutlined, FilterOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
@@ -60,7 +61,7 @@ const MonthlyReport = () => {
   const columns = [
     { title: 'STT', render: (_:any, __:any, idx:number) => idx + 1, width: 50, align: 'center' as const },
     { title: 'Mã VT', dataIndex: 'itemCode', width: 110, render: (t:string) => <span className="font-semibold text-slate-700">{t}</span> },
-    { title: 'Tên vật tư', dataIndex: 'itemName', ellipsis: true }, // Thêm ellipsis để tự cắt nếu tên quá dài
+    { title: 'Tên vật tư', dataIndex: 'itemName', ellipsis: true }, 
     { title: 'ĐVT', dataIndex: 'unit', align: 'center' as const, width: 70 },
     { 
         title: `Tồn Cuối`, 
@@ -86,7 +87,7 @@ const MonthlyReport = () => {
   return (
     <div className="p-6 bg-gray-100 min-h-screen flex justify-center">
       
-      {/* Container giới hạn chiều rộng (max-w-6xl ~ 1150px) để không bị kéo giãn */}
+      {/* Container giới hạn chiều rộng */}
       <div className="w-full max-w-6xl flex flex-col gap-4">
         
         {/* --- HEADER CARD --- */}
@@ -133,7 +134,7 @@ const MonthlyReport = () => {
                 </div>
             </div>
 
-            {/* Compact Statistics (Nằm gọn trong Header) */}
+            {/* Compact Statistics */}
             {reportData.length > 0 && (
                 <>
                     <Divider className="my-4" />
@@ -170,9 +171,9 @@ const MonthlyReport = () => {
                 rowKey={(r) => `${r.itemCode}_${r.warehouseName}_${r.rack}_${r.bin}`} 
                 loading={loading}
                 pagination={{ pageSize: 15, showSizeChanger: true, size: 'small' }}
-                size="small" // Bảng nhỏ gọn hơn
+                size="small"
                 scroll={{ y: 'calc(100vh - 400px)' }}
-                bordered={false} // Bỏ viền dọc nhìn thoáng hơn
+                bordered={false} 
                 rowClassName="hover:bg-gray-50 transition-colors cursor-default"
                 locale={{ emptyText: <div className="py-10 text-gray-400 flex flex-col items-center"><FilterOutlined className="text-3xl mb-2 opacity-50"/><span>Chọn tháng và bấm xem dữ liệu</span></div> }}
             />
