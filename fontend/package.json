@@ -16,6 +16,7 @@
     "antd": "^6.1.2",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
+    "html2pdf.js": "^0.14.0",
     "html5-qrcode": "^2.3.8",
     "jwt-decode": "^4.0.0",
     "papaparse": "^5.5.3",

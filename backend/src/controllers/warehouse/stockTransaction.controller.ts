@@ -388,7 +388,7 @@ export const approveStep = async (req: Request, res: Response, next: NextFunctio
 };
 
 // ============================================================================
-// 5. LẤY DANH SÁCH CẦN DUYỆT
+// 5. LẤY DANH SÁCH CẦN DUYỆT (ĐÃ FIX: Lấy thông tin người duyệt)
 // ============================================================================
 export const getMyPendingApprovals = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -396,13 +396,36 @@ export const getMyPendingApprovals = async (req: Request, res: Response, next: N
         const tickets = await prisma.stockTransaction.findMany({
             where: { status: { in: ['PENDING', 'WAITING_CONFIRM'] } },
             include: {
-                creator: { select: { id: true, fullName: true, department: { select: { id: true, name: true } } } },
-                details: { include: { item: true, toLocation: { include: { warehouse: true } } } },
-                approvals: { include: { step: true }, orderBy: { step: { order: 'asc' } } }
+                creator: { 
+                    select: { 
+                        id: true, 
+                        fullName: true, 
+                        department: { select: { id: true, name: true } } // ID là Mã bộ phận
+                    } 
+                },
+                details: { 
+                    include: { 
+                        item: true, 
+                        toLocation: { include: { warehouse: true } },
+                        fromLocation: { include: { warehouse: true } }, 
+                        usageCategory: true 
+                    } 
+                },
+                approvals: { 
+                    include: { 
+                        step: true,
+                        // [FIX] Lấy thông tin người duyệt (id, fullName)
+                        approver: { 
+                            select: { id: true, fullName: true } 
+                        }
+                    }, 
+                    orderBy: { step: { order: 'asc' } } 
+                }
             },
             orderBy: { createdAt: 'desc' }
         });
         
+        // ... (Logic filter myTasks giữ nguyên như cũ)
         const myTasks = tickets.map((ticket) => {
             if (ticket.status === 'WAITING_CONFIRM') {
                 if (ticket.type === 'TRANSFER') {
@@ -429,7 +452,6 @@ export const getMyPendingApprovals = async (req: Request, res: Response, next: N
         next(new AppError('Lỗi lấy danh sách duyệt', 500));
     }
 };
-
 // ============================================================================
 // 6. LẤY LỊCH SỬ GIAO DỊCH
 // ============================================================================

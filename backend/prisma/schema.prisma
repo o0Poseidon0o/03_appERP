@@ -12,32 +12,32 @@ datasource db {
 // ==========================================
 
 model User {
-  id                 String  @id
-  email              String  @unique
-  password           String
-  fullName           String
-  isActive           Boolean @default(true)
-  mustChangePassword Boolean @default(false)
+  id                   String   @id @default(uuid())
+  email                String   @unique
+  password             String
+  fullName             String
+  isActive             Boolean  @default(true)
+  mustChangePassword   Boolean  @default(false)
   
-  roleId             String
-  role               Role    @relation(fields: [roleId], references: [id])
+  roleId               String
+  role                 Role     @relation(fields: [roleId], references: [id])
   
-  departmentId       String
-  department         Department @relation(fields: [departmentId], references: [id])
+  departmentId         String
+  department           Department @relation(fields: [departmentId], references: [id])
   
-  userPermissions    UserPermission[]
-  posts              Post[]
-  notifications      Notification[]
+  userPermissions      UserPermission[]
+  posts                Post[]
+  notifications        Notification[]
 
-  createdTransactions   StockTransaction[]    @relation("CreatedBy")
-  approvedSteps         TransactionApproval[] @relation("ActualApprover")
-  keeperTransactions    StockTransaction[]    @relation("WarehouseKeeper")
-  receivedTransactions  StockTransaction[]    @relation("Receiver")
-  approvalLogs          ApprovalLog[]
+  createdTransactions  StockTransaction[]    @relation("CreatedBy")
+  approvedSteps        TransactionApproval[] @relation("ActualApprover")
+  keeperTransactions   StockTransaction[]    @relation("WarehouseKeeper")
+  receivedTransactions StockTransaction[]    @relation("Receiver")
+  approvalLogs         ApprovalLog[]
 }
 
 model Role {
-  id            String   @id
+  id            String   @id // (VD: "ADMIN", "USER")
   name          String
   description   String?
   users         User[]
@@ -46,7 +46,7 @@ model Role {
 }
 
 model Permission {
-  id      String   @id
+  id      String   @id 
   name    String
   module  String
   roles   RolePermission[]
@@ -69,8 +69,9 @@ model UserPermission {
   @@id([userId, permissionId])
 }
 
+// [FIX] Department chuẩn theo yêu cầu (id là mã)
 model Department {
-  id           String    @id
+  id           String    @id // Mã phòng ban (VD: 3152)
   name         String
   name_content String    @default("Chưa có nội dung")
   
@@ -87,8 +88,6 @@ model Department {
 
 model Factory {
   id           String      @id @default(uuid())
-  
-  // Dùng tên làm mã định danh luôn (VD: X1, X2) cho tiện
   name         String      @unique 
   address      String?
   
@@ -128,18 +127,16 @@ model Location {
 }
 
 // ==========================================
-// 3. NHÓM VẬT TƯ & DANH MỤC (CẬP NHẬT MỚI)
+// 3. NHÓM VẬT TƯ & DANH MỤC
 // ==========================================
 
 model Item {
   id           String   @id @default(uuid())
   itemCode     String   @unique
   itemName     String   
-  
-  // [CẬP NHẬT] Đổi tên thành baseUnit để rõ nghĩa (VD: Cái, Lít)
   baseUnit     String   
   
-  qrCode       String?  @unique // Có thể null
+  qrCode       String?  @unique
   minStock     Float    @default(0)
   
   categoryId   String
@@ -148,33 +145,28 @@ model Item {
   stocks       Stock[]
   suppliers    ItemSupplier[]
   details      TransactionDetail[]
-  
-  // [MỚI] Quan hệ với bảng quy đổi đơn vị
   conversions  ItemUnitConversion[] 
 }
 
-// [MỚI] Bảng quy đổi đơn vị (VD: 1 Thùng = 24 Cái)
 model ItemUnitConversion {
-  id          String  @id @default(uuid())
-  itemId      String
-  
-  unitName    String  // Tên đơn vị (VD: Thùng, Hộp, Phuy)
-  factor      Float   // Hệ số quy đổi ra Base Unit (VD: 24, 200)
-  barcode     String? // Mã vạch riêng cho đơn vị này (nếu có)
+  id           String   @id @default(uuid())
+  itemId       String
+  unitName     String   
+  factor       Float    
+  barcode      String?  
 
-  item        Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  item         Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@unique([itemId, unitName])
 }
 
 model ItemCategory {
   id    String @id @default(uuid())
-  code  String @unique  // Mã quản lý (VD: NHOM01)
-  name  String          // Tên nhóm (VD: Văn phòng phẩm, Vật tư Kim khí)
+  code  String @unique  
+  name  String          
   items Item[]
 }
 
-// UsageCategory: Phân loại mục đích sử dụng (VD: Bảo trì máy, Sản xuất...)
 model UsageCategory {
   id          String   @id @default(uuid())
   code        String   @unique 
@@ -188,8 +180,8 @@ model UsageCategory {
 }
 
 model Supplier {
-  id           String    @id @default(uuid())
-  supplierCode String    @unique
+  id           String   @id @default(uuid())
+  supplierCode String   @unique
   name         String
   items        ItemSupplier[]
   stocks       Stock[]
@@ -197,25 +189,23 @@ model Supplier {
 }
 
 model ItemSupplier {
-  itemId     String
-  supplierId String
-  item       Item     @relation(fields: [itemId], references: [id])
-  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  itemId       String
+  supplierId   String
+  item         Item     @relation(fields: [itemId], references: [id])
+  supplier     Supplier @relation(fields: [supplierId], references: [id])
   @@id([itemId, supplierId])
 }
 
 model Stock {
-  id          String   @id @default(uuid())
-  itemId      String
-  locationId  String
-  supplierId  String?
+  id           String   @id @default(uuid())
+  itemId       String
+  locationId   String
+  supplierId   String?  
+  quantity     Float    @default(0) 
   
-  // Luôn lưu theo Base Unit (VD: 1000 cái, 200.5 lít)
-  quantity    Float    @default(0)
-  
-  item        Item     @relation(fields: [itemId], references: [id])
-  location    Location @relation(fields: [locationId], references: [id])
-  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  item         Item     @relation(fields: [itemId], references: [id])
+  location     Location @relation(fields: [locationId], references: [id])
+  supplier     Supplier? @relation(fields: [supplierId], references: [id])
 
   @@unique([itemId, locationId, supplierId])
 }
@@ -232,8 +222,8 @@ model TransactionCounter {
 
 model StockTransaction {
   id                String   @id @default(uuid())
-  code              String   @unique // "26-01-001 | X1"
-  type              String   // IMPORT, EXPORT, TRANSFER, INTERNAL_USE
+  code              String   @unique 
+  type              String   
   status            String   @default("PENDING")
   isEmergency       Boolean  @default(false)
   description       String?
@@ -267,7 +257,7 @@ model ApprovalStep {
   order     Int
   roleId    String
   role      Role     @relation(fields: [roleId], references: [id])
-  type      String
+  type      String   
   approvals TransactionApproval[]
 }
 
@@ -278,7 +268,7 @@ model TransactionApproval {
   approverId    String?
   status        String   @default("PENDING")
   
-  transaction   StockTransaction @relation(fields: [transactionId], references: [id])
+  transaction   StockTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   step          ApprovalStep     @relation(fields: [stepId], references: [id])
   approver      User?            @relation("ActualApprover", fields: [approverId], references: [id])
   
@@ -289,13 +279,9 @@ model TransactionDetail {
   id              String   @id @default(uuid())
   transactionId   String
   itemId          String
-  
-  // Số lượng thực tế lưu kho (Đã quy đổi ra Base Unit)
-  quantity        Float
-  
-  // [MỚI] Lưu lại đơn vị và số lượng lúc nhập liệu để đối chiếu
-  inputUnit       String?  // VD: "Thùng"
-  inputQuantity   Float?   // VD: 1
+  quantity        Float 
+  inputUnit       String?  
+  inputQuantity   Float?   
 
   fromLocationId  String?
   toLocationId    String?
@@ -303,10 +289,11 @@ model TransactionDetail {
   usageCategoryId String?
   usageCategory   UsageCategory? @relation(fields: [usageCategoryId], references: [id])
 
-  transaction     StockTransaction @relation(fields: [transactionId], references: [id])
-  item            Item             @relation(fields: [itemId], references: [id])
-  fromLocation    Location?        @relation("FromLoc", fields: [fromLocationId], references: [id])
-  toLocation      Location?        @relation("ToLoc", fields: [toLocationId], references: [id])
+  transaction     StockTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  
+  item            Item     @relation(fields: [itemId], references: [id])
+  fromLocation    Location? @relation("FromLoc", fields: [fromLocationId], references: [id])
+  toLocation      Location? @relation("ToLoc", fields: [toLocationId], references: [id])
 }
 
 model ApprovalLog {
@@ -317,7 +304,7 @@ model ApprovalLog {
   comment       String?
   createdAt     DateTime @default(now())
   
-  transaction   StockTransaction @relation(fields: [transactionId], references: [id])
+  transaction   StockTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   user          User             @relation(fields: [userId], references: [id])
 }
 

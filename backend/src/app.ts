@@ -24,7 +24,10 @@ import supplierRoutes from './routes/warehouse/supplier.routes';
 
 
 const app = express();
-
+// --- [SỬA LỖI 413] TĂNG GIỚI HẠN KÍCH THƯỚC BODY ---
+// Cho phép upload dữ liệu JSON lên tới 50MB (hoặc 100mb tùy nhu cầu)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // --- 1. GLOBAL MIDDLEWARES ---
 app.use(
   helmet({

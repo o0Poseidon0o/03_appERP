@@ -364,3 +364,87 @@ export const importUsageCategories = async (req: Request, res: Response, next: N
      next(new AppError('Lỗi hệ thống khi import dữ liệu.', 500));
   }
 };
+// [MỚI] API IMPORT VẬT TƯ TỪ EXCEL (Bulk Import)
+export const importItemsBulk = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { items } = req.body; // Mảng items từ Frontend gửi lên
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return next(new AppError('Dữ liệu import trống!', 400));
+    }
+
+    // 1. Lấy danh sách Category hiện có để map ID
+    const categories = await prisma.itemCategory.findMany();
+    const categoryMap = new Map<string, string>(); // Map<Code, ID> (VD: "2" -> "uuid-xyz")
+    categories.forEach(c => categoryMap.set(c.code, c.id));
+
+    const validItems = [];
+    const errors = [];
+
+    // 2. Xử lý từng dòng
+    for (const item of items) {
+      // itemCode, itemName, baseUnit, _debugCategoryCode (được parse từ Frontend)
+      const { itemCode, itemName, baseUnit } = item;
+      
+      // Tách mã nhóm từ itemCode (Lấy ký tự đầu tiên hoặc phần trước dấu gạch ngang đầu tiên)
+      // Ví dụ: "2-02-001" -> prefix = "2"
+      const prefix = itemCode.split('-')[0]; 
+      const categoryId = categoryMap.get(prefix);
+
+      if (!categoryId) {
+        errors.push(`Mã ${itemCode}: Không tìm thấy nhóm vật tư tương ứng với mã "${prefix}"`);
+        continue;
+      }
+
+      validItems.push({
+        itemCode: String(itemCode).trim(),
+        itemName: String(itemName).trim(),
+        baseUnit: String(baseUnit).trim(),
+        categoryId: categoryId,
+        minStock: 5, // Giá trị mặc định
+        qrCode: `ITM-${itemCode}-${Date.now()}` // Tạo mã QR tạm
+      });
+    }
+
+    if (validItems.length === 0) {
+      return next(new AppError(`Không có dòng nào hợp lệ. Lỗi: ${errors.join(', ')}`, 400));
+    }
+
+    // 3. Thực hiện Insert vào DB (Sử dụng transaction để an toàn)
+    // Dùng upsert để nếu trùng mã thì update, chưa có thì insert
+    let successCount = 0;
+    
+    await prisma.$transaction(
+      validItems.map(item => 
+        prisma.item.upsert({
+          where: { itemCode: item.itemCode },
+          update: { 
+             itemName: item.itemName, 
+             baseUnit: item.baseUnit,
+             categoryId: item.categoryId
+          },
+          create: {
+             itemCode: item.itemCode,
+             itemName: item.itemName,
+             baseUnit: item.baseUnit,
+             categoryId: item.categoryId,
+             minStock: item.minStock,
+             qrCode: item.qrCode
+          }
+        })
+      )
+    );
+    
+    successCount = validItems.length;
+
+    res.status(200).json({ 
+      status: 'success', 
+      message: `Đã xử lý ${successCount} vật tư.`,
+      warnings: errors.length > 0 ? errors : undefined
+    });
+
+  } catch (error) {
+    console.error("Bulk Import Error:", error);
+    next(new AppError('Lỗi khi import dữ liệu (có thể do trùng mã QR hoặc lỗi hệ thống)', 500));
+  }
+};

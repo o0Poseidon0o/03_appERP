@@ -21,7 +21,8 @@ import {
     createUsageCategory,
     updateUsageCategory,
     deleteUsageCategory,
-    importUsageCategories
+    importUsageCategories,
+    importItemsBulk
 } from '../../controllers/warehouse/item.controller';
 import { protect, hasPermission } from '../../middlewares/authMiddleware';
 
@@ -57,7 +58,7 @@ router.delete('/usage-categories/:id', hasPermission('ITEM_DELETE'), deleteUsage
 // Tìm kiếm & Lấy danh sách
 router.get('/', searchItems); 
 router.get('/search', searchItems); 
-
+router.post('/import-bulk', hasPermission('ITEM_CREATE'), importItemsBulk);
 // CRUD Vật tư
 router.post('/', hasPermission('ITEM_CREATE'), createItem);
 router.patch('/:id', hasPermission('ITEM_UPDATE'), updateItem);
