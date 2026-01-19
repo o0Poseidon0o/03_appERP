@@ -14,7 +14,7 @@ const LoginPage: React.FC = () => {
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
-      // 1. Gọi API đăng nhập - Backend nhận 'id'
+      // 1. Gọi API đăng nhập
       const res = await axiosClient.post('/auth/login', {
         id: values.username, 
         password: values.password,
@@ -23,9 +23,7 @@ const LoginPage: React.FC = () => {
       if (res.data.status === 'success') {
         const { token, data } = res.data;
         
-        // --- ĐIỂM CẬP NHẬT ---
-        // Hàm login(token, user) trong AuthContext sẽ tự động bóc tách 
-        // permissions và lưu vào LocalStorage nhờ logic chúng ta vừa sửa.
+        // 2. Lưu token và thông tin user
         login(token, data.user); 
 
         message.success({ 
@@ -33,19 +31,16 @@ const LoginPage: React.FC = () => {
           duration: 1.5 
         });
 
-        // 3. Điều hướng dựa trên trạng thái tài khoản
-        // Kiểm tra mustChangePassword từ dữ liệu user hoặc requirePasswordChange từ res
+        // 3. Điều hướng (LOGIC MỚI)
+        // Kiểm tra việc bắt buộc đổi mật khẩu trước (Logic bảo mật giữ nguyên)
         if (data.requirePasswordChange || data.user.mustChangePassword) {
             message.warning('Đây là mật khẩu tạm, vui lòng đổi mật khẩu mới.');
             navigate('/profile'); 
         } else {
-            // Nếu là Admin/Manager thì về Dashboard, nếu là User thường thì về Posts
-            const roleId = data.user.roleId || data.user.role?.id;
-            if (roleId === 'ROLE-USER') {
-              navigate('/posts');
-            } else {
-              navigate('/');
-            }
+            // --- THAY ĐỔI Ở ĐÂY ---
+            // Không vào Dashboard hay Posts nữa.
+            // Chuyển hướng về MainLayout ('/') và gửi kèm State để mở App Launcher ngay lập tức.
+            navigate('/', { state: { openAppLauncher: true } });
         }
       }
     } catch (error: any) {
