@@ -388,7 +388,7 @@ export const approveStep = async (req: Request, res: Response, next: NextFunctio
 };
 
 // ============================================================================
-// 5. LẤY DANH SÁCH CẦN DUYỆT (ĐÃ FIX: Lấy thông tin người duyệt)
+// 5. LẤY DANH SÁCH CẦN DUYỆT (ĐÃ FIX: Lấy thông tin người duyệt & Mã bộ phận là ID)
 // ============================================================================
 export const getMyPendingApprovals = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -396,11 +396,12 @@ export const getMyPendingApprovals = async (req: Request, res: Response, next: N
         const tickets = await prisma.stockTransaction.findMany({
             where: { status: { in: ['PENDING', 'WAITING_CONFIRM'] } },
             include: {
+                // [FIX] Lấy ID của department (chính là Mã bộ phận)
                 creator: { 
                     select: { 
                         id: true, 
                         fullName: true, 
-                        department: { select: { id: true, name: true } } // ID là Mã bộ phận
+                        department: { select: { id: true, name: true } } 
                     } 
                 },
                 details: { 
@@ -411,13 +412,11 @@ export const getMyPendingApprovals = async (req: Request, res: Response, next: N
                         usageCategory: true 
                     } 
                 },
+                // [FIX] Lấy ID và Tên người duyệt để hiển thị chữ ký
                 approvals: { 
                     include: { 
                         step: true,
-                        // [FIX] Lấy thông tin người duyệt (id, fullName)
-                        approver: { 
-                            select: { id: true, fullName: true } 
-                        }
+                        approver: { select: { id: true, fullName: true } } 
                     }, 
                     orderBy: { step: { order: 'asc' } } 
                 }
@@ -453,13 +452,14 @@ export const getMyPendingApprovals = async (req: Request, res: Response, next: N
     }
 };
 // ============================================================================
-// 6. LẤY LỊCH SỬ GIAO DỊCH
+// 6. LẤY LỊCH SỬ GIAO DỊCH (ĐÃ FIX: LẤY THÊM ID ĐỂ HIỂN THỊ)
 // ============================================================================
 export const getTransactionHistory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page = 1, limit = 20, status, type } = req.query; 
     const skip = (Number(page) - 1) * Number(limit);
     const where: Prisma.StockTransactionWhereInput = {};
+    
     if (status) where.status = status as string;
     if (type) where.type = type as string;
 
@@ -468,10 +468,38 @@ export const getTransactionHistory = async (req: Request, res: Response, next: N
       prisma.stockTransaction.findMany({
         where,
         include: {
-          creator: { select: { id: true, fullName: true, email: true, department: { select: { name: true } } } },
+          // 1. [FIX] Lấy thêm ID của Department
+          creator: { 
+            select: { 
+              id: true, 
+              fullName: true, 
+              email: true, 
+              department: { select: { id: true, name: true } } // <--- Đã thêm id
+            } 
+          },
           supplier: { select: { id: true, name: true } },
-          approvals: { where: { status: 'APPROVED' }, include: { approver: { select: { fullName: true } }, step: { select: { name: true } } }, orderBy: { step: { order: 'asc' } } },
-          details: { include: { item: true, fromLocation: true, toLocation: true, usageCategory: true } }
+          
+          // 2. [FIX] Lấy thêm ID của người duyệt (approver)
+          approvals: { 
+            // Nếu bạn muốn xem cả bước bị từ chối thì bỏ dòng 'where status APPROVED' đi
+            // Ở đây tôi giữ nguyên logic chỉ hiện bước đã duyệt của bạn
+            where: { status: 'APPROVED' }, 
+            include: { 
+              approver: { select: { id: true, fullName: true } }, // <--- Đã thêm id
+              step: { select: { name: true } } 
+            }, 
+            orderBy: { step: { order: 'asc' } } 
+          },
+          
+          // 3. Chi tiết vật tư
+          details: { 
+            include: { 
+              item: true, 
+              fromLocation: { include: { warehouse: true } }, 
+              toLocation: { include: { warehouse: true } }, 
+              usageCategory: true 
+            } 
+          }
         },
         orderBy: { createdAt: 'desc' },
         take: Number(limit),
@@ -479,7 +507,16 @@ export const getTransactionHistory = async (req: Request, res: Response, next: N
       })
     ]);
 
-    res.status(200).json({ status: 'success', data: transactions, pagination: { total, page: Number(page), limit: Number(limit), totalPages: Math.ceil(total / Number(limit)) } });
+    res.status(200).json({ 
+      status: 'success', 
+      data: transactions, 
+      pagination: { 
+        total, 
+        page: Number(page), 
+        limit: Number(limit), 
+        totalPages: Math.ceil(total / Number(limit)) 
+      } 
+    });
   } catch (error) {
     next(new AppError('Lỗi tải lịch sử giao dịch', 500));
   }

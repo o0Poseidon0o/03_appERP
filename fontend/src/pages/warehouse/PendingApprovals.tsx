@@ -22,11 +22,11 @@ const { Text } = Typography;
 interface SignatureBoxProps {
     title: string;
     subTitle: string;
-    approvalData?: any; // Dấu ? nghĩa là không bắt buộc
+    approvalData?: any;
     isCreator?: boolean;
 }
 
-// --- COMPONENT MẪU IN PHIẾU (FIXED TYPES) ---
+// --- COMPONENT MẪU IN PHIẾU (ĐÃ FIX LỖI CSS PDF) ---
 const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({ ticket }, ref) => {
     if (!ticket) return null;
 
@@ -37,31 +37,52 @@ const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({
         a.step?.name?.toLowerCase().includes('thủ kho') || a.step?.name?.toLowerCase().includes('warehouse')
     );
 
-    // [FIX] Thêm kiểu : SignatureBoxProps
     const SignatureBox = ({ title, subTitle, approvalData, isCreator = false }: SignatureBoxProps) => {
         const isSigned = isCreator || approvalData?.status === 'APPROVED';
-        const signerName = isCreator ? ticket.creator?.fullName : approvalData?.approver?.fullName;
-        const rawId = isCreator ? ticket.creator?.id : approvalData?.approver?.id;
-        const signerId = rawId ? rawId.slice(0, 8) : '---';
+        
+        let signerName = '---';
+        let signerId = '---';
+
+        if (isCreator) {
+            signerName = ticket.creator?.fullName || '---';
+            signerId = ticket.creator?.id || '---';
+        } else if (approvalData?.approver) {
+            signerName = approvalData.approver.fullName || '---';
+            signerId = approvalData.approver.id || '---';
+        }
+
+        if (signerId !== '---') signerId = signerId.slice(0, 8);
 
         return (
-            <div className="flex flex-col items-center w-full">
-                <p className="font-bold text-sm uppercase mb-1">{title}</p>
-                <p className="italic text-xs mb-2 text-gray-500">{subTitle}</p>
-                <div className="h-32 w-full flex flex-col justify-center items-center">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                <p style={{ fontWeight: 'bold', fontSize: '11px', textTransform: 'uppercase', marginBottom: '2px', color: '#000' }}>{title}</p>
+                <p style={{ fontStyle: 'italic', fontSize: '10px', color: '#666', marginBottom: '5px' }}>{subTitle}</p>
+                
+                <div style={{ height: '80px', width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', border: '1px solid transparent' }}>
                     {isSigned ? (
                         <>
-                            <div className="relative mb-1">
-                                <div className="w-10 h-10 rounded-full border-2 border-green-600 flex items-center justify-center bg-white">
-                                    <span className="text-green-600 text-xl font-bold">✓</span>
+                            <div style={{ marginBottom: '4px' }}>
+                                {/* Dùng border solid màu hex thay vì class để tránh lỗi html2pdf */}
+                                <div style={{ 
+                                    width: '35px', height: '35px', 
+                                    borderRadius: '50%', border: '2px solid #008000', 
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    backgroundColor: 'white'
+                                }}>
+                                    <span style={{ color: '#008000', fontSize: '20px', fontWeight: 'bold', lineHeight: '1' }}>✔</span>
                                 </div>
                             </div>
-                            <span className="text-sm font-bold text-black uppercase text-center">{signerName || '---'}</span>
-                            <span className="text-[10px] text-gray-500 font-mono mt-1">(ID: {signerId})</span>
+                            
+                            <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', textAlign: 'center', color: '#000' }}>
+                                {signerName}
+                            </span>
+                            <span style={{ fontSize: '9px', color: '#666', fontFamily: 'monospace', marginTop: '2px' }}>
+                                (ID: {signerId})
+                            </span>
                         </>
                     ) : (
-                        <div className="h-full flex items-end pb-4">
-                            <span className="text-gray-300 italic text-xs">...(Chưa ký)...</span>
+                        <div style={{ height: '100%', display: 'flex', alignItems: 'flex-end', paddingBottom: '10px' }}>
+                            <span style={{ color: '#ccc', fontStyle: 'italic', fontSize: '10px' }}>...(Chưa ký)...</span>
                         </div>
                     )}
                 </div>
@@ -70,74 +91,87 @@ const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({
     };
 
     return (
-        <div ref={ref} className="p-10 bg-white text-black leading-tight" style={{ width: '210mm', minHeight: '297mm', fontFamily: '"Times New Roman", Times, serif' }}>
+        <div ref={ref} style={{ padding: '30px', backgroundColor: 'white', color: 'black', fontFamily: '"Times New Roman", Times, serif', width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}>
+            
             {/* HEADER */}
-            <div className="flex justify-between items-start mb-6 pb-4 border-b-2 border-black">
-                <div className="w-1/4 flex items-center">
-                    <img src="/logo_towa.png" alt="Logo" className="h-16 object-contain" />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', paddingBottom: '10px', borderBottom: '2px solid black' }}>
+                <div style={{ width: '25%', display: 'flex', alignItems: 'center' }}>
+                    <img 
+                        src="/logo_towa.png" 
+                        alt="Logo" 
+                        style={{ height: '50px', objectFit: 'contain' }} 
+                        crossOrigin="anonymous" 
+                    />
                 </div>
-                <div className="w-2/4 text-center pt-2">
-                    <h1 className="text-3xl font-bold uppercase tracking-wide mb-2">
+
+                <div style={{ width: '50%', textAlign: 'center', paddingTop: '5px' }}>
+                    <h1 style={{ fontSize: '20px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '5px', letterSpacing: '1px', color: '#000' }}>
                         PHIẾU {ticket.type === 'EXPORT' ? 'XUẤT KHO' : (ticket.type === 'IMPORT' ? 'NHẬP KHO' : 'ĐIỀU CHUYỂN')}
                     </h1>
-                    <p className="italic text-base">Ngày lập: {dayjs(ticket.createdAt).format('DD/MM/YYYY')}</p>
+                    <p style={{ fontStyle: 'italic', fontSize: '14px', color: '#000' }}>Ngày lập: {dayjs(ticket.createdAt).format('DD/MM/YYYY')}</p>
                 </div>
-                <div className="w-1/4 text-right text-sm pt-2">
-                    <p className="mb-1"><b>Số CT:</b> <span className="font-mono text-base">{ticket.code}</span></p>
-                    <p className="mb-1"><b>Ngày in:</b> {dayjs().format('DD/MM/YYYY')}</p>
+
+                <div style={{ width: '25%', textAlign: 'right', fontSize: '12px', paddingTop: '5px', color: '#000' }}>
+                    <p style={{ marginBottom: '2px' }}><b>Số CT:</b> <span style={{ fontFamily: 'monospace', fontSize: '14px' }}>{ticket.code}</span></p>
+                    <p style={{ marginBottom: '2px' }}><b>Ngày in:</b> {dayjs().format('DD/MM/YYYY')}</p>
                     <p><b>Trang:</b> 1/1</p>
                 </div>
             </div>
 
             {/* INFO */}
-            <div className="mb-6 text-base">
-                <table className="w-full">
+            <div style={{ marginBottom: '20px', fontSize: '14px', color: '#000' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <tbody>
                         <tr>
-                            <td className="w-24 font-bold py-1">Bộ phận:</td>
-                            <td>{ticket.creator?.department?.name}</td>
-                            <td className="w-32 font-bold py-1 text-right pr-2">Mã bộ phận:</td>
-                            <td className="w-24 font-mono font-bold">
+                            <td style={{ width: '100px', fontWeight: 'bold', padding: '4px 0' }}>Bộ phận:</td>
+                            <td>{ticket.creator?.department?.name || '---'}</td>
+                            <td style={{ width: '100px', fontWeight: 'bold', padding: '4px 0', textAlign: 'right', paddingRight: '10px' }}>Mã bộ phận:</td>
+                            <td style={{ width: '80px', fontFamily: 'monospace', fontWeight: 'bold' }}>
                                 {ticket.creator?.department?.id || '---'}
                             </td>
                         </tr>
                         <tr>
-                            <td className="font-bold py-1">Người đề nghị:</td>
-                            <td colSpan={3}>{ticket.creator?.fullName}</td>
+                            <td style={{ fontWeight: 'bold', padding: '4px 0' }}>Người đề nghị:</td>
+                            <td colSpan={3}>
+                                {ticket.creator?.fullName} 
+                                <span style={{ fontSize: '12px', color: '#666', marginLeft: '5px' }}>
+                                    (ID: {ticket.creator?.id?.slice(0, 8)})
+                                </span>
+                            </td>
                         </tr>
                         <tr>
-                            <td className="font-bold py-1 align-top">Lý do/Ghi chú:</td>
-                            <td colSpan={3} className="italic">{ticket.description || 'Xuất kho phục vụ sản xuất'}</td>
+                            <td style={{ fontWeight: 'bold', padding: '4px 0', verticalAlign: 'top' }}>Lý do/Ghi chú:</td>
+                            <td colSpan={3} style={{ fontStyle: 'italic' }}>{ticket.description || 'Xuất kho phục vụ sản xuất'}</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
             {/* MAIN TABLE */}
-            <table className="w-full border-collapse border border-black mb-8 text-sm">
+            <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid black', marginBottom: '30px', fontSize: '12px', color: '#000' }}>
                 <thead>
-                    <tr className="bg-gray-200 text-center font-bold uppercase">
-                        <th className="border border-black p-2 w-10">STT</th>
-                        <th className="border border-black p-2 w-32">Mã vật tư</th>
-                        <th className="border border-black p-2">Tên vật tư / Quy cách</th>
-                        <th className="border border-black p-2 w-20">Mã loại</th>
-                        <th className="border border-black p-2 w-16">ĐVT</th>
-                        <th className="border border-black p-2 w-20">SL Yêu cầu</th>
-                        <th className="border border-black p-2 w-20">SL Thực tế</th>
-                        <th className="border border-black p-2 w-24">Vị trí</th>
+                    <tr style={{ backgroundColor: '#f0f0f0', textAlign: 'center', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                        <th style={{ border: '1px solid black', padding: '6px', width: '35px' }}>STT</th>
+                        <th style={{ border: '1px solid black', padding: '6px', width: '100px' }}>Mã vật tư</th>
+                        <th style={{ border: '1px solid black', padding: '6px' }}>Tên vật tư / Quy cách</th>
+                        <th style={{ border: '1px solid black', padding: '6px', width: '70px' }}>Mã loại</th>
+                        <th style={{ border: '1px solid black', padding: '6px', width: '50px' }}>ĐVT</th>
+                        <th style={{ border: '1px solid black', padding: '6px', width: '70px' }}>SL Yêu cầu</th>
+                        <th style={{ border: '1px solid black', padding: '6px', width: '70px' }}>SL Thực tế</th>
+                        <th style={{ border: '1px solid black', padding: '6px', width: '90px' }}>Vị trí</th>
                     </tr>
                 </thead>
                 <tbody>
                     {ticket.details?.map((item: any, index: number) => (
                         <tr key={index}>
-                            <td className="border border-black p-2 text-center">{index + 1}</td>
-                            <td className="border border-black p-2 font-mono font-bold text-center">{item.item?.itemCode}</td>
-                            <td className="border border-black p-2">{item.item?.itemName}</td>
-                            <td className="border border-black p-2 text-center">{item.usageCategory?.code || '-'}</td>
-                            <td className="border border-black p-2 text-center">{item.item?.baseUnit || item.item?.unit}</td>
-                            <td className="border border-black p-2 text-center font-bold text-base">{item.quantity}</td>
-                            <td className="border border-black p-2 text-center"></td>
-                            <td className="border border-black p-2 text-center text-xs">
+                            <td style={{ border: '1px solid black', padding: '6px', textAlign: 'center' }}>{index + 1}</td>
+                            <td style={{ border: '1px solid black', padding: '6px', fontFamily: 'monospace', fontWeight: 'bold', textAlign: 'center' }}>{item.item?.itemCode}</td>
+                            <td style={{ border: '1px solid black', padding: '6px' }}>{item.item?.itemName}</td>
+                            <td style={{ border: '1px solid black', padding: '6px', textAlign: 'center' }}>{item.usageCategory?.code || '-'}</td>
+                            <td style={{ border: '1px solid black', padding: '6px', textAlign: 'center' }}>{item.item?.baseUnit || item.item?.unit}</td>
+                            <td style={{ border: '1px solid black', padding: '6px', textAlign: 'center', fontWeight: 'bold', fontSize: '14px' }}>{item.quantity}</td>
+                            <td style={{ border: '1px solid black', padding: '6px', textAlign: 'center' }}></td>
+                            <td style={{ border: '1px solid black', padding: '6px', textAlign: 'center', fontSize: '11px' }}>
                                 {ticket.type === 'EXPORT' ? item.fromLocation?.locationCode : item.toLocation?.locationCode}
                             </td>
                         </tr>
@@ -146,16 +180,15 @@ const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({
             </table>
 
             {/* FOOTER */}
-            <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-black">
-                {/* [FIX] Truyền đúng props (approvalData là optional) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid black' }}>
                 <SignatureBox title="NGƯỜI ĐỀ NGHỊ" subTitle="(Ký, họ tên)" isCreator={true} />
                 <SignatureBox title="TRƯỞNG BỘ PHẬN" subTitle="(Ký duyệt)" approvalData={deptManager} />
                 <SignatureBox title="THỦ KHO" subTitle="(Ký xuất hàng)" approvalData={warehouseKeeper} />
-                <div className="flex flex-col items-center w-full">
-                    <p className="font-bold text-sm uppercase mb-1">NGƯỜI NHẬN</p>
-                    <p className="italic text-xs mb-2 text-gray-500">(Ký, họ tên)</p>
-                    <div className="h-32 w-full flex items-end justify-center pb-4">
-                        <span className="text-gray-400 text-xs">.........................................</span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                    <p style={{ fontWeight: 'bold', fontSize: '11px', textTransform: 'uppercase', marginBottom: '2px', color: '#000' }}>NGƯỜI NHẬN</p>
+                    <p style={{ fontStyle: 'italic', fontSize: '10px', color: '#666', marginBottom: '20px' }}>(Ký, họ tên)</p>
+                    <div style={{ height: '80px', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '10px' }}>
+                        <span style={{ color: '#999', fontSize: '10px' }}>.........................................</span>
                     </div>
                 </div>
             </div>
@@ -187,21 +220,23 @@ const PendingApprovals: React.FC = () => {
       const element = printRef.current;
       if(!element) return;
       
-      // [FIX] Sử dụng 'as any' để bypass lỗi check type của html2pdf options
       const opt: any = {
-          margin: 5,
+          margin: 10,
           filename: `Phieu_${selectedTicket?.code}.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { 
               scale: 2, 
               useCORS: true, 
-              logging: true
+              logging: false
           }, 
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
       
       // @ts-ignore
-      html2pdf().set(opt).from(element).save();
+      html2pdf().set(opt).from(element).save().catch((err: any) => {
+          console.error("PDF Error:", err);
+          message.error("Lỗi khi tạo file PDF. Vui lòng thử lại.");
+      });
   };
 
   const fetchPending = async () => {
