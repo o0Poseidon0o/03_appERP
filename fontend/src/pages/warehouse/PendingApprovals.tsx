@@ -97,7 +97,7 @@ const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', paddingBottom: '10px', borderBottom: '2px solid black' }}>
                 <div style={{ width: '25%', display: 'flex', alignItems: 'center' }}>
                     <img 
-                        src="/logo_towa.png" 
+                        src="/logo__towa.png" 
                         alt="Logo" 
                         style={{ height: '50px', objectFit: 'contain' }} 
                         crossOrigin="anonymous" 
