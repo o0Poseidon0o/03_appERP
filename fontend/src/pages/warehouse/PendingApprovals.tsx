@@ -9,16 +9,14 @@ import {
   EyeOutlined, ClockCircleOutlined,
   ArrowRightOutlined,
   HistoryOutlined, FileDoneOutlined,
-  UserSwitchOutlined, SolutionOutlined, PrinterOutlined, DownloadOutlined
+  UserSwitchOutlined, SolutionOutlined, PrinterOutlined
 } from '@ant-design/icons';
 import { useReactToPrint } from 'react-to-print';
-import html2pdf from 'html2pdf.js';
 import axiosClient from '../../api/axiosClient';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
 
-// --- 1. KHAI BÁO TYPE CHO SIGNATURE BOX ---
 interface SignatureBoxProps {
     title: string;
     subTitle: string;
@@ -26,7 +24,7 @@ interface SignatureBoxProps {
     isCreator?: boolean;
 }
 
-// --- COMPONENT MẪU IN PHIẾU (ĐÃ FIX LỖI CSS PDF) ---
+// --- COMPONENT MẪU IN ---
 const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({ ticket }, ref) => {
     if (!ticket) return null;
 
@@ -51,18 +49,17 @@ const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({
             signerId = approvalData.approver.id || '---';
         }
 
-        if (signerId !== '---') signerId = signerId.slice(0, 8);
+        if (signerId !== '---' && signerId) signerId = signerId.slice(0, 8);
 
         return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-                <p style={{ fontWeight: 'bold', fontSize: '11px', textTransform: 'uppercase', marginBottom: '2px', color: '#000' }}>{title}</p>
-                <p style={{ fontStyle: 'italic', fontSize: '10px', color: '#666', marginBottom: '5px' }}>{subTitle}</p>
+                <p style={{ fontWeight: 'bold', fontSize: '11px', textTransform: 'uppercase', marginBottom: '2px', color: '#000', margin: 0 }}>{title}</p>
+                <p style={{ fontStyle: 'italic', fontSize: '10px', color: '#666', marginBottom: '5px', margin: 0 }}>{subTitle}</p>
                 
                 <div style={{ height: '80px', width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', border: '1px solid transparent' }}>
                     {isSigned ? (
                         <>
                             <div style={{ marginBottom: '4px' }}>
-                                {/* Dùng border solid màu hex thay vì class để tránh lỗi html2pdf */}
                                 <div style={{ 
                                     width: '35px', height: '35px', 
                                     borderRadius: '50%', border: '2px solid #008000', 
@@ -91,13 +88,15 @@ const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({
     };
 
     return (
-        <div ref={ref} style={{ padding: '30px', backgroundColor: 'white', color: 'black', fontFamily: '"Times New Roman", Times, serif', width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}>
+        // [FIX LỖI TRANG TRẮNG]: Đổi minHeight từ '297mm' thành 'auto'.
+        // width: '100%' để khi in nó tự khớp khổ giấy mà không bị tràn lề.
+        <div ref={ref} style={{ padding: '30px', backgroundColor: 'white', color: 'black', fontFamily: '"Times New Roman", Times, serif', width: '100%', minHeight: 'auto', boxSizing: 'border-box' }}>
             
             {/* HEADER */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', paddingBottom: '10px', borderBottom: '2px solid black' }}>
                 <div style={{ width: '25%', display: 'flex', alignItems: 'center' }}>
                     <img 
-                        src="/logo__towa.png" 
+                        src={`${window.location.origin}/logo_towa.png`} 
                         alt="Logo" 
                         style={{ height: '50px', objectFit: 'contain' }} 
                         crossOrigin="anonymous" 
@@ -105,16 +104,16 @@ const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({
                 </div>
 
                 <div style={{ width: '50%', textAlign: 'center', paddingTop: '5px' }}>
-                    <h1 style={{ fontSize: '20px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '5px', letterSpacing: '1px', color: '#000' }}>
+                    <h1 style={{ fontSize: '20px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '5px', letterSpacing: '1px', color: '#000', margin: 0 }}>
                         PHIẾU {ticket.type === 'EXPORT' ? 'XUẤT KHO' : (ticket.type === 'IMPORT' ? 'NHẬP KHO' : 'ĐIỀU CHUYỂN')}
                     </h1>
-                    <p style={{ fontStyle: 'italic', fontSize: '14px', color: '#000' }}>Ngày lập: {dayjs(ticket.createdAt).format('DD/MM/YYYY')}</p>
+                    <p style={{ fontStyle: 'italic', fontSize: '14px', color: '#000', margin: 0 }}>Ngày lập: {dayjs(ticket.createdAt).format('DD/MM/YYYY')}</p>
                 </div>
 
                 <div style={{ width: '25%', textAlign: 'right', fontSize: '12px', paddingTop: '5px', color: '#000' }}>
-                    <p style={{ marginBottom: '2px' }}><b>Số CT:</b> <span style={{ fontFamily: 'monospace', fontSize: '14px' }}>{ticket.code}</span></p>
-                    <p style={{ marginBottom: '2px' }}><b>Ngày in:</b> {dayjs().format('DD/MM/YYYY')}</p>
-                    <p><b>Trang:</b> 1/1</p>
+                    <p style={{ marginBottom: '2px', margin: 0 }}><b>Số CT:</b> <span style={{ fontFamily: 'monospace', fontSize: '14px' }}>{ticket.code}</span></p>
+                    <p style={{ marginBottom: '2px', margin: 0 }}><b>Ngày in:</b> {dayjs().format('DD/MM/YYYY')}</p>
+                    <p style={{ margin: 0 }}><b>Trang:</b> 1/1</p>
                 </div>
             </div>
 
@@ -148,7 +147,7 @@ const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({
             </div>
 
             {/* MAIN TABLE */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid black', marginBottom: '30px', fontSize: '12px', color: '#000' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000000', marginBottom: '30px', fontSize: '12px', color: '#000000' }}>
                 <thead>
                     <tr style={{ backgroundColor: '#f0f0f0', textAlign: 'center', fontWeight: 'bold', textTransform: 'uppercase' }}>
                         <th style={{ border: '1px solid black', padding: '6px', width: '35px' }}>STT</th>
@@ -185,10 +184,10 @@ const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({
                 <SignatureBox title="TRƯỞNG BỘ PHẬN" subTitle="(Ký duyệt)" approvalData={deptManager} />
                 <SignatureBox title="THỦ KHO" subTitle="(Ký xuất hàng)" approvalData={warehouseKeeper} />
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-                    <p style={{ fontWeight: 'bold', fontSize: '11px', textTransform: 'uppercase', marginBottom: '2px', color: '#000' }}>NGƯỜI NHẬN</p>
-                    <p style={{ fontStyle: 'italic', fontSize: '10px', color: '#666', marginBottom: '20px' }}>(Ký, họ tên)</p>
+                    <p style={{ fontWeight: 'bold', fontSize: '11px', textTransform: 'uppercase', marginBottom: '2px', color: '#000', margin: 0 }}>NGƯỜI NHẬN</p>
+                    <p style={{ fontStyle: 'italic', fontSize: '10px', color: '#666666', marginBottom: '20px', margin: 0 }}>(Ký, họ tên)</p>
                     <div style={{ height: '80px', width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '10px' }}>
-                        <span style={{ color: '#999', fontSize: '10px' }}>.........................................</span>
+                        <span style={{ color: '#999999', fontSize: '10px' }}>.........................................</span>
                     </div>
                 </div>
             </div>
@@ -196,6 +195,7 @@ const TicketPrintTemplate = React.forwardRef<HTMLDivElement, { ticket: any }>(({
     );
 });
 
+// --- COMPONENT CHÍNH ---
 const PendingApprovals: React.FC = () => {
   const { message } = AntdApp.useApp();
   const printRef = useRef<HTMLDivElement>(null);
@@ -214,30 +214,6 @@ const PendingApprovals: React.FC = () => {
     contentRef: printRef,
     documentTitle: selectedTicket ? `Phieu_${selectedTicket.code}` : 'Phieu_Kho',
   });
-
-  // Download PDF Handler (FIXED)
-  const handleDownloadPDF = () => {
-      const element = printRef.current;
-      if(!element) return;
-      
-      const opt: any = {
-          margin: 10,
-          filename: `Phieu_${selectedTicket?.code}.pdf`,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { 
-              scale: 2, 
-              useCORS: true, 
-              logging: false
-          }, 
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
-      
-      // @ts-ignore
-      html2pdf().set(opt).from(element).save().catch((err: any) => {
-          console.error("PDF Error:", err);
-          message.error("Lỗi khi tạo file PDF. Vui lòng thử lại.");
-      });
-  };
 
   const fetchPending = async () => {
     setLoading(true);
@@ -299,12 +275,17 @@ const PendingApprovals: React.FC = () => {
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen">
-      <div style={{ display: 'none' }}><TicketPrintTemplate ref={printRef} ticket={selectedTicket} /></div>
+      {/* Component ẩn dùng để in */}
+      <div style={{ display: 'none' }}>
+         <TicketPrintTemplate ref={printRef} ticket={selectedTicket} />
+      </div>
+
       <Card className="shadow-sm border-none rounded-xl" tabList={[{ key: 'pending', label: (<span className="px-2"><FileDoneOutlined /> Cần xử lý <AntdBadge count={pendingData.length} offset={[10, -5]} size="small" /></span>) }, { key: 'history', label: (<span className="px-2"><HistoryOutlined /> Lịch sử</span>) }]} activeTabKey={activeTab} onTabChange={key => setActiveTab(key)} extra={<Button icon={<ClockCircleOutlined />} onClick={() => activeTab === 'pending' ? fetchPending() : fetchHistory()}>Tải lại</Button>}>
         <Table dataSource={activeTab === 'pending' ? pendingData : historyData} columns={columnsConfig(activeTab === 'history')} rowKey="id" loading={loading} pagination={{ pageSize: 10 }} locale={{ emptyText: 'Không có dữ liệu.' }} />
       </Card>
       
-      <Modal title={<div className="flex justify-between items-center pr-10"><span>Phiếu: {selectedTicket?.code}</span><Space><Button icon={<DownloadOutlined />} onClick={handleDownloadPDF}>Tải PDF</Button><Button icon={<PrinterOutlined />} onClick={() => handlePrint()}>In Phiếu</Button><Tag color={selectedTicket?.status === 'APPROVED' ? "green" : "processing"}>{selectedTicket?.status}</Tag></Space></div>} open={isModalOpen} onCancel={() => setIsModalOpen(false)} width={900} confirmLoading={submitting} footer={[<Button key="close" onClick={() => setIsModalOpen(false)}>Đóng</Button>, (activeTab === 'pending' && ['PENDING', 'WAITING_CONFIRM'].includes(selectedTicket?.status)) && (<><Button key="reject" danger onClick={() => handleAction('REJECT')} loading={submitting}>Từ chối</Button><Button key="approve" type="primary" onClick={() => handleAction('APPROVE')} loading={submitting} className={selectedTicket?.isRequesterStep ? "bg-green-600" : "bg-indigo-600"}>{selectedTicket?.isRequesterStep ? "Đã nhận đủ hàng" : "Phê duyệt"}</Button></>)]}>
+      {/* Đã xóa nút Tải PDF ở đây */}
+      <Modal title={<div className="flex justify-between items-center pr-10"><span>Phiếu: {selectedTicket?.code}</span><Space><Button icon={<PrinterOutlined />} onClick={() => handlePrint()}>In Phiếu</Button><Tag color={selectedTicket?.status === 'APPROVED' ? "green" : "processing"}>{selectedTicket?.status}</Tag></Space></div>} open={isModalOpen} onCancel={() => setIsModalOpen(false)} width={900} confirmLoading={submitting} footer={[<Button key="close" onClick={() => setIsModalOpen(false)}>Đóng</Button>, (activeTab === 'pending' && ['PENDING', 'WAITING_CONFIRM'].includes(selectedTicket?.status)) && (<><Button key="reject" danger onClick={() => handleAction('REJECT')} loading={submitting}>Từ chối</Button><Button key="approve" type="primary" onClick={() => handleAction('APPROVE')} loading={submitting} className={selectedTicket?.isRequesterStep ? "bg-green-600" : "bg-indigo-600"}>{selectedTicket?.isRequesterStep ? "Đã nhận đủ hàng" : "Phê duyệt"}</Button></>)]}>
         {selectedTicket && <div className="py-2">
             <div className="p-4 mb-4 rounded-lg bg-slate-50 border border-gray-200">
                 <Descriptions column={2} size="small" bordered>
