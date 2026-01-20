@@ -1,6 +1,5 @@
 import { useState } from 'react';
-// [SỬA LỖI] Xóa 'Card' và 'Space' khỏi dòng import này
-import { DatePicker, Button, Typography, Table, Tag, App, Row, Col, Statistic, Divider } from 'antd';
+import { DatePicker, Button, Typography, Table, Tag, App, Row, Col, Statistic, Divider, Radio } from 'antd';
 import { FileExcelOutlined, SearchOutlined, BarChartOutlined, CalendarOutlined, DatabaseOutlined, AuditOutlined, FilterOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
@@ -13,20 +12,29 @@ const MonthlyReport = () => {
   
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState<any[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<dayjs.Dayjs>(dayjs());
+  
+  // State: Loại báo cáo và Thời gian chọn
+  const [reportType, setReportType] = useState<'date' | 'month' | 'year'>('date');
+  const [selectedDate, setSelectedDate] = useState<dayjs.Dayjs>(dayjs());
 
-  // --- LOGIC GIỮ NGUYÊN ---
   const fetchReport = async () => {
     setLoading(true);
     try {
+      // Gọi API với tham số type và date
       const response = await axiosClient.get('/warehouses/reports/monthly-stock', {
         params: {
-          month: selectedMonth.month() + 1,
-          year: selectedMonth.year()
+          type: reportType, 
+          date: selectedDate.toISOString() 
         }
       });
       setReportData(response.data.data || []);
-      message.success(`Đã tải dữ liệu chốt tháng ${selectedMonth.format('MM/YYYY')}`);
+      
+      // Tạo thông báo
+      let timeStr = selectedDate.format('DD/MM/YYYY');
+      if (reportType === 'month') timeStr = selectedDate.format('MM/YYYY');
+      if (reportType === 'year') timeStr = selectedDate.format('YYYY');
+
+      message.success(`Đã tải dữ liệu tồn kho đến: ${timeStr}`);
     } catch (error) {
       message.error("Lỗi tải báo cáo. Vui lòng thử lại.");
     } finally {
@@ -39,23 +47,30 @@ const MonthlyReport = () => {
         message.warning("Chưa có dữ liệu để xuất!");
         return;
     }
+
+    // Tiêu đề cột động
+    let headerText = `TỒN ĐẾN NGÀY ${selectedDate.format('DD/MM/YYYY')}`;
+    if (reportType === 'month') headerText = `TỒN CUỐI THÁNG ${selectedDate.format('MM/YYYY')}`;
+    if (reportType === 'year') headerText = `TỒN CUỐI NĂM ${selectedDate.format('YYYY')}`;
+
     const excelData = reportData.map((item, index) => ({
-      "Stt": index + 1,
+      "STT": index + 1,
       "Mã vật tư": item.itemCode,
       "Tên vật tư": item.itemName,
       "Đvt": item.unit,
-      [`TỒN CUỐI THÁNG ${selectedMonth.format('MM/YYYY')}`]: item.finalQuantity, 
+      [headerText]: item.finalQuantity, // Sử dụng finalQuantity từ backend
       "Nhà máy": item.factoryName,
       "Kho": item.warehouseName,
-      "Kệ": item.rack, 
-      "Hộc": item.bin
+      "Vị trí": `${item.rack || ''} - ${item.bin || ''}`
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(excelData);
-    worksheet['!cols'] = [{ wch: 6 }, { wch: 15 }, { wch: 40 }, { wch: 10 }, { wch: 15 }, { wch: 10 }, { wch: 20 }, { wch: 10 }, { wch: 10 }];
+    worksheet['!cols'] = [{ wch: 6 }, { wch: 15 }, { wch: 40 }, { wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 15 }];
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Ton_Kho_Thang");
-    XLSX.writeFile(workbook, `BaoCao_TonKho_${selectedMonth.format('MM_YYYY')}.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Ton_Kho");
+    
+    const fileName = `BaoCao_TonKho_${reportType}_${selectedDate.format('DDMMYYYY')}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
   };
 
   const columns = [
@@ -64,8 +79,8 @@ const MonthlyReport = () => {
     { title: 'Tên vật tư', dataIndex: 'itemName', ellipsis: true }, 
     { title: 'ĐVT', dataIndex: 'unit', align: 'center' as const, width: 70 },
     { 
-        title: `Tồn Cuối`, 
-        dataIndex: 'finalQuantity', 
+        title: `SL Tồn`, 
+        dataIndex: 'finalQuantity', // [QUAN TRỌNG] Khớp với Backend
         align: 'right' as const,
         width: 100,
         render: (val: number | undefined | null) => {
@@ -77,7 +92,7 @@ const MonthlyReport = () => {
         title: 'Vị trí', 
         children: [
             { title: 'Kho', dataIndex: 'warehouseName', width: 130, ellipsis: true },
-            { title: 'Kệ/Hộc', width: 90, align: 'center' as const, render: (_:any, r:any) => <Tag bordered={false} className="m-0 bg-gray-100">{r.rack || '-'}/{r.bin || '-'}</Tag> }
+            { title: 'Kệ/Hộc', width: 100, align: 'center' as const, render: (_:any, r:any) => <Tag bordered={false} className="m-0 bg-gray-100">{r.rack || '-'}/{r.bin || '-'}</Tag> }
         ]
     }
   ];
@@ -86,45 +101,52 @@ const MonthlyReport = () => {
 
   return (
     <div className="p-6 bg-gray-100 min-h-screen flex justify-center">
-      
-      {/* Container giới hạn chiều rộng */}
       <div className="w-full max-w-6xl flex flex-col gap-4">
         
-        {/* --- HEADER CARD --- */}
+        {/* --- HEADER --- */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                {/* Title & Info */}
-                <div>
-                    <div className="flex items-center gap-3">
-                        <div className="bg-blue-50 text-blue-600 p-2 rounded-lg">
-                            <BarChartOutlined style={{ fontSize: 24 }} />
-                        </div>
-                        <div>
-                            <Title level={4} style={{ margin: 0, color: '#111827' }}>Báo cáo tồn kho</Title>
-                            <Text type="secondary" className="text-xs">Kỳ dữ liệu: Tháng {selectedMonth.format('MM/YYYY')}</Text>
-                        </div>
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                <div className="flex items-center gap-3">
+                    <div className="bg-blue-50 text-blue-600 p-2 rounded-lg">
+                        <BarChartOutlined style={{ fontSize: 24 }} />
+                    </div>
+                    <div>
+                        <Title level={4} style={{ margin: 0, color: '#111827' }}>Báo cáo tồn kho</Title>
+                        <Text type="secondary" className="text-xs">Xem tồn kho theo Ngày / Tháng / Năm</Text>
                     </div>
                 </div>
 
-                {/* Filter & Actions */}
-                <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-lg border border-gray-100">
+                <div className="flex flex-wrap items-center gap-2 bg-gray-50 p-1.5 rounded-lg border border-gray-100">
+                    <Radio.Group 
+                        value={reportType} 
+                        onChange={(e) => setReportType(e.target.value)} 
+                        buttonStyle="solid"
+                        size="middle"
+                    >
+                        <Radio.Button value="date">Ngày</Radio.Button>
+                        <Radio.Button value="month">Tháng</Radio.Button>
+                        <Radio.Button value="year">Năm</Radio.Button>
+                    </Radio.Group>
+
+                    <div className="h-6 w-px bg-gray-300 mx-1"></div>
+
                     <DatePicker 
-                        picker="month" 
-                        value={selectedMonth} 
-                        onChange={(val) => val && setSelectedMonth(val)} 
-                        format="MM/YYYY"
+                        picker={reportType} 
+                        value={selectedDate} 
+                        onChange={(val) => val && setSelectedDate(val)} 
+                        format={reportType === 'date' ? "DD/MM/YYYY" : (reportType === 'month' ? "MM/YYYY" : "YYYY")}
                         allowClear={false}
                         bordered={false}
-                        className="bg-white shadow-sm w-32 font-medium"
+                        className="bg-white shadow-sm w-36 font-medium"
                         suffixIcon={<CalendarOutlined className="text-gray-400"/>}
                     />
-                    <div className="h-6 w-px bg-gray-300 mx-1"></div>
-                    <Button type="text" icon={<SearchOutlined />} onClick={fetchReport} loading={loading} className="text-gray-600 hover:text-blue-600 hover:bg-blue-50">
+                    
+                    <Button type="primary" icon={<SearchOutlined />} onClick={fetchReport} loading={loading}>
                         Xem
                     </Button>
+                    
                     <Button 
-                        type="primary"
-                        className="bg-green-600 hover:bg-green-500 shadow-sm" 
+                        className="bg-green-600 hover:bg-green-500 text-white border-none shadow-sm" 
                         icon={<FileExcelOutlined />} 
                         onClick={handleExportExcel}
                         disabled={reportData.length === 0}
@@ -134,7 +156,7 @@ const MonthlyReport = () => {
                 </div>
             </div>
 
-            {/* Compact Statistics */}
+            {/* Stats */}
             {reportData.length > 0 && (
                 <>
                     <Divider className="my-4" />
@@ -163,7 +185,7 @@ const MonthlyReport = () => {
             )}
         </div>
 
-        {/* --- TABLE CARD --- */}
+        {/* --- TABLE --- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1">
             <Table 
                 columns={columns} 
@@ -175,7 +197,7 @@ const MonthlyReport = () => {
                 scroll={{ y: 'calc(100vh - 400px)' }}
                 bordered={false} 
                 rowClassName="hover:bg-gray-50 transition-colors cursor-default"
-                locale={{ emptyText: <div className="py-10 text-gray-400 flex flex-col items-center"><FilterOutlined className="text-3xl mb-2 opacity-50"/><span>Chọn tháng và bấm xem dữ liệu</span></div> }}
+                locale={{ emptyText: <div className="py-10 text-gray-400 flex flex-col items-center"><FilterOutlined className="text-3xl mb-2 opacity-50"/><span>Chọn thời gian và bấm xem dữ liệu</span></div> }}
             />
         </div>
 

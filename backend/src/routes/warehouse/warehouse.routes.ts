@@ -10,7 +10,7 @@ import {
   updateLocation
 } from '../../controllers/warehouse/warehouse.controller';
 // Import controller báo cáo
-import { getMonthlyStockReport } from '../../controllers/warehouse/report.controller';
+import {getStockHistoryReport } from '../../controllers/warehouse/report.controller';
 import { protect, hasPermission } from '../../middlewares/authMiddleware';
 
 const router = Router();
@@ -24,7 +24,7 @@ router.use(protect);
 // [QUAN TRỌNG] Đặt các route này lên đầu để tránh bị nhận nhầm là :id
 
 // 1. Báo cáo tồn kho theo tháng (Excel)
-router.get('/reports/monthly-stock', hasPermission('WMS_VIEW'), getMonthlyStockReport);
+router.get('/reports/monthly-stock', hasPermission('WMS_VIEW'), getStockHistoryReport);
 
 // 2. Xem danh sách kho
 router.get('/', hasPermission('WMS_VIEW'), getAllWarehouses);
