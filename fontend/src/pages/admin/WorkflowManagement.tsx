@@ -302,7 +302,7 @@ const WorkflowManagement: React.FC = () => {
           </div>
 
           {/* 2. CẤU HÌNH CÁC BƯỚC */}
-          {/* [FIXED] orientation="left" thay vì "left as const" */}
+          {/* [FIXED] Sửa lỗi type: 'left' là string literal hợp lệ */}
           <Divider orientation="left">Cấu hình các bước duyệt</Divider>
           
           <Form.List name="steps">
@@ -334,7 +334,7 @@ const WorkflowManagement: React.FC = () => {
                       </Col>
 
                       <Col span={8}>
-                        {/* [FIXED] bỏ unused params và set shouldUpdate={true} */}
+                        {/* [FIXED] Sửa lỗi TS6133 bằng cách dùng prop shouldUpdate={true} */}
                         <Form.Item
                           noStyle
                           shouldUpdate
