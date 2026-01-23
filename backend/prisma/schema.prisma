@@ -8,41 +8,55 @@ datasource db {
 }
 
 // ==========================================
-// 1. NHÓM HỆ THỐNG & PHÂN QUYỀN
+// 1. NHÓM HỆ THỐNG & PHÂN QUYỀN (CORE)
 // ==========================================
 
 model User {
-  id                   String   @id @default(uuid())
-  email                String   @unique
-  password             String
-  fullName             String
-  isActive             Boolean  @default(true)
-  mustChangePassword   Boolean  @default(false)
+  id                 String  @id @default(uuid())
+  email              String  @unique
+  password           String
+  fullName           String
+  isActive           Boolean @default(true)
+  mustChangePassword Boolean @default(false)
   
-  roleId               String
-  role                 Role     @relation(fields: [roleId], references: [id])
-  
-  departmentId         String
-  department           Department @relation(fields: [departmentId], references: [id])
-  
-  userPermissions      UserPermission[]
-  posts                Post[]
-  notifications        Notification[]
+  // Role & Dept
+  roleId             String
+  role               Role       @relation(fields: [roleId], references: [id])
+  departmentId       String
+  department         Department @relation(fields: [departmentId], references: [id])
 
-  createdTransactions  StockTransaction[]    @relation("CreatedBy")
-  approvedSteps        TransactionApproval[] @relation("ActualApprover")
-  keeperTransactions   StockTransaction[]    @relation("WarehouseKeeper")
-  receivedTransactions StockTransaction[]    @relation("Receiver")
-  approvalLogs         ApprovalLog[]
+  // [FACTORY SCOPE] User thuộc nhà máy nào?
+  factoryId          String?  
+  factory            Factory?   @relation("UserWorkingFactory", fields: [factoryId], references: [id])
+  
+  // Permissions
+  userPermissions    UserPermission[]
+  
+  // CMS & System
+  posts              Post[]
+  notifications      Notification[]
+
+  // === GENERIC WORKFLOW RELATIONS ===
+  // Người tạo các phiếu yêu cầu (Ticket)
+  createdTickets     Ticket[]        @relation("TicketCreator")
+  
+  // Lịch sử tham gia duyệt (đã duyệt bước nào)
+  actedSteps         TicketStep[]    @relation("StepActor") 
+  
+  // Log thao tác
+  approvalLogs       ApprovalLog[]
 }
 
 model Role {
-  id            String   @id // (VD: "ADMIN", "USER")
+  id            String   @id // (VD: "ROLE-ADMIN", "ROLE-USER", "ROLE-KHO")
   name          String
   description   String?
+  
   users         User[]
   permissions   RolePermission[]
-  approvalSteps ApprovalStep[]
+  
+  // Role được dùng để định nghĩa người duyệt trong Workflow Template
+  workflowSteps WorkflowStep[] 
 }
 
 model Permission {
@@ -69,33 +83,194 @@ model UserPermission {
   @@id([userId, permissionId])
 }
 
-// [FIX] Department chuẩn theo yêu cầu (id là mã)
 model Department {
-  id           String    @id // Mã phòng ban (VD: 3152)
+  id           String   @id 
   name         String
-  name_content String    @default("Chưa có nội dung")
+  name_content String   @default("Chưa có nội dung")
   
   factoryId    String?
-  factory      Factory?  @relation(fields: [factoryId], references: [id])
+  factory      Factory? @relation(fields: [factoryId], references: [id])
 
   users        User[]
   targetedPosts PostDepartment[]
 }
 
 // ==========================================
-// 2. NHÓM QUẢN LÝ VẬT LÝ (KHO BÃI)
+// 2. GENERIC WORKFLOW ENGINE (LÕI XỬ LÝ DUYỆT)
+// Phần này dùng chung cho TẤT CẢ quy trình
+// ==========================================
+
+// 2.1. Định nghĩa Quy trình mẫu (Template)
+model Workflow {
+  id                    String   @id @default(uuid())
+  name                  String   
+  code                  String   @unique // VD: "WF-NHAP-KHO", "WF-NGHI-PHEP"
+  description           String?
+  
+  // Loại đối tượng áp dụng để FE dễ filter: "STOCK", "HR", "FINANCE"
+  targetType            String   @default("STOCK") 
+  isActive              Boolean  @default(true)
+  
+  allowedInitiatorRoles String[] // Array Role ID được phép tạo
+  
+  steps                 WorkflowStep[]
+  tickets               Ticket[]
+}
+
+// 2.2. Các bước trong mẫu (Template Steps)
+// 2.2. Các bước trong mẫu (Template Steps)
+model WorkflowStep {
+  id             String   @id @default(uuid())
+  workflowId     String
+  workflow       Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  
+  name           String   // VD: "Tổ trưởng xác nhận"
+  order          Int      // 1, 2, 3...
+  
+  // Định nghĩa ai được duyệt bước này
+  approverType   String   @default("ROLE") // "ROLE", "SPECIFIC_USER", "CREATOR"
+  
+  roleId         String?  
+  role           Role?    @relation(fields: [roleId], references: [id])
+  
+  // [ADD NEW] Thêm trường này để lưu ID người cụ thể nếu chọn SPECIFIC_USER
+  specificUserId String?  
+  
+  // Quan hệ ngược với các bước thực tế đang chạy
+  ticketSteps    TicketStep[]
+}
+
+// 2.3. TICKET (PHIẾU YÊU CẦU - PROCESS INSTANCE)
+// Đây là bảng trung tâm. Mọi yêu cầu (Kho, Nghỉ phép...) đều sinh ra 1 Ticket.
+model Ticket {
+  id           String   @id @default(uuid())
+  code         String   @unique // Mã phiếu (VD: TICKET-2023-001)
+  
+  workflowId   String
+  workflow     Workflow @relation(fields: [workflowId], references: [id])
+  
+  // Trạng thái chung
+  currentStep  Int      @default(0) 
+  status       String   @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
+  
+  creatorId    String
+  creator      User     @relation("TicketCreator", fields: [creatorId], references: [id])
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  completedAt  DateTime?
+
+  // Lịch sử duyệt của Ticket này
+  steps        TicketStep[]
+  logs         ApprovalLog[]
+
+  // === POLYMORPHIC RELATIONS (MỞ RỘNG Ở ĐÂY) ===
+  // Mỗi Ticket sẽ link tới 1 trong các bảng nghiệp vụ bên dưới
+  stockTransaction StockTransaction? 
+  
+  // Sau này mở rộng:
+  // leaveRequest  LeaveRequest?
+  // purchaseOrder PurchaseOrder?
+}
+
+// 2.4. Trạng thái thực tế của từng bước (Running Steps)
+model TicketStep {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  
+  stepId    String
+  step      WorkflowStep @relation(fields: [stepId], references: [id])
+  
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  
+  actorId   String?  // Người thực tế đã duyệt
+  actor     User?    @relation("StepActor", fields: [actorId], references: [id])
+  
+  note      String?
+  actedAt   DateTime?
+  
+  @@unique([ticketId, stepId])
+}
+
+model ApprovalLog {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  action    String   // APPROVE, REJECT, COMMENT, CREATE
+  comment   String?
+  createdAt DateTime @default(now())
+}
+
+// ==========================================
+// 3. NGHIỆP VỤ KHO (Gắn vào Ticket)
+// ==========================================
+
+model StockTransaction {
+  id                String   @id @default(uuid())
+  
+  // Quan hệ 1-1 với Ticket (Bắt buộc)
+  ticketId          String   @unique
+  ticket            Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  // Dữ liệu đặc thù của Kho
+  type              String   // "IMPORT", "EXPORT", "TRANSFER"
+  isEmergency       Boolean  @default(false)
+  description       String?
+
+  factoryId         String
+  factory           Factory  @relation(fields: [factoryId], references: [id])
+
+  // Các bên liên quan (ngoài Creator/Approver đã có trong Ticket)
+  warehouseKeeperId String?  // Thủ kho thực hiện (nếu cần tracking riêng)
+  receiverId        String?  // Người nhận hàng
+  supplierId        String?
+  supplier          Supplier? @relation(fields: [supplierId], references: [id])
+
+  details           TransactionDetail[]
+}
+
+model TransactionDetail {
+  id              String   @id @default(uuid())
+  transactionId   String
+  transaction     StockTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  itemId          String
+  item            Item     @relation(fields: [itemId], references: [id])
+  
+  quantity        Float 
+  inputUnit       String?  
+  inputQuantity   Float?   
+
+  fromLocationId  String?
+  fromLocation    Location? @relation("FromLoc", fields: [fromLocationId], references: [id])
+  
+  toLocationId    String?
+  toLocation      Location? @relation("ToLoc", fields: [toLocationId], references: [id])
+
+  usageCategoryId String?
+  usageCategory   UsageCategory? @relation(fields: [usageCategoryId], references: [id])
+}
+
+// ==========================================
+// 4. NHÓM QUẢN LÝ VẬT LÝ (KHO BÃI)
 // ==========================================
 
 model Factory {
-  id           String      @id @default(uuid())
-  name         String      @unique 
+  id           String    @id @default(uuid())
+  name         String    @unique 
   address      String?
   
   warehouses   Warehouse[] 
   departments  Department[]
   transactions StockTransaction[] 
   
-  createdAt    DateTime    @default(now())
+  users        User[]    @relation("UserWorkingFactory")
+  createdAt    DateTime  @default(now())
 }
 
 model Warehouse {
@@ -111,9 +286,9 @@ model Warehouse {
 }
 
 model Location {
-  id           String    @id @default(uuid())
-  locationCode String    @unique 
-  qrCode       String    @unique 
+  id           String   @id @default(uuid())
+  locationCode String   @unique 
+  qrCode       String   @unique 
   rack         String?
   level        String?
   bin          String?
@@ -127,7 +302,7 @@ model Location {
 }
 
 // ==========================================
-// 3. NHÓM VẬT TƯ & DANH MỤC
+// 5. NHÓM VẬT TƯ & DANH MỤC
 // ==========================================
 
 model Item {
@@ -149,14 +324,13 @@ model Item {
 }
 
 model ItemUnitConversion {
-  id           String   @id @default(uuid())
-  itemId       String
-  unitName     String   
-  factor       Float    
-  barcode      String?  
+  id       String @id @default(uuid())
+  itemId   String
+  unitName String 
+  factor   Float  
+  barcode  String? 
 
-  item         Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
-
+  item     Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
   @@unique([itemId, unitName])
 }
 
@@ -189,127 +363,29 @@ model Supplier {
 }
 
 model ItemSupplier {
-  itemId       String
-  supplierId   String
-  item         Item     @relation(fields: [itemId], references: [id])
-  supplier     Supplier @relation(fields: [supplierId], references: [id])
+  itemId     String
+  supplierId String
+  item       Item     @relation(fields: [itemId], references: [id])
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
   @@id([itemId, supplierId])
 }
 
 model Stock {
-  id           String   @id @default(uuid())
-  itemId       String
-  locationId   String
-  supplierId   String?  
-  quantity     Float    @default(0) 
+  id          String   @id @default(uuid())
+  itemId      String
+  locationId  String
+  supplierId  String?  
+  quantity    Float    @default(0) 
   
-  item         Item     @relation(fields: [itemId], references: [id])
-  location     Location @relation(fields: [locationId], references: [id])
-  supplier     Supplier? @relation(fields: [supplierId], references: [id])
+  item        Item     @relation(fields: [itemId], references: [id])
+  location    Location @relation(fields: [locationId], references: [id])
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
 
   @@unique([itemId, locationId, supplierId])
 }
 
 // ==========================================
-// 4. NHÓM PHÊ DUYỆT & GIAO DỊCH
-// ==========================================
-
-model TransactionCounter {
-  key       String   @id 
-  count     Int      
-  updatedAt DateTime @updatedAt
-}
-
-model StockTransaction {
-  id                String   @id @default(uuid())
-  code              String   @unique 
-  type              String   
-  status            String   @default("PENDING")
-  isEmergency       Boolean  @default(false)
-  description       String?
-
-  factoryId         String
-  factory           Factory  @relation(fields: [factoryId], references: [id])
-
-  creatorId         String
-  creator           User     @relation("CreatedBy", fields: [creatorId], references: [id])
-  
-  warehouseKeeperId String?
-  warehouseKeeper   User?    @relation("WarehouseKeeper", fields: [warehouseKeeperId], references: [id])
-  
-  receiverId        String?
-  receiver          User?    @relation("Receiver", fields: [receiverId], references: [id])
-  
-  supplierId        String?
-  supplier          Supplier? @relation(fields: [supplierId], references: [id])
-
-  createdAt         DateTime @default(now())
-  completedAt       DateTime?
-  
-  details           TransactionDetail[]
-  approvals         TransactionApproval[]
-  logs              ApprovalLog[]
-}
-
-model ApprovalStep {
-  id        String   @id @default(uuid())
-  name      String
-  order     Int
-  roleId    String
-  role      Role     @relation(fields: [roleId], references: [id])
-  type      String   
-  approvals TransactionApproval[]
-}
-
-model TransactionApproval {
-  id            String   @id @default(uuid())
-  transactionId String
-  stepId        String
-  approverId    String?
-  status        String   @default("PENDING")
-  
-  transaction   StockTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  step          ApprovalStep     @relation(fields: [stepId], references: [id])
-  approver      User?            @relation("ActualApprover", fields: [approverId], references: [id])
-  
-  @@unique([transactionId, stepId])
-}
-
-model TransactionDetail {
-  id              String   @id @default(uuid())
-  transactionId   String
-  itemId          String
-  quantity        Float 
-  inputUnit       String?  
-  inputQuantity   Float?   
-
-  fromLocationId  String?
-  toLocationId    String?
-
-  usageCategoryId String?
-  usageCategory   UsageCategory? @relation(fields: [usageCategoryId], references: [id])
-
-  transaction     StockTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  
-  item            Item     @relation(fields: [itemId], references: [id])
-  fromLocation    Location? @relation("FromLoc", fields: [fromLocationId], references: [id])
-  toLocation      Location? @relation("ToLoc", fields: [toLocationId], references: [id])
-}
-
-model ApprovalLog {
-  id            String   @id @default(uuid())
-  transactionId String
-  userId        String
-  action        String
-  comment       String?
-  createdAt     DateTime @default(now())
-  
-  transaction   StockTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  user          User             @relation(fields: [userId], references: [id])
-}
-
-// ==========================================
-// 5. CÁC BẢNG CÔNG TÁC (CMS)
+// 6. CÁC BẢNG CÔNG TÁC (CMS)
 // ==========================================
 
 model Post {
@@ -364,4 +440,10 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@map("notifications")
+}
+
+model TransactionCounter {
+  key       String   @id
+  count     Int
+  updatedAt DateTime @updatedAt
 }

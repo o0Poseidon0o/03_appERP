@@ -19,15 +19,18 @@ import factoryRouter from './routes/factory.route';
 import warehouseRoutes from './routes/warehouse/warehouse.routes';
 import itemRoutes from './routes/warehouse/item.routes';
 import stockRoutes from './routes/warehouse/stockTransaction.routes';
-// 1. Import thêm route Supplier ở đây
 import supplierRoutes from './routes/warehouse/supplier.routes';
 
+// --- [MỚI] IMPORT WORKFLOW ROUTES ---
+import workflowRoutes from './routes/workflow.routes';
+import ticketRoutes from './routes/ticket.routes';
 
 const app = express();
+
 // --- [SỬA LỖI 413] TĂNG GIỚI HẠN KÍCH THƯỚC BODY ---
-// Cho phép upload dữ liệu JSON lên tới 50MB (hoặc 100mb tùy nhu cầu)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
 // --- 1. GLOBAL MIDDLEWARES ---
 app.use(
   helmet({
@@ -44,8 +47,6 @@ app.use(
   })
 );
 
-app.use(express.json());
-
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
@@ -58,6 +59,7 @@ app.get('/', (req: Request, res: Response) => {
   res.send('🚀 TowaERP Backend is running!');
 });
 
+// System Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/departments', deptRoutes);
@@ -68,12 +70,16 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/notifications', notiRoutes);
 app.use('/api/factories', factoryRouter);
 
-// --- ROUTES KHO ---
+// Warehouse Routes
 app.use('/api/warehouses', warehouseRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/stock-transactions', stockRoutes);
-// 2. Khai báo API cho Suppliers
-app.use('/api/suppliers', supplierRoutes); 
+app.use('/api/suppliers', supplierRoutes);
+
+// --- [MỚI] WORKFLOW ENGINE ROUTES ---
+// Endpoint này dùng để quản lý cấu hình quy trình duyệt (CRUD)
+app.use('/api/workflows', workflowRoutes);
+app.use('/api/tickets', ticketRoutes);
 
 // --- 4. ERROR HANDLING ---
 app.all('*', (req: Request, res: Response, next: NextFunction) => {

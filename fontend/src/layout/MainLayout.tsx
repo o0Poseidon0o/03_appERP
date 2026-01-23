@@ -3,9 +3,6 @@ import {
   Layout, Menu, Button, Dropdown, Avatar, Badge, List, Popover, 
   theme as antTheme, Switch, Drawer, type MenuProps, Tooltip 
 } from 'antd';
-// [SỬA LỖI 1] Bỏ import Typography vì không dùng trong code này
-// import { Typography } from 'antd'; 
-
 import { 
   MenuFoldOutlined, MenuUnfoldOutlined, 
   UserOutlined, DashboardOutlined, 
@@ -19,7 +16,8 @@ import {
   BoxPlotOutlined, DatabaseOutlined,
   BarChartOutlined,
   AppstoreOutlined, 
-  CloseOutlined
+  CloseOutlined,
+  NodeIndexOutlined // Icon cho Workflow
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -29,8 +27,6 @@ import axiosClient from '../api/axiosClient';
 import useMediaQuery from '../hooks/useMediaQuery';
 
 const { Header, Sider, Content } = Layout;
-// [SỬA LỖI 1] Xóa dòng destructuring không dùng đến
-// const { Text, Title } = Typography; 
 
 // --- MENU COMPONENT ---
 interface SideMenuProps {
@@ -68,7 +64,7 @@ const SideMenu: React.FC<SideMenuProps> = ({ collapsed, isMobile, locationPath, 
 interface AppLauncherProps {
     isOpen: boolean;
     onClose: () => void;
-    menuItems: any[]; 
+    menuItems: any[]; // Đây sẽ là danh sách đầy đủ các App
     onNavigate: (path: string) => void;
     isDarkMode: boolean;
 }
@@ -76,16 +72,34 @@ interface AppLauncherProps {
 const AppLauncher: React.FC<AppLauncherProps> = ({ isOpen, onClose, menuItems, onNavigate, isDarkMode }) => {
     if (!isOpen) return null;
 
-    const appModules = menuItems.filter(item => item && item.type !== 'divider').map(item => {
-        let link = item.key;
-        if (item.children && item.children.length > 0) {
-            link = item.children[0].key; 
+    // Filter bỏ các item là divider hoặc group title để lấy danh sách App thực sự
+    // [UPDATE] Logic đệ quy đơn giản để lấy hết link con nếu là Group
+    const flatApps: any[] = [];
+    
+    menuItems.forEach(item => {
+        if (!item) return;
+        // Nếu là Item đơn (VD: Dashboard)
+        if (!item.children && item.key && item.key !== 'divider') {
+            flatApps.push(item);
         }
+        // Nếu là Group (VD: Kho vận, Hệ thống) -> Lấy đại diện hoặc lấy hết con
+        else if (item.children) {
+             // Cách 1: Hiển thị Group như 1 App lớn (Lấy link đầu tiên của con)
+             flatApps.push({
+                 ...item,
+                 link: item.children[0]?.key || item.key, // Link mặc định vào trang đầu của nhóm
+                 isGroup: true
+             });
+        }
+    });
+
+    const appModules = flatApps.map(item => {
         return {
             key: item.key,
             label: item.label,
             icon: item.icon,
-            link: link,
+            link: item.link || item.key,
+            // [UPDATE] Thêm màu sắc cho sinh động
             colorClass: item.key.includes('warehouse') ? 'bg-orange-500' : 
                         item.key.includes('system') ? 'bg-gray-600' : 
                         item.key.includes('posts') ? 'bg-purple-500' : 
@@ -216,7 +230,8 @@ const MainLayout: React.FC = () => {
       }
   };
 
-  // --- LOGIC 4: CẤU HÌNH MENU ITEMS ---
+  // --- LOGIC 4: CẤU HÌNH MENU ITEMS (SIDEBAR) ---
+  // Menu này phụ thuộc vào quyền của User (hasPermission)
   const menuItems = useMemo<MenuProps['items']>(() => {
     const items: MenuProps['items'] = [];
 
@@ -267,7 +282,8 @@ const MainLayout: React.FC = () => {
     }
 
     // Hệ thống
-    const canSeeSystem = hasPermission('DEPT_VIEW') || hasPermission('ROLE_VIEW') || hasPermission('MENU_VIEW') || user?.roleId === 'ROLE-ADMIN';
+    // [UPDATE] Thêm quyền truy cập Workflow vào điều kiện
+    const canSeeSystem = hasPermission('DEPT_VIEW') || hasPermission('ROLE_VIEW') || hasPermission('MENU_VIEW') || hasPermission('WORKFLOW_VIEW') || user?.roleId === 'ROLE-ADMIN';
     if (canSeeSystem) {
       items.push({ 
           key: 'grp-system', label: 'Hệ thống', icon: <ApartmentOutlined />,
@@ -275,6 +291,8 @@ const MainLayout: React.FC = () => {
               ...(hasPermission('DEPT_VIEW') ? [{ key: '/admin/departments', label: 'Phòng ban' }] : []),
               ...(hasPermission('ROLE_VIEW') ? [{ key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Phân quyền' }] : []),
               ...(user?.roleId === 'ROLE-ADMIN' ? [{ key: '/admin/menus', icon: <UnorderedListOutlined />, label: 'Cấu hình Menu' }] : []),
+              // [NEW] Menu Workflow
+              ...((user?.roleId === 'ROLE-ADMIN' || hasPermission('WORKFLOW_VIEW')) ? [{ key: '/admin/workflows', icon: <NodeIndexOutlined />, label: 'Cấu hình Quy trình' }] : []),
           ]
       });
     }

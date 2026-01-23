@@ -11,7 +11,8 @@ export const getAllFactories = async (req: Request, res: Response, next: NextFun
         _count: { 
           select: { 
             warehouses: true, 
-            departments: true 
+            departments: true,
+            users: true // [NEW] Đếm xem có bao nhiêu nhân sự ở nhà máy này
           } 
         }
       }
@@ -30,7 +31,10 @@ export const getFactoryById = async (req: Request, res: Response, next: NextFunc
       where: { id },
       include: {
         warehouses: true,
-        departments: true
+        departments: true,
+        // [NEW] Nếu muốn xem danh sách nhân viên cụ thể thì thêm users: true
+        // Ở đây ta chỉ lấy count để nhẹ
+        _count: { select: { users: true } } 
       }
     });
 
@@ -78,15 +82,16 @@ export const deleteFactory = async (req: Request, res: Response, next: NextFunct
     const factory = await prisma.factory.findUnique({
       where: { id },
       include: {
-        _count: { select: { warehouses: true, departments: true } }
+        _count: { select: { warehouses: true, departments: true, users: true } } // [NEW] Check thêm user
       }
     });
 
     if (!factory) return next(new AppError('Nhà máy không tồn tại', 404));
 
-    if (factory._count.warehouses > 0 || factory._count.departments > 0) {
+    // [NEW] Chặn xóa nếu còn nhân viên
+    if (factory._count.warehouses > 0 || factory._count.departments > 0 || factory._count.users > 0) {
       return next(new AppError(
-        `Không thể xóa! Đang chứa ${factory._count.warehouses} kho và ${factory._count.departments} phòng ban.`, 
+        `Không thể xóa! Đang chứa ${factory._count.warehouses} kho, ${factory._count.departments} phòng ban và ${factory._count.users} nhân sự.`, 
         400
       ));
     }

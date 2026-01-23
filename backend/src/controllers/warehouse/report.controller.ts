@@ -5,7 +5,6 @@ import dayjs from 'dayjs';
 
 export const getStockHistoryReport = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Nhận params: type ('date' | 'month' | 'year') và date
     const { type, date, factoryId } = req.query;
 
     if (!date) {
@@ -13,21 +12,19 @@ export const getStockHistoryReport = async (req: Request, res: Response, next: N
     }
 
     // 1. XÁC ĐỊNH NGÀY CHỐT SỔ (Cutoff Date)
-    // Tính thời điểm cuối cùng của kỳ báo cáo (23:59:59)
     let cutoffDate = dayjs(String(date));
 
     if (type === 'year') {
-        cutoffDate = cutoffDate.endOf('year'); // Cuối năm
+        cutoffDate = cutoffDate.endOf('year');
     } else if (type === 'month') {
-        cutoffDate = cutoffDate.endOf('month'); // Cuối tháng
+        cutoffDate = cutoffDate.endOf('month');
     } else {
-        cutoffDate = cutoffDate.endOf('day'); // Cuối ngày (Mặc định)
+        cutoffDate = cutoffDate.endOf('day');
     }
 
     const cutoffDateJS = cutoffDate.toDate();
 
     // 2. LẤY TỒN KHO HIỆN TẠI (Realtime)
-    // Lấy cả những dòng có quantity = 0 để làm mốc tính toán
     const currentStocks = await prisma.stock.findMany({
         where: {
             ...(factoryId ? { location: { warehouse: { factoryId: String(factoryId) } } } : {})
@@ -43,15 +40,23 @@ export const getStockHistoryReport = async (req: Request, res: Response, next: N
     });
 
     // 3. LẤY GIAO DỊCH PHÁT SINH TỪ [CHỐT SỔ] -> [HIỆN TẠI]
+    // [FIXED QUERY] Truy vấn lồng nhau qua Ticket
     const historyMovements = await prisma.transactionDetail.findMany({
         where: {
             transaction: {
-                status: { in: ['APPROVED', 'COMPLETED'] }, // Chỉ lấy phiếu đã hoàn thành
-                createdAt: { gt: cutoffDateJS },           // Lớn hơn thời điểm chốt
-                ...(factoryId ? { factoryId: String(factoryId) } : {})
+                // Điều kiện lọc theo Factory nằm ở bảng StockTransaction
+                ...(factoryId ? { factoryId: String(factoryId) } : {}),
+                
+                // Điều kiện lọc Status và CreatedAt nằm ở bảng Ticket
+                ticket: {
+                    status: { in: ['APPROVED', 'COMPLETED'] }, // Chỉ tính phiếu đã duyệt
+                    createdAt: { gt: cutoffDateJS }            // Lớn hơn ngày chốt sổ
+                }
             }
         },
-        include: { transaction: true }
+        include: { 
+            transaction: true 
+        }
     });
 
     // 4. TÍNH TOÁN NGƯỢC (ROLLBACK)
@@ -68,15 +73,15 @@ export const getStockHistoryReport = async (req: Request, res: Response, next: N
             warehouseName: stock.location.warehouse.name,
             rack: stock.location.rack || '',
             bin: stock.location.bin || '',
-            finalQuantity: stock.quantity // Tồn tại thời điểm hiện tại
+            finalQuantity: stock.quantity 
         });
     });
 
-    // B4.2: Duyệt ngược lịch sử
+    // B4.2: Duyệt ngược lịch sử để Rollback số liệu
     historyMovements.forEach(detail => {
         const qty = detail.quantity;
 
-        // -- CASE 1: NHẬP sau ngày chốt -> TRỪ ĐI
+        // -- CASE 1: NHẬP sau ngày chốt -> Có nghĩa là tại ngày chốt Hàng Chưa Về -> TRỪ ĐI
         if (detail.toLocationId) {
             const key = `${detail.itemId}_${detail.toLocationId}`;
             if (stockMap.has(key)) {
@@ -86,7 +91,7 @@ export const getStockHistoryReport = async (req: Request, res: Response, next: N
             }
         }
 
-        // -- CASE 2: XUẤT sau ngày chốt -> CỘNG LẠI
+        // -- CASE 2: XUẤT sau ngày chốt -> Có nghĩa là tại ngày chốt Hàng Còn Ở Kho -> CỘNG LẠI
         if (detail.fromLocationId) {
             const key = `${detail.itemId}_${detail.fromLocationId}`;
             if (stockMap.has(key)) {
@@ -97,9 +102,9 @@ export const getStockHistoryReport = async (req: Request, res: Response, next: N
         }
     });
 
-    // 5. Format dữ liệu (Chỉ lấy dòng có tồn > 0)
+    // 5. Format dữ liệu
     const reportData = Array.from(stockMap.values())
-        .filter(item => item.finalQuantity > 0)
+        .filter(item => item.finalQuantity > 0) // Chỉ lấy tồn > 0
         .sort((a, b) => a.itemCode.localeCompare(b.itemCode));
 
     res.status(200).json({ 

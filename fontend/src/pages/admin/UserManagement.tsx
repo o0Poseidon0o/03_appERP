@@ -6,7 +6,8 @@ import {
 } from 'antd';
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
-  DeleteOutlined, ReloadOutlined, KeyOutlined, SafetyCertificateOutlined, UserOutlined
+  DeleteOutlined, ReloadOutlined, KeyOutlined, SafetyCertificateOutlined, UserOutlined,
+  GlobalOutlined // Icon cho Nhà máy
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import axiosClient from '../../api/axiosClient';
@@ -21,8 +22,10 @@ interface User {
   isActive: boolean;
   roleId: string;
   departmentId: string;
+  factoryId?: string; // [NEW] Thêm trường này
   role?: { id: string; name: string; };
   department?: { name: string };
+  factory?: { name: string }; // [NEW] Để hiển thị tên nhà máy
   userPermissions?: { permissionId: string }[];
 }
 
@@ -45,6 +48,7 @@ const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [rolesList, setRolesList] = useState<any[]>([]); 
   const [deptList, setDeptList] = useState<any[]>([]);
+  const [factoryList, setFactoryList] = useState<any[]>([]); // [NEW] List nhà máy
   const [allPermissions, setAllPermissions] = useState<PermissionItem[]>([]);
   const [loading, setLoading] = useState(false);
   
@@ -59,16 +63,18 @@ const UserManagement: React.FC = () => {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [usersRes, rolesRes, deptsRes, permsRes] = await Promise.all([
+      const [usersRes, rolesRes, deptsRes, factsRes, permsRes] = await Promise.all([
         axiosClient.get('/users'),
         axiosClient.get('/roles'),
         axiosClient.get('/departments'),
+        axiosClient.get('/factories'), // [NEW] API lấy danh sách nhà máy
         axiosClient.get('/users/permissions/all').catch(() => ({ data: { data: [] } }))
       ]);
 
       setUsers(usersRes.data?.data || usersRes.data || []);
       setRolesList(rolesRes.data?.data || rolesRes.data || []); 
       setDeptList(deptsRes.data?.data || deptsRes.data || []);
+      setFactoryList(factsRes.data?.data || factsRes.data || []); // [NEW]
       setAllPermissions(permsRes.data?.data || permsRes.data || []);
     } catch (error: any) {
       message.error('Không thể tải dữ liệu hệ thống.');
@@ -89,6 +95,7 @@ const UserManagement: React.FC = () => {
       email: record.email,
       roleId: record.roleId, 
       departmentId: record.departmentId,
+      factoryId: record.factoryId, // [NEW] Load factoryId lên form
       isActive: record.isActive,
       password: '' 
     });
@@ -105,7 +112,7 @@ const UserManagement: React.FC = () => {
         await axiosClient.patch(`/users/${editingUser.id}/permissions`, {
           permissionIds: selectedPermissions
         });
-        message.success('Cập nhật nhân sự và quyền hạn thành công');
+        message.success('Cập nhật nhân sự thành công');
       } else {
         await axiosClient.post('/users', values);
         message.success('Thêm mới thành công');
@@ -146,6 +153,18 @@ const UserManagement: React.FC = () => {
            </div>
         </Space>
       ),
+    },
+    {
+        title: 'Khu vực làm việc', // [NEW] Cột mới để hiển thị Nhà máy
+        key: 'factory',
+        render: (_, record) => (
+            <Space direction="vertical" size={0}>
+                {record.factory ? (
+                    <Tag icon={<GlobalOutlined />} color="geekblue">{record.factory.name}</Tag>
+                ) : <span className="text-xs text-gray-400 italic">Chưa gán</span>}
+                <span className="text-xs text-gray-500">{record.department?.name}</span>
+            </Space>
+        )
     },
     {
       title: 'Vai trò',
@@ -242,18 +261,38 @@ const UserManagement: React.FC = () => {
                   </Row>
                   <Form.Item name="fullName" label="Họ tên" rules={[{ required: true }]}><Input /></Form.Item>
                   <Form.Item name="password" label="Mật khẩu"><Input.Password placeholder={editingUser ? "Để trống nếu không đổi" : "Nhập mật khẩu"} /></Form.Item>
+                  
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Form.Item name="departmentId" label="Phòng ban" rules={[{ required: true }]}>
+                      <Form.Item name="departmentId" label="Phòng ban (Chấm công/Lương)" rules={[{ required: true }]}>
                         <Select options={deptList.map(d => ({ label: d.name, value: d.id }))} />
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      <Form.Item name="roleId" label="Vai trò" rules={[{ required: true }]}>
+                      <Form.Item name="roleId" label="Vai trò (Chức năng)" rules={[{ required: true }]}>
                         <Select options={rolesList.map(r => ({ label: r.name, value: r.id }))} />
                       </Form.Item>
                     </Col>
                   </Row>
+
+                  {/* [NEW] DROPDOWN CHỌN NHÀ MÁY */}
+                  <Form.Item 
+                    name="factoryId" 
+                    label={
+                        <Space>
+                            <GlobalOutlined className="text-blue-500" /> 
+                            <span>Nhà máy / Kho làm việc (Quan trọng cho duyệt phiếu)</span>
+                        </Space>
+                    }
+                    extra="Chọn nhà máy mà nhân viên này thực tế đang làm việc. Các phiếu kho sẽ được lọc theo nhà máy này."
+                  >
+                    <Select 
+                        allowClear 
+                        placeholder="Chọn nhà máy..." 
+                        options={factoryList.map(f => ({ label: f.name, value: f.id }))} 
+                    />
+                  </Form.Item>
+
                   <Form.Item name="isActive" label="Trạng thái" valuePropName="value" initialValue={true}>
                     <Select options={[{label: 'Hoạt động', value: true}, {label: 'Khóa', value: false}]} />
                   </Form.Item>
@@ -276,7 +315,6 @@ const UserManagement: React.FC = () => {
                   >
                     {Object.entries(groupedPermissions).map(([module, perms]) => (
                       <div key={module} style={{ marginBottom: 16 }}>
-                        {/* Ép kiểu về bất kỳ để vượt qua kiểm tra nghiêm ngặt của TS */}
                         <Divider orientation={"left" as any} plain>
                           <span style={{ color: '#1d4ed8', fontWeight: 'bold', fontSize: '11px' }}>{module.toUpperCase()}</span>
                         </Divider>

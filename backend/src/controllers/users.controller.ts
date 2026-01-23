@@ -4,7 +4,7 @@ import { AppError } from '../utils/AppError';
 import bcrypt from 'bcryptjs';
 
 /**
- * @desc    Lấy danh sách tất cả nhân sự kèm Role, Phòng ban và Quyền riêng lẻ
+ * @desc    Lấy danh sách tất cả nhân sự kèm Role, Phòng ban, Nhà máy và Quyền riêng lẻ
  * @route   GET /api/users
  */
 export const getUsers = async (req: Request, res: Response) => {
@@ -17,9 +17,12 @@ export const getUsers = async (req: Request, res: Response) => {
         isActive: true,
         roleId: true,
         departmentId: true,
+        factoryId: true, // [NEW] Lấy ID nhà máy
+        
         role: { select: { id: true, name: true } },
         department: { select: { id: true, name: true } },
-        // Lấy danh sách ID quyền riêng lẻ để hiển thị Checkbox ở Frontend
+        factory: { select: { id: true, name: true } }, // [NEW] Lấy tên nhà máy để hiển thị table
+        
         userPermissions: {
           select: { permissionId: true }
         }
@@ -36,26 +39,24 @@ export const getUsers = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * @desc    Lấy tất cả danh mục quyền có trong hệ thống (Dùng cho Modal phân quyền)
- * @route   GET /api/users/permissions/all
- */
+// ... (Hàm getAllAvailablePermissions giữ nguyên) ...
 export const getAllAvailablePermissions = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const permissions = await prisma.permission.findMany({
-      orderBy: [
-        { module: 'asc' },
-        { name: 'asc' }
-      ]
-    });
-    
-    res.status(200).json({
-      status: "success",
-      data: permissions
-    });
-  } catch (error) {
-    next(new AppError("Không thể tải danh mục quyền hạn", 500));
-  }
+    // ... (Giữ nguyên code cũ)
+    try {
+        const permissions = await prisma.permission.findMany({
+          orderBy: [
+            { module: 'asc' },
+            { name: 'asc' }
+          ]
+        });
+        
+        res.status(200).json({
+          status: "success",
+          data: permissions
+        });
+      } catch (error) {
+        next(new AppError("Không thể tải danh mục quyền hạn", 500));
+      }
 };
 
 /**
@@ -64,16 +65,15 @@ export const getAllAvailablePermissions = async (req: Request, res: Response, ne
  */
 export const createUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id, email, fullName, departmentId, roleId, password } = req.body;
+    // [UPDATE] Nhận thêm factoryId từ frontend
+    const { id, email, fullName, departmentId, roleId, factoryId, password } = req.body;
 
-    // Kiểm tra trùng lặp
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) return next(new AppError("Email này đã được sử dụng!", 400));
 
     const existingId = await prisma.user.findUnique({ where: { id } });
     if (existingId) return next(new AppError(`Mã nhân viên '${id}' đã tồn tại!`, 400));
 
-    // Mã hóa mật khẩu
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = await prisma.user.create({
@@ -84,8 +84,12 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
         password: hashedPassword,
         departmentId,
         roleId,
+        
+        // [NEW] Lưu factoryId (nếu user không chọn thì là null)
+        factoryId: factoryId || null,
+
         isActive: true,
-        mustChangePassword: true, // Ép người dùng đổi pass lần đầu
+        mustChangePassword: true,
       },
     });
 
@@ -103,11 +107,18 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
 export const updateUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { fullName, departmentId, roleId, isActive, password } = req.body;
+    // [UPDATE] Nhận thêm factoryId
+    const { fullName, departmentId, roleId, factoryId, isActive, password } = req.body;
 
-    const updateData: any = { fullName, departmentId, roleId, isActive };
+    // [UPDATE] Thêm factoryId vào object update
+    const updateData: any = { 
+        fullName, 
+        departmentId, 
+        roleId, 
+        isActive,
+        factoryId: factoryId || null // Cho phép gán null để xóa nhà máy khỏi user
+    };
 
-    // Nếu Admin gán mật khẩu mới
     if (password && password.trim().length >= 6) {
       updateData.password = await bcrypt.hash(password, 10);
       updateData.mustChangePassword = true;
@@ -125,65 +136,62 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
   }
 };
 
-/**
- * @desc    Gán hoặc Gỡ quyền đặc biệt cho nhân viên (Hybrid Permissions)
- * @route   PATCH /api/users/:id/permissions
- */
+// ... (Các hàm updateUserPermissions, deleteUser giữ nguyên) ...
 export const updateUserPermissions = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params; 
-    const { permissionIds } = req.body; // Mảng string ID quyền: ["USER_VIEW", "POST_DELETE"]
-
-    // Sử dụng Transaction để đảm bảo tính toàn vẹn (Xóa sạch cũ - Nạp lại mới)
-    await prisma.$transaction([
-      // 1. Xóa các quyền riêng lẻ cũ
-      prisma.userPermission.deleteMany({
-        where: { userId: id }
-      }),
-      // 2. Thêm các quyền mới nếu có
-      ...(permissionIds && permissionIds.length > 0 
-        ? [prisma.userPermission.createMany({
-            data: permissionIds.map((pId: string) => ({
-              userId: id,
-              permissionId: pId
-            }))
-          })] 
-        : [])
-    ]);
-
-    res.status(200).json({
-      status: "success",
-      message: "Cập nhật quyền đặc biệt thành công."
-    });
-  } catch (error) {
-    next(new AppError("Lỗi hệ thống khi cập nhật quyền đặc biệt", 500));
-  }
-};
-
-/**
- * @desc    Xóa nhân viên vĩnh viễn
- * @route   DELETE /api/users/:id
- */
-export const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-
-    // Chặn xóa tài khoản Admin tối cao
-    if (id === "ADMIN-01") {
-      return next(new AppError("Không thể xóa tài khoản Quản trị viên hệ thống!", 403));
+    try {
+      const { id } = req.params; 
+      const { permissionIds } = req.body; // Mảng string ID quyền: ["USER_VIEW", "POST_DELETE"]
+  
+      // Sử dụng Transaction để đảm bảo tính toàn vẹn (Xóa sạch cũ - Nạp lại mới)
+      await prisma.$transaction([
+        // 1. Xóa các quyền riêng lẻ cũ
+        prisma.userPermission.deleteMany({
+          where: { userId: id }
+        }),
+        // 2. Thêm các quyền mới nếu có
+        ...(permissionIds && permissionIds.length > 0 
+          ? [prisma.userPermission.createMany({
+              data: permissionIds.map((pId: string) => ({
+                userId: id,
+                permissionId: pId
+              }))
+            })] 
+          : [])
+      ]);
+  
+      res.status(200).json({
+        status: "success",
+        message: "Cập nhật quyền đặc biệt thành công."
+      });
+    } catch (error) {
+      next(new AppError("Lỗi hệ thống khi cập nhật quyền đặc biệt", 500));
     }
-
-    await prisma.user.delete({ where: { id } });
-    
-    res.status(200).json({
-      status: "success",
-      message: "Đã xóa nhân sự vĩnh viễn khỏi hệ thống."
-    });
-  } catch (error: any) {
-    // Lỗi P2003: Ràng buộc khóa ngoại (User đã có bài viết, thông báo...)
-    if (error.code === "P2003") {
-      return next(new AppError("Không thể xóa vì nhân sự này đã có dữ liệu ràng buộc. Hãy sử dụng chức năng 'Khóa tài khoản'.", 400));
+  };
+  
+  /**
+   * @desc    Xóa nhân viên vĩnh viễn
+   * @route   DELETE /api/users/:id
+   */
+  export const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+  
+      // Chặn xóa tài khoản Admin tối cao
+      if (id === "ADMIN-01") {
+        return next(new AppError("Không thể xóa tài khoản Quản trị viên hệ thống!", 403));
+      }
+  
+      await prisma.user.delete({ where: { id } });
+      
+      res.status(200).json({
+        status: "success",
+        message: "Đã xóa nhân sự vĩnh viễn khỏi hệ thống."
+      });
+    } catch (error: any) {
+      // Lỗi P2003: Ràng buộc khóa ngoại (User đã có bài viết, thông báo...)
+      if (error.code === "P2003") {
+        return next(new AppError("Không thể xóa vì nhân sự này đã có dữ liệu ràng buộc. Hãy sử dụng chức năng 'Khóa tài khoản'.", 400));
+      }
+      next(error);
     }
-    next(error);
-  }
-};
+  };

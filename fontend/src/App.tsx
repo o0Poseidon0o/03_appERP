@@ -15,21 +15,21 @@ import Profile from "./pages/Profile";
 import Dashboard from "./pages/admin/Dashboard";
 import PostPage from "./pages/admin/PostPage";
 
-// 3. Admin System (Nhân sự & Phòng ban)
+// 3. Admin System (Nhân sự & Phòng ban & Workflow)
 import UserManagement from "./pages/admin/UserManagement";
 import DepartmentManagement from "./pages/department/DepartmentManagement";
 import RoleManagement from "./pages/Role/RoleManagement";
 import MenuManagement from "./pages/admin/MenuManagement";
+import WorkflowManagement from "./pages/admin/WorkflowManagement"; // [NEW] Import trang Workflow
 
 // 4. Warehouse System (Kho & Nhà máy & Vật tư)
 import ItemManagement from "./pages/warehouse/ItemManagement";
 import CategoryManagement from "./pages/warehouse/CategoryManagement";
 import SupplierPage from "./pages/warehouse/SupplierList";
-import WarehouseManagement from "./pages/warehouse/WarehouseManagement"; // Đã gộp quản lý Nhà máy vào đây
+import WarehouseManagement from "./pages/warehouse/WarehouseManagement";
 import PendingApprovals from "./pages/warehouse/PendingApprovals";
 import StockTransaction from "./pages/warehouse/StockTransaction";
 import StockActual from "./pages/warehouse/StockActual";
-// [MỚI] Import trang báo cáo tồn kho theo tháng
 import MonthlyReport from "./pages/warehouse/MonthlyReport"; 
 
 // 5. Security Component
@@ -115,7 +115,6 @@ const AppContent = () => {
             </Route>
 
             {/* B. PHÒNG BAN: Cần quyền DEPT_VIEW (Admin/HR) */}
-            {/* User ROLE-KHO không vào được đây -> Bảo mật thông tin tổ chức */}
             <Route element={<RoleRoute requiredPermission="DEPT_VIEW" />}>
               <Route path="admin/departments" element={<DepartmentManagement />} />
             </Route>
@@ -129,7 +128,7 @@ const AppContent = () => {
               <Route path="warehouse/suppliers" element={<SupplierPage />} />
               <Route path="warehouse/transactions" element={<StockTransaction />} />
               
-              {/* [MỚI] Route Báo cáo tồn kho theo tháng (Xuất Excel) */}
+              {/* Route Báo cáo tồn kho theo tháng (Xuất Excel) */}
               <Route path="warehouse/report/monthly" element={<MonthlyReport />} />
             </Route>
 
@@ -140,12 +139,18 @@ const AppContent = () => {
 
             {/* E. CẤU HÌNH HỆ THỐNG: Cần quyền ROLE_VIEW (Admin) */}
             <Route element={<RoleRoute requiredPermission="ROLE_VIEW" />}>
-               <Route path="admin/roles" element={<RoleManagement />} />
+                <Route path="admin/roles" element={<RoleManagement />} />
             </Route>
             
             {/* F. QUẢN LÝ MENU (Admin tối cao) */}
             <Route element={<RoleRoute allowedRoles={["ROLE-ADMIN"]} />}>
-               <Route path="admin/menus" element={<MenuManagement />} />
+                <Route path="admin/menus" element={<MenuManagement />} />
+            </Route>
+
+            {/* [NEW] G. QUẢN LÝ QUY TRÌNH DUYỆT (WORKFLOW) - Chỉ Admin */}
+            {/* Bạn có thể đổi requiredPermission="WORKFLOW_VIEW" nếu đã seed quyền này */}
+            <Route element={<RoleRoute allowedRoles={["ROLE-ADMIN"]} />}>
+                <Route path="admin/workflows" element={<WorkflowManagement />} />
             </Route>
 
             {/* Route không tồn tại -> Quay về trang chủ */}
