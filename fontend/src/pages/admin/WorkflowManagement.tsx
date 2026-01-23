@@ -5,20 +5,20 @@ import {
   Typography, Steps, Divider, App as AntdApp 
 } from 'antd';
 import { 
-  PlusOutlined, EditOutlined, DeleteOutlined, 
-  DeleteRowOutlined, LockOutlined
+  PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined, SettingOutlined,
+  CheckCircleFilled,  AppstoreAddOutlined
 } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const { Option } = Select;
 
-// [CONFIG] Định nghĩa các loại quy trình hệ thống hỗ trợ
+// [CONFIG] Định nghĩa các loại quy trình
 const WORKFLOW_TYPES = [
-    { label: '📦 Quản lý Kho (Stock)', value: 'STOCK' },
-    { label: '📅 Nghỉ phép / Nhân sự', value: 'LEAVE_REQUEST' }, 
-    { label: '💰 Thu chi / Kế toán', value: 'FINANCE' },        
-    { label: '📝 Hành chính chung', value: 'GENERAL' },
+    { label: 'Quản lý Kho (Stock)', value: 'STOCK', color: 'blue', icon: '📦' },
+    { label: 'Nghỉ phép / Nhân sự', value: 'LEAVE_REQUEST', color: 'green', icon: '📅' }, 
+    { label: 'Thu chi / Kế toán', value: 'FINANCE', color: 'gold', icon: '💰' },        
+    { label: 'Hành chính chung', value: 'GENERAL', color: 'purple', icon: '📝' },
 ];
 
 interface WorkflowStep {
@@ -133,73 +133,81 @@ const WorkflowManagement: React.FC = () => {
     {
       title: 'Tên quy trình',
       dataIndex: 'name',
-      width: 250,
+      width: 280,
       render: (text: string, record: Workflow) => (
-        <div>
-          <div className="font-bold text-blue-600">{text}</div>
-          <div className="text-xs text-gray-400">{record.description}</div>
+        <div className="flex flex-col">
+          <span className="font-semibold text-slate-700 text-base">{text}</span>
+          <span className="text-xs text-slate-400 mt-1">{record.description || 'Chưa có mô tả'}</span>
         </div>
       )
     },
     {
-        title: 'Loại (Target)',
+        title: 'Loại',
         dataIndex: 'targetType',
-        width: 150,
+        width: 180,
         render: (type: string) => {
             const found = WORKFLOW_TYPES.find(t => t.value === type);
-            return <Tag color="cyan">{found ? found.label : type}</Tag>;
+            return (
+                <Tag color={found?.color || 'default'} className="px-2 py-1 rounded-md border-0 bg-opacity-10 font-medium flex items-center w-fit gap-1">
+                    <span>{found?.icon}</span> {found ? found.label.split('(')[0].trim() : type}
+                </Tag>
+            );
         }
     },
     {
-        title: 'Phạm vi áp dụng',
+        title: 'Phạm vi (Role)',
         dataIndex: 'allowedInitiatorRoles',
         width: 200,
         render: (roleIds: string[]) => {
-            if (!roleIds || roleIds.length === 0) return <Tag color="green">Toàn hệ thống (Public)</Tag>;
+            if (!roleIds || roleIds.length === 0) return <Tag className="rounded-full px-3" icon={<CheckCircleFilled />} color="success">Public</Tag>;
             return (
                 <div className="flex flex-wrap gap-1">
                     {roleIds.map(rid => {
                         const r = roles.find(role => role.id === rid);
-                        return <Tag key={rid} color="geekblue">{r?.name || rid}</Tag>;
+                        return <Tag key={rid} className="rounded-full" color="geekblue">{r?.name || rid}</Tag>;
                     })}
                 </div>
             );
         }
     },
     {
-      title: 'Mã Code',
-      dataIndex: 'code',
-      render: (v: string) => <Tag>{v}</Tag>
-    },
-    {
       title: 'Các bước duyệt',
       dataIndex: 'steps',
       render: (steps: WorkflowStep[]) => (
-        <Steps 
-          size="small" 
-          current={-1} 
-          progressDot 
-          items={steps.map(s => ({ 
-            title: s.name, 
-            description: s.approverType === 'ROLE' ? `Role: ${s.role?.name || '...'}` : (s.approverType === 'CREATOR' ? 'Người tạo' : 'Người cụ thể')
-          }))} 
-        />
+        <div className="py-2 min-w-[200px]">
+            <Steps 
+            size="small" 
+            current={steps.length} 
+            progressDot 
+            items={steps.map(s => ({ 
+                title: <span className="text-xs font-medium text-slate-600">{s.name}</span>,
+            }))} 
+            />
+        </div>
       )
     },
     {
       title: 'Trạng thái',
       dataIndex: 'isActive',
       width: 100,
-      render: (active: boolean) => active ? <Tag color="green">Bật</Tag> : <Tag color="red">Tắt</Tag>
+      align: 'center' as const,
+      render: (active: boolean) => active 
+        ? <Tag color="success" className="px-2 rounded-md">Bật</Tag> 
+        : <Tag color="error" className="px-2 rounded-md">Tắt</Tag>
     },
     {
-      title: 'Hành động',
+      title: '',
       width: 100,
+      align: 'right' as const,
       render: (_: any, record: Workflow) => (
         <Space>
-          <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
-          <Popconfirm title="Xóa quy trình này?" onConfirm={() => handleDelete(record.id)}>
-            <Button type="text" danger icon={<DeleteOutlined />} />
+          <Tooltip title="Chỉnh sửa">
+            <Button type="text" className="text-blue-600 hover:bg-blue-50 hover:text-blue-700" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
+          </Tooltip>
+          <Popconfirm title="Bạn có chắc muốn xóa?" onConfirm={() => handleDelete(record.id)} okText="Xóa" cancelText="Hủy" okButtonProps={{ danger: true }}>
+            <Tooltip title="Xóa">
+                <Button type="text" className="text-slate-400 hover:text-red-500 hover:bg-red-50" icon={<DeleteOutlined />} />
+            </Tooltip>
           </Popconfirm>
         </Space>
       )
@@ -207,126 +215,152 @@ const WorkflowManagement: React.FC = () => {
   ];
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="flex justify-between items-center mb-4">
-        <Title level={4}>⚙️ Cấu hình Workflow Engine</Title>
+    <div className="p-6 bg-slate-50 min-h-screen">
+      {/* HEADER SECTION */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+            <Title level={3} className="!mb-1 !text-slate-800 flex items-center gap-2">
+                <AppstoreAddOutlined className="text-blue-600" /> Cấu hình Workflow
+            </Title>
+            <Text type="secondary" className="text-slate-500">Thiết lập quy trình duyệt động cho các nghiệp vụ trong hệ thống</Text>
+        </div>
         <Button 
           type="primary" 
           icon={<PlusOutlined />} 
           size="large"
+          className="bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-200 border-none px-6 h-10 rounded-lg flex items-center"
           onClick={() => { setEditingId(null); form.resetFields(); setIsModalOpen(true); }}
         >
-          Thiết lập quy trình mới
+          Tạo quy trình mới
         </Button>
       </div>
 
-      <Card bordered={false} className="shadow-md rounded-lg">
+      {/* TABLE SECTION */}
+      <Card bordered={false} className="shadow-lg shadow-slate-200/50 rounded-xl overflow-hidden border border-slate-100">
         <Table 
           dataSource={workflows} 
           columns={columns} 
           rowKey="id" 
           loading={loading} 
-          pagination={false}
+          pagination={{ pageSize: 10, showSizeChanger: false }}
+          rowClassName="hover:bg-slate-50 transition-colors cursor-pointer group"
         />
       </Card>
 
-      {/* --- MODAL BUILDER --- */}
+      {/* --- MODAL BUILDER (SỬ DỤNG TAILWIND ĐỂ LAYOUT) --- */}
       <Modal
-        title={editingId ? "Chỉnh sửa quy trình" : "Tạo quy trình mới"}
+        title={
+            <div className="flex items-center gap-3 text-xl font-semibold text-slate-800 pb-4 border-b border-slate-100 mb-4">
+                <div className={`p-2 rounded-lg ${editingId ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
+                    {editingId ? <EditOutlined /> : <PlusOutlined />}
+                </div>
+                {editingId ? "Chỉnh sửa quy trình" : "Thiết lập quy trình mới"}
+            </div>
+        }
         open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
         footer={null}
         width={900}
         maskClosable={false}
+        className="top-5 !pb-0"
+        styles={{ body: { padding: '0 24px 24px' } }} // Thay bodyStyle (deprecated) bằng styles.body
       >
         <Form form={form} layout="vertical" onFinish={handleFinish} initialValues={{ isActive: true, targetType: 'STOCK', allowedInitiatorRoles: [] }}>
           
           {/* 1. THÔNG TIN CHUNG */}
-          <div className="bg-blue-50 p-4 rounded-md mb-6 border border-blue-100">
-            <Row gutter={16}>
+          <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mb-6">
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <SettingOutlined /> Thông tin cơ bản
+            </div>
+            
+            <Row gutter={20}>
               <Col span={12}>
-                <Form.Item name="name" label="Tên quy trình" rules={[{ required: true }]}>
-                  <Input placeholder="Vd: Xuất kho (Dành cho Leader)" />
+                <Form.Item name="name" label={<span className="font-medium text-slate-600">Tên quy trình</span>} rules={[{ required: true, message: 'Vui lòng nhập tên' }]}>
+                  <Input size="large" placeholder="Vd: Xuất kho Nguyên vật liệu" className="rounded-lg" />
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <Form.Item name="code" label="Mã quy trình (Unique)" rules={[{ required: true }]}>
-                  <Input placeholder="Vd: WF_EXPORT_LEADER" disabled={!!editingId} />
+                <Form.Item name="code" label={<span className="font-medium text-slate-600">Mã quy trình (Unique)</span>} rules={[{ required: true, message: 'Vui lòng nhập mã' }]}>
+                  <Input size="large" placeholder="Vd: WF_EXPORT_NVL" disabled={!!editingId} className="font-mono text-slate-600 bg-slate-100 rounded-lg" />
                 </Form.Item>
               </Col>
               <Col span={4}>
-                <Form.Item name="isActive" label="Trạng thái" valuePropName="checked">
-                  <Switch checkedChildren="Bật" unCheckedChildren="Tắt" />
+                <Form.Item name="isActive" label={<span className="font-medium text-slate-600">Kích hoạt</span>} valuePropName="checked">
+                  <Switch checkedChildren="ON" unCheckedChildren="OFF" className="bg-slate-300" />
                 </Form.Item>
               </Col>
 
-              {/* [NEW] CHỌN LOẠI QUY TRÌNH (TARGET TYPE) */}
               <Col span={12}>
-                  <Form.Item name="targetType" label="Loại đối tượng áp dụng" rules={[{ required: true }]}>
-                      <Select placeholder="Chọn loại nghiệp vụ...">
+                  <Form.Item name="targetType" label={<span className="font-medium text-slate-600">Loại nghiệp vụ áp dụng</span>} rules={[{ required: true }]}>
+                      <Select size="large" placeholder="Chọn loại nghiệp vụ..." className="rounded-lg">
                           {WORKFLOW_TYPES.map(t => (
-                              <Option key={t.value} value={t.value}>{t.label}</Option>
+                              <Option key={t.value} value={t.value}>
+                                  <Space><Tag color={t.color}>{t.value}</Tag> {t.label}</Space>
+                              </Option>
                           ))}
                       </Select>
                   </Form.Item>
               </Col>
 
-              {/* CHỌN ROLE ĐƯỢC PHÉP SỬ DỤNG */}
               <Col span={12}>
                   <Form.Item 
                     name="allowedInitiatorRoles" 
-                    label={
-                        <Space>
-                            <span>Phạm vi người tạo</span>
-                            <Tooltip title="Để trống = Tất cả nhân viên đều thấy và tạo được. Chọn Role = Chỉ Role đó mới thấy.">
-                                <LockOutlined className="text-gray-400" />
-                            </Tooltip>
-                        </Space>
-                    }
+                    label={<Space><span className="font-medium text-slate-600">Phạm vi người tạo</span><Tooltip title="Ai được phép tạo phiếu này? Để trống = Tất cả"><LockOutlined className="text-slate-400 cursor-help" /></Tooltip></Space>}
                   >
                       <Select 
                         mode="multiple" 
                         allowClear 
-                        placeholder="Public (Tất cả)"
+                        size="large"
+                        placeholder="Mặc định: Tất cả nhân viên"
                         options={roles.map(r => ({ value: r.id, label: r.name }))}
+                        className="rounded-lg"
                       />
                   </Form.Item>
               </Col>
 
-              <Col span={24}>
-                <Form.Item name="description" label="Mô tả">
-                  <Input.TextArea rows={2} placeholder="Mô tả chi tiết..." />
+              <Col span={24} className="mb-0">
+                <Form.Item name="description" label={<span className="font-medium text-slate-600">Mô tả</span>} className="mb-0">
+                  <Input.TextArea rows={2} placeholder="Nhập mô tả chi tiết về quy trình này..." className="bg-white rounded-lg" />
                 </Form.Item>
               </Col>
             </Row>
           </div>
 
           {/* 2. CẤU HÌNH CÁC BƯỚC */}
-          {/* [FIXED] Sửa lỗi type: 'left' là string literal hợp lệ */}
-          <Divider orientation="left as any">Cấu hình các bước duyệt</Divider>
+          {/* [FIX] Fix lỗi Type của Divider: sử dụng `as any` để bypass check type strict */}
+          <Divider orientation={"left" as any} className="!border-slate-200 !text-slate-500 !text-sm !font-normal">
+             Thiết lập các bước duyệt (Steps)
+          </Divider>
           
           <Form.List name="steps">
             {(fields, { add, remove }) => (
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 bg-white">
                 {fields.map(({ key, name, ...restField }, index) => (
-                  <Card 
-                    key={key} 
-                    size="small" 
-                    className="bg-gray-50 border-gray-300"
-                    title={<Space><div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">{index + 1}</div> <span className="font-semibold">Bước {index + 1}</span></Space>}
-                    extra={<Button type="text" danger icon={<DeleteRowOutlined />} onClick={() => remove(name)} />}
-                  >
+                  <div key={key} className="relative group border border-slate-200 rounded-xl p-5 hover:border-blue-400 hover:shadow-lg hover:shadow-blue-50 transition-all duration-300 bg-white">
+                    {/* Badge số thứ tự */}
+                    <div className="absolute -left-3 top-5 w-7 h-7 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-md shadow-blue-200 z-10 border-2 border-white">
+                        {index + 1}
+                    </div>
+                    
+                    {/* Nút xóa */}
+                    <Button 
+                        type="text" danger 
+                        icon={<DeleteOutlined />} 
+                        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-red-50 hover:bg-red-100 rounded-full"
+                        onClick={() => remove(name)} 
+                    />
+
                     <Row gutter={16} align="middle">
                       <Col span={10}>
-                        <Form.Item {...restField} name={[name, 'name']} label="Tên bước" rules={[{ required: true, message: 'Nhập tên bước' }]}>
-                          <Input placeholder="Vd: Tổ trưởng xác nhận" />
+                        <Form.Item {...restField} name={[name, 'name']} label="Tên bước" rules={[{ required: true, message: 'Nhập tên bước' }]} className="mb-0 font-medium">
+                          <Input size="large" placeholder="Vd: Tổ trưởng xác nhận" prefix={<EditOutlined className="text-slate-300" />} className="rounded-lg" />
                         </Form.Item>
                       </Col>
                       
                       <Col span={6}>
-                        <Form.Item {...restField} name={[name, 'approverType']} label="Loại người duyệt" rules={[{ required: true }]}>
-                          <Select placeholder="Chọn loại">
-                            <Option value="ROLE">⚡ Theo Vai trò (Role)</Option>
+                        <Form.Item {...restField} name={[name, 'approverType']} label="Loại người duyệt" rules={[{ required: true }]} className="mb-0 font-medium">
+                          <Select size="large" className="rounded-lg">
+                            <Option value="ROLE">⚡ Theo Vai trò</Option>
                             <Option value="SPECIFIC_USER">👤 Người cụ thể</Option>
                             <Option value="CREATOR">✅ Chính người tạo</Option>
                           </Select>
@@ -334,18 +368,15 @@ const WorkflowManagement: React.FC = () => {
                       </Col>
 
                       <Col span={8}>
-                        {/* [FIXED] Sửa lỗi TS6133 bằng cách dùng prop shouldUpdate={true} */}
-                        <Form.Item
-                          noStyle
-                          shouldUpdate
-                        >
+                        {/* [FIX] Bỏ unused params và dùng shouldUpdate đúng cách */}
+                        <Form.Item noStyle shouldUpdate>
                           {({ getFieldValue }) => {
                             const approverType = getFieldValue(['steps', name, 'approverType']);
                             
                             if (approverType === 'ROLE') {
                               return (
-                                <Form.Item {...restField} name={[name, 'roleId']} label="Chọn Vai trò" rules={[{ required: true, message: 'Phải chọn Role' }]}>
-                                  <Select placeholder="Chọn Role..." showSearch optionFilterProp="children">
+                                <Form.Item {...restField} name={[name, 'roleId']} label="Chọn Vai trò" rules={[{ required: true, message: 'Bắt buộc' }]} className="mb-0 font-medium">
+                                  <Select size="large" placeholder="Chọn Role..." showSearch optionFilterProp="children" className="rounded-lg">
                                     {roles.map(r => <Option key={r.id} value={r.id}>{r.name}</Option>)}
                                   </Select>
                                 </Form.Item>
@@ -354,8 +385,8 @@ const WorkflowManagement: React.FC = () => {
                             
                             if (approverType === 'SPECIFIC_USER') {
                               return (
-                                <Form.Item {...restField} name={[name, 'specificUserId']} label="Chọn Nhân viên" rules={[{ required: true, message: 'Phải chọn User' }]}>
-                                  <Select placeholder="Chọn User..." showSearch optionFilterProp="children">
+                                <Form.Item {...restField} name={[name, 'specificUserId']} label="Chọn Nhân viên" rules={[{ required: true, message: 'Bắt buộc' }]} className="mb-0 font-medium">
+                                  <Select size="large" placeholder="Tìm nhân viên..." showSearch optionFilterProp="children" className="rounded-lg">
                                     {users.map(u => <Option key={u.id} value={u.id}>{u.fullName} ({u.email})</Option>)}
                                   </Select>
                                 </Form.Item>
@@ -363,28 +394,28 @@ const WorkflowManagement: React.FC = () => {
                             }
 
                             if (approverType === 'CREATOR') {
-                                return <div className="mt-8 text-gray-500 text-sm italic">Người tạo phiếu sẽ tự xác nhận ở bước này.</div>;
+                                return <div className="mt-8 text-slate-400 text-sm italic flex items-center gap-2 bg-slate-50 p-2 rounded border border-slate-100"><CheckCircleFilled className="text-green-500" /> Hệ thống tự động xác nhận.</div>;
                             }
 
-                            return null;
+                            return <div className="mt-8"></div>;
                           }}
                         </Form.Item>
                       </Col>
                     </Row>
-                  </Card>
+                  </div>
                 ))}
 
-                <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} size="large" className="mt-2">
+                <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} size="large" className="mt-2 h-12 border-blue-300 text-blue-600 hover:text-blue-700 hover:border-blue-500 hover:bg-blue-50 rounded-xl border-2">
                   Thêm bước duyệt tiếp theo
                 </Button>
               </div>
             )}
           </Form.List>
 
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
-            <Button size="large" onClick={() => setIsModalOpen(false)}>Hủy bỏ</Button>
-            <Button type="primary" htmlType="submit" size="large" loading={loading}>
-              {editingId ? "Cập nhật Quy trình" : "Tạo Quy trình"}
+          <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-gray-100 bg-white sticky bottom-0 z-50">
+            <Button size="large" onClick={() => setIsModalOpen(false)} className="rounded-lg">Hủy bỏ</Button>
+            <Button type="primary" htmlType="submit" size="large" loading={loading} className="bg-blue-600 hover:bg-blue-500 px-8 rounded-lg shadow-lg shadow-blue-200 border-none">
+              {editingId ? "Lưu thay đổi" : "Hoàn tất tạo mới"}
             </Button>
           </div>
         </Form>
