@@ -303,7 +303,7 @@ const WorkflowManagement: React.FC = () => {
 
           {/* 2. CẤU HÌNH CÁC BƯỚC */}
           {/* [FIXED] Sửa lỗi type: 'left' là string literal hợp lệ */}
-          <Divider orientation="left">Cấu hình các bước duyệt</Divider>
+          <Divider orientation="left as any">Cấu hình các bước duyệt</Divider>
           
           <Form.List name="steps">
             {(fields, { add, remove }) => (
