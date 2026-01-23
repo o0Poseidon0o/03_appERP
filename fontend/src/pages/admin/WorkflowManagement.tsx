@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import { 
   PlusOutlined, EditOutlined, DeleteOutlined, 
-  DeleteRowOutlined, LockOutlined, AppstoreOutlined
+  DeleteRowOutlined, LockOutlined
 } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 
@@ -16,8 +16,8 @@ const { Option } = Select;
 // [CONFIG] Định nghĩa các loại quy trình hệ thống hỗ trợ
 const WORKFLOW_TYPES = [
     { label: '📦 Quản lý Kho (Stock)', value: 'STOCK' },
-    { label: '📅 Nghỉ phép / Nhân sự', value: 'LEAVE_REQUEST' }, // Mở rộng
-    { label: '💰 Thu chi / Kế toán', value: 'FINANCE' },         // Mở rộng
+    { label: '📅 Nghỉ phép / Nhân sự', value: 'LEAVE_REQUEST' }, 
+    { label: '💰 Thu chi / Kế toán', value: 'FINANCE' },        
     { label: '📝 Hành chính chung', value: 'GENERAL' },
 ];
 
@@ -35,7 +35,7 @@ interface Workflow {
   id: string;
   name: string;
   code: string;
-  targetType: string; // [CHANGED] documentType -> targetType
+  targetType: string;
   description?: string;
   isActive: boolean;
   steps: WorkflowStep[];
@@ -302,6 +302,7 @@ const WorkflowManagement: React.FC = () => {
           </div>
 
           {/* 2. CẤU HÌNH CÁC BƯỚC */}
+          {/* [FIXED] orientation="left" thay vì "left as const" */}
           <Divider orientation="left">Cấu hình các bước duyệt</Divider>
           
           <Form.List name="steps">
@@ -333,9 +334,10 @@ const WorkflowManagement: React.FC = () => {
                       </Col>
 
                       <Col span={8}>
+                        {/* [FIXED] bỏ unused params và set shouldUpdate={true} */}
                         <Form.Item
                           noStyle
-                          shouldUpdate={(prevValues, currentValues) => true}
+                          shouldUpdate
                         >
                           {({ getFieldValue }) => {
                             const approverType = getFieldValue(['steps', name, 'approverType']);
