@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Table, Button, Input, Tag, Space, Popconfirm, message, Tooltip } from 'antd';
 import { ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined, DesktopOutlined, UserOutlined } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table'; // Import kiểu ColumnsType
 import { assetService } from '../../services/assetService';
 import AssetForm from './AssetForm';
 import type { IAsset } from '../../types/itam.types';
@@ -11,7 +12,6 @@ const AssetList = () => {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [searchText, setSearchText] = useState('');
 
-  // State Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IAsset | null>(null);
 
@@ -34,7 +34,7 @@ const AssetList = () => {
 
   useEffect(() => {
     fetchData(1);
-  }, [searchText]); // Reload khi search thay đổi
+  }, [searchText]); 
 
   const handleDelete = async (id: string) => {
       try {
@@ -46,11 +46,12 @@ const AssetList = () => {
       }
   }
 
-  const columns = [
+  // [QUAN TRỌNG] Khai báo kiểu ColumnsType<IAsset> để tránh lỗi 'any'
+  const columns: ColumnsType<IAsset> = [
     {
       title: 'Thiết bị',
       key: 'name',
-      render: (_, record: IAsset) => (
+      render: (_, record) => ( // TypeScript tự hiểu record là IAsset
         <Space direction="vertical" size={0}>
           <div className="font-bold text-blue-600 flex items-center gap-2">
              <DesktopOutlined /> {record.name}
@@ -64,7 +65,7 @@ const AssetList = () => {
       title: 'Cấu hình (Agent)',
       key: 'specs',
       width: 250,
-      render: (_, record: IAsset) => record.customSpecs ? (
+      render: (_, record) => record.customSpecs ? (
          <div className="text-xs">
             {record.customSpecs.cpu && <div className="truncate" title={record.customSpecs.cpu}>🖥️ {record.customSpecs.cpu}</div>}
             {record.customSpecs.ram && <div>💾 {record.customSpecs.ram}</div>}
@@ -77,23 +78,24 @@ const AssetList = () => {
       dataIndex: 'status',
       width: 120,
       render: (status: string) => {
-        const colors: any = { NEW: 'green', IN_USE: 'blue', BROKEN: 'red', REPAIR: 'orange', DISPOSED: 'default' };
-        return <Tag color={colors[status]}>{status}</Tag>
+        const colors: Record<string, string> = { 
+            NEW: 'green', IN_USE: 'blue', BROKEN: 'red', REPAIR: 'orange', DISPOSED: 'default' 
+        };
+        return <Tag color={colors[status] || 'default'}>{status}</Tag>
       }
     },
     {
       title: 'Vị trí / Người dùng',
       key: 'location',
       width: 250,
-      render: (_, record: IAsset) => (
+      render: (_, record) => (
         <div className="text-xs">
-           {/* Hiển thị Nhà máy */}
            {record.factory && <div className="mb-1">🏭 {record.factory.name}</div>}
            
-           {/* [UPDATED] Hiển thị danh sách Users (Many-to-Many) */}
+           {/* Đã có users trong IAsset nên không còn lỗi TS2339 */}
            {record.users && record.users.length > 0 ? (
                <div className="flex flex-wrap gap-1">
-                   {record.users.map((u: any) => (
+                   {record.users.map((u) => (
                        <Tooltip key={u.id} title={u.email}>
                            <Tag color="cyan" icon={<UserOutlined />}>
                                {u.fullName}
@@ -105,7 +107,6 @@ const AssetList = () => {
                <span className="text-gray-400 italic">Chưa bàn giao</span>
            )}
 
-           {/* Hiển thị máy mẹ nếu có */}
            {record.parent && (
                <div className="mt-1 text-blue-500">🔗 Gắn vào: <strong>{record.parent.name}</strong></div>
            )}
@@ -116,7 +117,7 @@ const AssetList = () => {
       title: 'Cập nhật',
       key: 'lastSeen',
       width: 150,
-      render: (_, record: IAsset) => (
+      render: (_, record) => (
           <div className="text-xs text-gray-500">
               {record.lastSeen ? new Date(record.lastSeen).toLocaleString() : 'Chưa online'}
           </div>
@@ -126,7 +127,7 @@ const AssetList = () => {
       title: 'Thao tác',
       key: 'action',
       width: 100,
-      render: (_, record: IAsset) => (
+      render: (_, record) => (
         <Space>
           <Button 
             size="small" 
@@ -166,7 +167,7 @@ const AssetList = () => {
       </div>
 
       <Table 
-         columns={columns as any} 
+         columns={columns} 
          dataSource={data} 
          rowKey="id"
          loading={loading}

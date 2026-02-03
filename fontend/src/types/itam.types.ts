@@ -27,14 +27,18 @@ export interface IAsset {
     lastAgentSync?: string;
   };
 
-  // Vị trí & Sở hữu
+  // Vị trí
   factoryId?: string;
   factory?: { id: string; name: string };
   departmentId?: string;
   department?: { id: string; name: string };
   
-  currentUserId?: string;
-  currentUser?: { id: string; fullName: string; email: string };
+  // [UPDATED] Quan hệ N-N: Danh sách người dùng (Thay cho currentUserId cũ)
+  users?: { 
+      id: string; 
+      fullName: string; 
+      email: string; 
+  }[];
 
   // Quan hệ Cha - Con (Hierarchy)
   parentId?: string;

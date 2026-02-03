@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Input, Select, message, Row, Col, Spin } from 'antd';
+import { Modal, Form, Input, Select, message, Row, Col } from 'antd';
 import { assetService } from '../../services/assetService';
 import axiosClient from '../../api/axiosClient'; // Dùng client để gọi API User/Factory
 
