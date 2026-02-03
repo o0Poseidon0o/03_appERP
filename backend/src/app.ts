@@ -24,7 +24,8 @@ import supplierRoutes from './routes/warehouse/supplier.routes';
 // --- [MỚI] IMPORT WORKFLOW ROUTES ---
 import workflowRoutes from './routes/workflow.routes';
 import ticketRoutes from './routes/ticket.routes';
-
+// -------------Quản lý thiết bị ITAM ---------------
+import assetRoutes from './routes/itam/asset.routes';
 const app = express();
 
 // --- [SỬA LỖI 413] TĂNG GIỚI HẠN KÍCH THƯỚC BODY ---
@@ -80,11 +81,16 @@ app.use('/api/suppliers', supplierRoutes);
 // Endpoint này dùng để quản lý cấu hình quy trình duyệt (CRUD)
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/tickets', ticketRoutes);
+// ----Quản lý thiết bị ITAM ----
+app.use('/api/assets', assetRoutes);
 
 // --- 4. ERROR HANDLING ---
 app.all('*', (req: Request, res: Response, next: NextFunction) => {
   next(new AppError(`Không tìm thấy đường dẫn: ${req.originalUrl}`, 404));
 });
+
+
+
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   err.statusCode = err.statusCode || 500;

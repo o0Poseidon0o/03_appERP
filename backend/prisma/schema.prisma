@@ -1,3 +1,6 @@
+// ==========================================
+// CONFIG & DATASOURCE
+// ==========================================
 generator client {
   provider = "prisma-client-js"
 }
@@ -19,52 +22,43 @@ model User {
   isActive           Boolean @default(true)
   mustChangePassword Boolean @default(false)
   
-  // Role & Dept
-  roleId             String
-  role               Role       @relation(fields: [roleId], references: [id])
-  departmentId       String
-  department         Department @relation(fields: [departmentId], references: [id])
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id])
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
 
-  // [FACTORY SCOPE] User thuộc nhà máy nào?
-  factoryId          String?  
-  factory            Factory?   @relation("UserWorkingFactory", fields: [factoryId], references: [id])
+  // Scope nhà máy
+  factoryId    String?  
+  factory      Factory?   @relation("UserWorkingFactory", fields: [factoryId], references: [id])
   
-  // Permissions
   userPermissions    UserPermission[]
-  
-  // CMS & System
   posts              Post[]
   notifications      Notification[]
 
-  // === GENERIC WORKFLOW RELATIONS ===
-  // Người tạo các phiếu yêu cầu (Ticket)
+  // Workflow Relations
   createdTickets     Ticket[]        @relation("TicketCreator")
-  
-  // Lịch sử tham gia duyệt (đã duyệt bước nào)
   actedSteps         TicketStep[]    @relation("StepActor") 
-  
-  // Log thao tác
   approvalLogs       ApprovalLog[]
+
+  // [ITAM - QUAN TRỌNG] Quan hệ N-N: Một User dùng nhiều máy
+  assets             Asset[]         
 }
 
 model Role {
-  id            String   @id // (VD: "ROLE-ADMIN", "ROLE-USER", "ROLE-KHO")
+  id            String   @id 
   name          String
   description   String?
-  
   users         User[]
   permissions   RolePermission[]
-  
-  // Role được dùng để định nghĩa người duyệt trong Workflow Template
   workflowSteps WorkflowStep[] 
 }
 
 model Permission {
-  id      String   @id 
-  name    String
-  module  String
-  roles   RolePermission[]
-  users   UserPermission[]
+  id     String   @id 
+  name   String
+  module String
+  roles  RolePermission[]
+  users  UserPermission[]
 }
 
 model RolePermission {
@@ -93,144 +87,101 @@ model Department {
 
   users        User[]
   targetedPosts PostDepartment[]
+  
+  // [ITAM] Tài sản thuộc phòng ban này
+  assets       Asset[] 
 }
 
 // ==========================================
-// 2. GENERIC WORKFLOW ENGINE (LÕI XỬ LÝ DUYỆT)
-// Phần này dùng chung cho TẤT CẢ quy trình
+// 2. GENERIC WORKFLOW ENGINE
 // ==========================================
 
-// 2.1. Định nghĩa Quy trình mẫu (Template)
 model Workflow {
   id                    String   @id @default(uuid())
   name                  String   
-  code                  String   @unique // VD: "WF-NHAP-KHO", "WF-NGHI-PHEP"
+  code                  String   @unique 
   description           String?
-  
-  // Loại đối tượng áp dụng để FE dễ filter: "STOCK", "HR", "FINANCE"
-  targetType            String   @default("STOCK") 
+  targetType            String   @default("STOCK")
   isActive              Boolean  @default(true)
-  
-  allowedInitiatorRoles String[] // Array Role ID được phép tạo
+  allowedInitiatorRoles String[] 
   
   steps                 WorkflowStep[]
   tickets               Ticket[]
 }
 
-// 2.2. Các bước trong mẫu (Template Steps)
-// 2.2. Các bước trong mẫu (Template Steps)
 model WorkflowStep {
   id             String   @id @default(uuid())
   workflowId     String
   workflow       Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  
-  name           String   // VD: "Tổ trưởng xác nhận"
-  order          Int      // 1, 2, 3...
-  
-  // Định nghĩa ai được duyệt bước này
-  approverType   String   @default("ROLE") // "ROLE", "SPECIFIC_USER", "CREATOR"
-  
+  name           String   
+  order          Int      
+  approverType   String   @default("ROLE") 
   roleId         String?  
   role           Role?    @relation(fields: [roleId], references: [id])
-  
-  // [ADD NEW] Thêm trường này để lưu ID người cụ thể nếu chọn SPECIFIC_USER
   specificUserId String?  
-  
-  // Quan hệ ngược với các bước thực tế đang chạy
   ticketSteps    TicketStep[]
 }
 
-// 2.3. TICKET (PHIẾU YÊU CẦU - PROCESS INSTANCE)
-// Đây là bảng trung tâm. Mọi yêu cầu (Kho, Nghỉ phép...) đều sinh ra 1 Ticket.
 model Ticket {
-  id           String   @id @default(uuid())
-  code         String   @unique // Mã phiếu (VD: TICKET-2023-001)
+  id               String   @id @default(uuid())
+  code             String   @unique 
+  workflowId       String
+  workflow         Workflow @relation(fields: [workflowId], references: [id])
+  currentStep      Int      @default(0) 
+  status           String   @default("PENDING") 
+  creatorId        String
+  creator          User     @relation("TicketCreator", fields: [creatorId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  completedAt      DateTime?
   
-  workflowId   String
-  workflow     Workflow @relation(fields: [workflowId], references: [id])
-  
-  // Trạng thái chung
-  currentStep  Int      @default(0) 
-  status       String   @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
-  
-  creatorId    String
-  creator      User     @relation("TicketCreator", fields: [creatorId], references: [id])
-
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  completedAt  DateTime?
-
-  // Lịch sử duyệt của Ticket này
-  steps        TicketStep[]
-  logs         ApprovalLog[]
-
-  // === POLYMORPHIC RELATIONS (MỞ RỘNG Ở ĐÂY) ===
-  // Mỗi Ticket sẽ link tới 1 trong các bảng nghiệp vụ bên dưới
+  steps            TicketStep[]
+  logs             ApprovalLog[]
   stockTransaction StockTransaction? 
-  
-  // Sau này mở rộng:
-  // leaveRequest  LeaveRequest?
-  // purchaseOrder PurchaseOrder?
 }
 
-// 2.4. Trạng thái thực tế của từng bước (Running Steps)
 model TicketStep {
-  id        String   @id @default(uuid())
-  ticketId  String
-  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  
-  stepId    String
-  step      WorkflowStep @relation(fields: [stepId], references: [id])
-  
-  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  
-  actorId   String?  // Người thực tế đã duyệt
-  actor     User?    @relation("StepActor", fields: [actorId], references: [id])
-  
-  note      String?
-  actedAt   DateTime?
-  
+  id       String       @id @default(uuid())
+  ticketId String
+  ticket   Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  stepId   String
+  step     WorkflowStep @relation(fields: [stepId], references: [id])
+  status   String       @default("PENDING") 
+  actorId  String?  
+  actor    User?        @relation("StepActor", fields: [actorId], references: [id])
+  note     String?
+  actedAt  DateTime?
   @@unique([ticketId, stepId])
 }
 
 model ApprovalLog {
-  id        String   @id @default(uuid())
-  ticketId  String
-  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  
-  action    String   // APPROVE, REJECT, COMMENT, CREATE
-  comment   String?
-  createdAt DateTime @default(now())
+  id            String   @id @default(uuid())
+  ticketId      String
+  ticket        Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  action        String   
+  comment       String?
+  createdAt     DateTime @default(now())
 }
 
 // ==========================================
-// 3. NGHIỆP VỤ KHO (Gắn vào Ticket)
+// 3. NGHIỆP VỤ KHO 
 // ==========================================
 
 model StockTransaction {
   id                String   @id @default(uuid())
-  
-  // Quan hệ 1-1 với Ticket (Bắt buộc)
   ticketId          String   @unique
   ticket            Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-
-  // Dữ liệu đặc thù của Kho
-  type              String   // "IMPORT", "EXPORT", "TRANSFER"
+  type              String   
   isEmergency       Boolean  @default(false)
   description       String?
-
   factoryId         String
   factory           Factory  @relation(fields: [factoryId], references: [id])
-
-  // Các bên liên quan (ngoài Creator/Approver đã có trong Ticket)
-  warehouseKeeperId String?  // Thủ kho thực hiện (nếu cần tracking riêng)
-  receiverId        String?  // Người nhận hàng
+  warehouseKeeperId String?  
+  receiverId        String?  
   supplierId        String?
   supplier          Supplier? @relation(fields: [supplierId], references: [id])
-
   details           TransactionDetail[]
 }
 
@@ -238,39 +189,37 @@ model TransactionDetail {
   id              String   @id @default(uuid())
   transactionId   String
   transaction     StockTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-
   itemId          String
   item            Item     @relation(fields: [itemId], references: [id])
-  
   quantity        Float 
   inputUnit       String?  
   inputQuantity   Float?   
-
   fromLocationId  String?
   fromLocation    Location? @relation("FromLoc", fields: [fromLocationId], references: [id])
   
-  toLocationId    String?
+  toLocationId    String?   
   toLocation      Location? @relation("ToLoc", fields: [toLocationId], references: [id])
-
+  
   usageCategoryId String?
   usageCategory   UsageCategory? @relation(fields: [usageCategoryId], references: [id])
 }
 
 // ==========================================
-// 4. NHÓM QUẢN LÝ VẬT LÝ (KHO BÃI)
+// 4. NHÓM QUẢN LÝ VẬT LÝ
 // ==========================================
 
 model Factory {
-  id           String    @id @default(uuid())
-  name         String    @unique 
+  id           String   @id @default(uuid())
+  name         String   @unique 
   address      String?
-  
   warehouses   Warehouse[] 
   departments  Department[]
   transactions StockTransaction[] 
+  users        User[]   @relation("UserWorkingFactory")
   
-  users        User[]    @relation("UserWorkingFactory")
-  createdAt    DateTime  @default(now())
+  assets       Asset[]
+
+  createdAt    DateTime @default(now())
 }
 
 model Warehouse {
@@ -279,7 +228,6 @@ model Warehouse {
   name          String
   type          String   @default("PHYSICAL") 
   description   String?
-  
   factoryId     String   
   factory       Factory  @relation(fields: [factoryId], references: [id])
   locations     Location[]
@@ -292,10 +240,8 @@ model Location {
   rack         String?
   level        String?
   bin          String?
-
   warehouseId  String
   warehouse    Warehouse @relation(fields: [warehouseId], references: [id])
-  
   stocks       Stock[]
   fromDetails  TransactionDetail[] @relation("FromLoc")
   toDetails    TransactionDetail[] @relation("ToLoc")
@@ -306,21 +252,18 @@ model Location {
 // ==========================================
 
 model Item {
-  id           String   @id @default(uuid())
-  itemCode     String   @unique
-  itemName     String   
-  baseUnit     String   
-  
-  qrCode       String?  @unique
-  minStock     Float    @default(0)
-  
-  categoryId   String
-  category     ItemCategory @relation(fields: [categoryId], references: [id])
-  
-  stocks       Stock[]
-  suppliers    ItemSupplier[]
-  details      TransactionDetail[]
-  conversions  ItemUnitConversion[] 
+  id          String   @id @default(uuid())
+  itemCode    String   @unique
+  itemName    String   
+  baseUnit    String   
+  qrCode      String?  @unique
+  minStock    Float    @default(0)
+  categoryId  String
+  category    ItemCategory @relation(fields: [categoryId], references: [id])
+  stocks      Stock[]
+  suppliers   ItemSupplier[]
+  details     TransactionDetail[]
+  conversions ItemUnitConversion[] 
 }
 
 model ItemUnitConversion {
@@ -329,28 +272,25 @@ model ItemUnitConversion {
   unitName String 
   factor   Float  
   barcode  String? 
-
   item     Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
   @@unique([itemId, unitName])
 }
 
 model ItemCategory {
-  id    String @id @default(uuid())
-  code  String @unique  
-  name  String          
+  id   String @id @default(uuid())
+  code String @unique  
+  name String          
   items Item[]
 }
 
 model UsageCategory {
-  id          String   @id @default(uuid())
-  code        String   @unique 
-  name        String   
-  description String? 
-
+  id                 String   @id @default(uuid())
+  code               String   @unique 
+  name               String   
+  description        String? 
   transactionDetails TransactionDetail[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model Supplier {
@@ -371,16 +311,14 @@ model ItemSupplier {
 }
 
 model Stock {
-  id          String   @id @default(uuid())
-  itemId      String
-  locationId  String
-  supplierId  String?  
-  quantity    Float    @default(0) 
-  
-  item        Item     @relation(fields: [itemId], references: [id])
-  location    Location @relation(fields: [locationId], references: [id])
-  supplier    Supplier? @relation(fields: [supplierId], references: [id])
-
+  id         String   @id @default(uuid())
+  itemId     String
+  locationId String
+  supplierId String?  
+  quantity   Float    @default(0) 
+  item       Item     @relation(fields: [itemId], references: [id])
+  location   Location @relation(fields: [locationId], references: [id])
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
   @@unique([itemId, locationId, supplierId])
 }
 
@@ -397,27 +335,24 @@ model Post {
   isPublic    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
   menuId      Int
   menu        Menu     @relation(fields: [menuId], references: [id])
   authorId    String
   author      User     @relation(fields: [authorId], references: [id])
   targets     PostDepartment[]
-
   @@map("posts")
 }
 
 model Menu {
-  id        Int     @id @default(autoincrement())
-  title     String
-  slug      String?
-  order     Int     @default(0)
+  id       Int     @id @default(autoincrement())
+  title    String
+  slug     String?
+  order    Int     @default(0)
   isVisible Boolean @default(true)
-  parentId  Int?
-  parent    Menu?   @relation("MenuHierarchy", fields: [parentId], references: [id])
-  children  Menu[]  @relation("MenuHierarchy")
-  posts     Post[]
-
+  parentId Int?
+  parent   Menu?   @relation("MenuHierarchy", fields: [parentId], references: [id])
+  children Menu[]  @relation("MenuHierarchy")
+  posts    Post[]
   @@map("menus")
 }
 
@@ -438,7 +373,6 @@ model Notification {
   isRead    Boolean  @default(false)
   link      String?
   createdAt DateTime @default(now())
-
   @@map("notifications")
 }
 
@@ -446,4 +380,113 @@ model TransactionCounter {
   key       String   @id
   count     Int
   updatedAt DateTime @updatedAt
+}
+
+// ==========================================
+// 7. MODULE QUẢN LÝ TÀI SẢN (ITAM)
+// ==========================================
+
+model AssetType {
+  id          String   @id @default(uuid())
+  code        String   @unique 
+  name        String   
+  models      AssetModel[]
+  assets      Asset[]
+}
+
+model AssetModel {
+  id           String   @id @default(uuid())
+  name         String   
+  manufacturer String   
+  modelNumber  String?  
+  typeId       String
+  type         AssetType @relation(fields: [typeId], references: [id])
+  standardSpecs Json?   
+  assets       Asset[]
+  createdAt    DateTime @default(now())
+}
+
+model Asset {
+  id           String   @id @default(uuid())
+  name         String   @unique 
+  serialNumber String?  
+  
+  modelId      String?
+  model        AssetModel? @relation(fields: [modelId], references: [id])
+  
+  typeId       String
+  type         AssetType @relation(fields: [typeId], references: [id])
+
+  status       String   @default("NEW") 
+  
+  // Agent Data
+  ipAddress    String?
+  macAddress   String?
+  osName       String?
+  modelName    String?
+  osVersion    String?  
+  manufacturer String? 
+  lastSeen     DateTime @default(now())
+  customSpecs  Json?    
+
+  // Hierarchy
+  parentId     String?
+  parent       Asset?      @relation("AssetHierarchy", fields: [parentId], references: [id])
+  children     Asset[]     @relation("AssetHierarchy")
+
+  // Location
+  factoryId    String?
+  factory      Factory?    @relation(fields: [factoryId], references: [id])
+  
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  
+  // [QUAN TRỌNG - SỬA LỖI] Quan hệ N-N với User (Nhiều người dùng 1 máy)
+  users        User[]      
+  
+  // Details
+  components   AssetComponent[]
+  maintenances MaintenanceLog[]
+  softwares    InstalledSoftware[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AssetComponent {
+  id           String   @id @default(uuid())
+  type         String   
+  name         String   
+  serialNumber String?  
+  specs        Json?    
+  assetId      String?
+  asset        Asset?   @relation(fields: [assetId], references: [id])
+  status       String   @default("ACTIVE") 
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model MaintenanceLog {
+  id           String   @id @default(uuid())
+  assetId      String
+  asset        Asset    @relation(fields: [assetId], references: [id])
+  type         String   
+  description  String   
+  providerType String   
+  providerName String?  
+  cost         Float    @default(0)
+  startDate    DateTime @default(now())
+  endDate      DateTime? 
+  status       String   @default("IN_PROGRESS")
+  createdAt    DateTime @default(now())
+}
+
+model InstalledSoftware {
+  id           String   @id @default(uuid())
+  name         String   
+  version      String?
+  publisher    String?
+  installDate  DateTime?
+  assetId      String
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
 }

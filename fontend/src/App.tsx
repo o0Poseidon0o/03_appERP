@@ -20,7 +20,7 @@ import UserManagement from "./pages/admin/UserManagement";
 import DepartmentManagement from "./pages/department/DepartmentManagement";
 import RoleManagement from "./pages/Role/RoleManagement";
 import MenuManagement from "./pages/admin/MenuManagement";
-import WorkflowManagement from "./pages/admin/WorkflowManagement"; // [NEW] Import trang Workflow
+import WorkflowManagement from "./pages/admin/WorkflowManagement"; 
 
 // 4. Warehouse System (Kho & Nhà máy & Vật tư)
 import ItemManagement from "./pages/warehouse/ItemManagement";
@@ -32,7 +32,11 @@ import StockTransaction from "./pages/warehouse/StockTransaction";
 import StockActual from "./pages/warehouse/StockActual";
 import MonthlyReport from "./pages/warehouse/MonthlyReport"; 
 
-// 5. Security Component
+// 5. [NEW] IT Asset Management (ITAM)
+import AssetList from "./pages/itam/AssetList";
+// import AssetDetail from "./pages/itam/AssetDetail"; // (Bật lên khi đã tạo file này)
+
+// 6. Security Component
 import RoleRoute from "./components/RoleRoute";
 
 // --- COMPONENTS BẢO VỆ ---
@@ -57,7 +61,7 @@ const DashboardGuard = () => {
   const { user } = useAuth();
   const roleId = user?.role?.id || user?.roleId;
 
-  // Nếu là User thường (hoặc KHO không có quyền quản trị hệ thống) -> Sang trang Tin tức
+  // Nếu là User thường -> Sang trang Tin tức
   if (roleId === "ROLE-USER") {
     return <Navigate to="/posts" replace />;
   }
@@ -109,17 +113,17 @@ const AppContent = () => {
 
             {/* --- PHÂN QUYỀN (RBAC) --- */}
 
-            {/* A. NHÂN SỰ: Cần quyền USER_VIEW (Admin/HR) */}
+            {/* A. NHÂN SỰ: Cần quyền USER_VIEW */}
             <Route element={<RoleRoute requiredPermission="USER_VIEW" />}>
               <Route path="admin/users" element={<UserManagement />} />
             </Route>
 
-            {/* B. PHÒNG BAN: Cần quyền DEPT_VIEW (Admin/HR) */}
+            {/* B. PHÒNG BAN: Cần quyền DEPT_VIEW */}
             <Route element={<RoleRoute requiredPermission="DEPT_VIEW" />}>
               <Route path="admin/departments" element={<DepartmentManagement />} />
             </Route>
 
-            {/* C. HẠ TẦNG & KHO: Cần quyền WMS_VIEW (Admin/KHO/Leader) */}
+            {/* C. HẠ TẦNG & KHO: Cần quyền WMS_VIEW */}
             <Route element={<RoleRoute requiredPermission="WMS_VIEW" />}>
               <Route path="warehouse/locations" element={<WarehouseManagement />} /> 
               <Route path="warehouse/items" element={<ItemManagement />} />
@@ -127,29 +131,29 @@ const AppContent = () => {
               <Route path="warehouse/stock" element={<StockActual />} />
               <Route path="warehouse/suppliers" element={<SupplierPage />} />
               <Route path="warehouse/transactions" element={<StockTransaction />} />
-              
-              {/* Route Báo cáo tồn kho theo tháng (Xuất Excel) */}
               <Route path="warehouse/report/monthly" element={<MonthlyReport />} />
             </Route>
 
-            {/* D. PHÊ DUYỆT PHIẾU: Cần quyền WMS_APPROVE (Leader/Manager) */}
+            {/* D. PHÊ DUYỆT PHIẾU: Cần quyền WMS_APPROVE */}
             <Route element={<RoleRoute requiredPermission="WMS_APPROVE" />}>
               <Route path="warehouse/approvals" element={<PendingApprovals />} />
             </Route>
 
-            {/* E. CẤU HÌNH HỆ THỐNG: Cần quyền ROLE_VIEW (Admin) */}
+            {/* [NEW] E. QUẢN LÝ THIẾT BỊ (ITAM): Cần quyền ASSET_VIEW hoặc Admin */}
+            {/* Tạm thời cho Admin vào trước, sau này bạn seed quyền ASSET_VIEW vào DB thì đổi lại */}
+            <Route element={<RoleRoute allowedRoles={["ROLE-ADMIN", "ROLE-IT"]} />}>
+                <Route path="assets" element={<AssetList />} />
+                {/* <Route path="assets/:id" element={<AssetDetail />} /> */}
+            </Route>
+
+            {/* F. CẤU HÌNH HỆ THỐNG: Cần quyền ROLE_VIEW */}
             <Route element={<RoleRoute requiredPermission="ROLE_VIEW" />}>
                 <Route path="admin/roles" element={<RoleManagement />} />
             </Route>
             
-            {/* F. QUẢN LÝ MENU (Admin tối cao) */}
+            {/* G. QUẢN LÝ MENU & WORKFLOW (Admin tối cao) */}
             <Route element={<RoleRoute allowedRoles={["ROLE-ADMIN"]} />}>
                 <Route path="admin/menus" element={<MenuManagement />} />
-            </Route>
-
-            {/* [NEW] G. QUẢN LÝ QUY TRÌNH DUYỆT (WORKFLOW) - Chỉ Admin */}
-            {/* Bạn có thể đổi requiredPermission="WORKFLOW_VIEW" nếu đã seed quyền này */}
-            <Route element={<RoleRoute allowedRoles={["ROLE-ADMIN"]} />}>
                 <Route path="admin/workflows" element={<WorkflowManagement />} />
             </Route>
 

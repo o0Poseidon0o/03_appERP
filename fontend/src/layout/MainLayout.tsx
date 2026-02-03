@@ -17,7 +17,8 @@ import {
   BarChartOutlined,
   AppstoreOutlined, 
   CloseOutlined,
-  NodeIndexOutlined // Icon cho Workflow
+  NodeIndexOutlined,
+  DesktopOutlined // [UPDATE] Icon cho Quản lý thiết bị
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -73,7 +74,6 @@ const AppLauncher: React.FC<AppLauncherProps> = ({ isOpen, onClose, menuItems, o
     if (!isOpen) return null;
 
     // Filter bỏ các item là divider hoặc group title để lấy danh sách App thực sự
-    // [UPDATE] Logic đệ quy đơn giản để lấy hết link con nếu là Group
     const flatApps: any[] = [];
     
     menuItems.forEach(item => {
@@ -84,7 +84,6 @@ const AppLauncher: React.FC<AppLauncherProps> = ({ isOpen, onClose, menuItems, o
         }
         // Nếu là Group (VD: Kho vận, Hệ thống) -> Lấy đại diện hoặc lấy hết con
         else if (item.children) {
-             // Cách 1: Hiển thị Group như 1 App lớn (Lấy link đầu tiên của con)
              flatApps.push({
                  ...item,
                  link: item.children[0]?.key || item.key, // Link mặc định vào trang đầu của nhóm
@@ -99,11 +98,13 @@ const AppLauncher: React.FC<AppLauncherProps> = ({ isOpen, onClose, menuItems, o
             label: item.label,
             icon: item.icon,
             link: item.link || item.key,
-            // [UPDATE] Thêm màu sắc cho sinh động
+            // [UPDATE] Thêm màu sắc cho Module Assets
             colorClass: item.key.includes('warehouse') ? 'bg-orange-500' : 
                         item.key.includes('system') ? 'bg-gray-600' : 
                         item.key.includes('posts') ? 'bg-purple-500' : 
-                        item.key.includes('user') ? 'bg-blue-500' : 'bg-indigo-600'
+                        item.key.includes('user') ? 'bg-blue-500' : 
+                        item.key.includes('assets') ? 'bg-teal-600' : // Màu cho Assets
+                        'bg-indigo-600'
         };
     });
 
@@ -231,7 +232,6 @@ const MainLayout: React.FC = () => {
   };
 
   // --- LOGIC 4: CẤU HÌNH MENU ITEMS (SIDEBAR) ---
-  // Menu này phụ thuộc vào quyền của User (hasPermission)
   const menuItems = useMemo<MenuProps['items']>(() => {
     const items: MenuProps['items'] = [];
 
@@ -281,8 +281,18 @@ const MainLayout: React.FC = () => {
       }
     }
 
+    // [UPDATE] Module Quản lý thiết bị (ITAM)
+    // Hiển thị nếu User là Admin hoặc có quyền xem tài sản
+    const canSeeAssets = hasPermission('ASSET_VIEW') || user?.roleId === 'ROLE-ADMIN';
+    if (canSeeAssets) {
+        items.push({
+            key: '/assets', // Link tới trang AssetList
+            icon: <DesktopOutlined />,
+            label: 'Quản lý thiết bị (IT)'
+        });
+    }
+
     // Hệ thống
-    // [UPDATE] Thêm quyền truy cập Workflow vào điều kiện
     const canSeeSystem = hasPermission('DEPT_VIEW') || hasPermission('ROLE_VIEW') || hasPermission('MENU_VIEW') || hasPermission('WORKFLOW_VIEW') || user?.roleId === 'ROLE-ADMIN';
     if (canSeeSystem) {
       items.push({ 
@@ -291,7 +301,6 @@ const MainLayout: React.FC = () => {
               ...(hasPermission('DEPT_VIEW') ? [{ key: '/admin/departments', label: 'Phòng ban' }] : []),
               ...(hasPermission('ROLE_VIEW') ? [{ key: '/admin/roles', icon: <SafetyCertificateOutlined />, label: 'Phân quyền' }] : []),
               ...(user?.roleId === 'ROLE-ADMIN' ? [{ key: '/admin/menus', icon: <UnorderedListOutlined />, label: 'Cấu hình Menu' }] : []),
-              // [NEW] Menu Workflow
               ...((user?.roleId === 'ROLE-ADMIN' || hasPermission('WORKFLOW_VIEW')) ? [{ key: '/admin/workflows', icon: <NodeIndexOutlined />, label: 'Cấu hình Quy trình' }] : []),
           ]
       });
@@ -461,9 +470,9 @@ const MainLayout: React.FC = () => {
                 height: 'calc(100vh - 64px - 48px)'
             }}
         >
-           <div className={`h-full w-full rounded-xl overflow-hidden shadow-sm ${isDarkMode ? 'bg-[#1f2937]' : 'bg-white'} p-4 md:p-6 overflow-y-auto`}>
-               <Outlet />
-           </div>
+            <div className={`h-full w-full rounded-xl overflow-hidden shadow-sm ${isDarkMode ? 'bg-[#1f2937]' : 'bg-white'} p-4 md:p-6 overflow-y-auto`}>
+                <Outlet />
+            </div>
         </Content>
       </Layout>
     </Layout>
