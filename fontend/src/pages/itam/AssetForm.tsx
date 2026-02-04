@@ -97,7 +97,8 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
       <Form form={form} layout="vertical" onFinish={onFinish}>
         
         {/* --- PHẦN 1: THÔNG TIN CƠ BẢN --- */}
-        <Divider orientation="left" style={{ margin: '0 0 16px 0' }}>Thông tin thiết bị</Divider>
+        {/* [FIX TS2322] Thêm 'as const' để TypeScript hiểu đây là literal type 'left' */}
+        <Divider orientation={"left" as const} style={{ margin: '0 0 16px 0' }}>Thông tin thiết bị</Divider>
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item name="name" label="Tên thiết bị (Hostname)" rules={[{ required: true, message: 'Vui lòng nhập tên máy' }]}>
@@ -132,7 +133,8 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
         </Row>
 
         {/* --- PHẦN 2: QUẢN LÝ & VỊ TRÍ --- */}
-        <Divider orientation="left" style={{ margin: '10px 0 16px 0' }}>Quản lý & Vị trí</Divider>
+        {/* [FIX TS2322] Thêm 'as const' ở đây nữa */}
+        <Divider orientation={"left" as const} style={{ margin: '10px 0 16px 0' }}>Quản lý & Vị trí</Divider>
         <Row gutter={16}>
           <Col span={12}>
              <Form.Item name="factoryId" label="Nhà máy / Chi nhánh">
