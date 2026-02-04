@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Input, Select, message, Row, Col, Divider } from 'antd';
+import { Modal, Form, Input, Select, message, Row, Col } from 'antd'; // Bỏ Divider
 import { assetService } from '../../services/assetService';
 import axiosClient from '../../api/axiosClient';
 
@@ -16,7 +16,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
   
   // State dữ liệu cho Dropdown
   const [types, setTypes] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);       // List nhân viên (User hệ thống)
+  const [users, setUsers] = useState<any[]>([]);       // List nhân viên
   const [factories, setFactories] = useState<any[]>([]);// List nhà máy
   const [parentDevices, setParentDevices] = useState<any[]>([]);
 
@@ -24,12 +24,11 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
     if (open) {
         const fetchMasterData = async () => {
             try {
-                // Gọi song song các API để lấy dữ liệu nạp vào Dropdown
                 const [typeRes, userRes, factoryRes, pcRes] = await Promise.all([
                     assetService.getAssetTypes(),
                     axiosClient.get('/users?limit=1000'), 
                     axiosClient.get('/factories'),        
-                    assetService.getAll({ search: '', limit: 100 }) // Lấy 100 PC gần nhất làm cha
+                    assetService.getAll({ search: '', limit: 100 })
                 ]);
 
                 setTypes(typeRes);
@@ -47,7 +46,6 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
 
   useEffect(() => {
     if (open && initialValues) {
-      // Map dữ liệu vào form
       form.setFieldsValue({
         ...initialValues,
         typeId: initialValues.typeId,
@@ -55,11 +53,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
         parentId: initialValues.parentId,
         status: initialValues.status,
         serialNumber: initialValues.serialNumber,
-        
-        // [MỚI] Map User Domain (User login trên máy)
         domainUser: initialValues.domainUser,
-
-        // [QUAN TRỌNG] Map danh sách User quản lý (Relation N-N) thành mảng ID
         userIds: initialValues.users?.map((u: any) => u.id) || [], 
       });
     } else if (open && !initialValues) {
@@ -85,6 +79,16 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
     }
   };
 
+  // Component tiêu đề Section dùng Tailwind
+  const SectionTitle = ({ title }: { title: string }) => (
+    <div className="flex items-center gap-3 mb-4 mt-2">
+      <span className="text-blue-700 font-bold text-base uppercase tracking-wide whitespace-nowrap">
+        {title}
+      </span>
+      <div className="h-px bg-gray-200 flex-1"></div> {/* Đường kẻ mờ */}
+    </div>
+  );
+
   return (
     <Modal
       title={initialValues ? "Cập nhật thông tin tài sản" : "Thêm tài sản mới"}
@@ -93,12 +97,13 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
       onOk={() => form.submit()}
       confirmLoading={loading}
       width={850}
+      maskClosable={false} // Chặn click ra ngoài đóng form
     >
-      <Form form={form} layout="vertical" onFinish={onFinish}>
+      <Form form={form} layout="vertical" onFinish={onFinish} className="pt-2">
         
         {/* --- PHẦN 1: THÔNG TIN CƠ BẢN --- */}
-        {/* [FIX TS2322] Thêm 'as const' để TypeScript hiểu đây là literal type 'left' */}
-        <Divider orientation={"left" as const} style={{ margin: '0 0 16px 0' }}>Thông tin thiết bị</Divider>
+        <SectionTitle title="Thông tin thiết bị" />
+        
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item name="name" label="Tên thiết bị (Hostname)" rules={[{ required: true, message: 'Vui lòng nhập tên máy' }]}>
@@ -121,7 +126,6 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
             </Form.Item>
           </Col>
           <Col span={12}>
-            {/* [MỚI] Trường Domain User */}
             <Form.Item 
                 name="domainUser" 
                 label="User Domain (Windows Account)" 
@@ -133,8 +137,8 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
         </Row>
 
         {/* --- PHẦN 2: QUẢN LÝ & VỊ TRÍ --- */}
-        {/* [FIX TS2322] Thêm 'as const' ở đây nữa */}
-        <Divider orientation={"left" as const} style={{ margin: '10px 0 16px 0' }}>Quản lý & Vị trí</Divider>
+        <SectionTitle title="Quản lý & Vị trí" />
+
         <Row gutter={16}>
           <Col span={12}>
              <Form.Item name="factoryId" label="Nhà máy / Chi nhánh">
@@ -160,7 +164,6 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
 
         <Row gutter={16}>
            <Col span={24}>
-             {/* [QUAN TRỌNG] Dropdown User - Mode Multiple */}
              <Form.Item 
                name="userIds" 
                label="Người được biên chế sử dụng (Có thể chọn nhiều)" 
@@ -196,7 +199,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
            </Col>
         </Row>
 
-        {/* Các field ẩn để giữ data nếu update */}
+        {/* Các field ẩn */}
         <Form.Item name="customSpecs" hidden><Input /></Form.Item>
       </Form>
     </Modal>
