@@ -22,10 +22,10 @@ model User {
   isActive           Boolean @default(true)
   mustChangePassword Boolean @default(false)
   
-  roleId       String
-  role         Role       @relation(fields: [roleId], references: [id])
+  roleId     String
+  role       Role       @relation(fields: [roleId], references: [id])
   departmentId String
-  department   Department @relation(fields: [departmentId], references: [id])
+  department Department @relation(fields: [departmentId], references: [id])
 
   // Scope nhà máy
   factoryId    String?  
@@ -40,7 +40,7 @@ model User {
   actedSteps         TicketStep[]    @relation("StepActor") 
   approvalLogs       ApprovalLog[]
 
-  // [ITAM - QUAN TRỌNG] Quan hệ N-N: Một User dùng nhiều máy
+  // Quan hệ quản lý: User được biên chế/bàn giao tài sản này (Trên giấy tờ)
   assets             Asset[]         
 }
 
@@ -78,18 +78,18 @@ model UserPermission {
 }
 
 model Department {
-  id           String   @id 
-  name         String
-  name_content String   @default("Chưa có nội dung")
+  id             String   @id 
+  name           String
+  name_content   String   @default("Chưa có nội dung")
   
-  factoryId    String?
-  factory      Factory? @relation(fields: [factoryId], references: [id])
+  factoryId      String?
+  factory        Factory? @relation(fields: [factoryId], references: [id])
 
-  users        User[]
-  targetedPosts PostDepartment[]
+  users          User[]
+  targetedPosts  PostDepartment[]
   
   // [ITAM] Tài sản thuộc phòng ban này
-  assets       Asset[] 
+  assets         Asset[] 
 }
 
 // ==========================================
@@ -123,20 +123,20 @@ model WorkflowStep {
 }
 
 model Ticket {
-  id               String   @id @default(uuid())
-  code             String   @unique 
-  workflowId       String
-  workflow         Workflow @relation(fields: [workflowId], references: [id])
-  currentStep      Int      @default(0) 
-  status           String   @default("PENDING") 
-  creatorId        String
-  creator          User     @relation("TicketCreator", fields: [creatorId], references: [id])
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  completedAt      DateTime?
+  id             String   @id @default(uuid())
+  code           String   @unique 
+  workflowId     String
+  workflow       Workflow @relation(fields: [workflowId], references: [id])
+  currentStep    Int      @default(0) 
+  status         String   @default("PENDING") 
+  creatorId      String
+  creator        User     @relation("TicketCreator", fields: [creatorId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  completedAt    DateTime?
   
-  steps            TicketStep[]
-  logs             ApprovalLog[]
+  steps          TicketStep[]
+  logs           ApprovalLog[]
   stockTransaction StockTransaction? 
 }
 
@@ -155,14 +155,14 @@ model TicketStep {
 }
 
 model ApprovalLog {
-  id            String   @id @default(uuid())
-  ticketId      String
-  ticket        Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  action        String   
-  comment       String?
-  createdAt     DateTime @default(now())
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String   
+  comment   String?
+  createdAt DateTime @default(now())
 }
 
 // ==========================================
@@ -196,10 +196,8 @@ model TransactionDetail {
   inputQuantity   Float?   
   fromLocationId  String?
   fromLocation    Location? @relation("FromLoc", fields: [fromLocationId], references: [id])
-  
   toLocationId    String?   
   toLocation      Location? @relation("ToLoc", fields: [toLocationId], references: [id])
-  
   usageCategoryId String?
   usageCategory   UsageCategory? @relation(fields: [usageCategoryId], references: [id])
 }
@@ -209,17 +207,17 @@ model TransactionDetail {
 // ==========================================
 
 model Factory {
-  id           String   @id @default(uuid())
-  name         String   @unique 
-  address      String?
-  warehouses   Warehouse[] 
-  departments  Department[]
+  id          String   @id @default(uuid())
+  name        String   @unique 
+  address     String?
+  warehouses  Warehouse[] 
+  departments Department[]
   transactions StockTransaction[] 
-  users        User[]   @relation("UserWorkingFactory")
+  users       User[]   @relation("UserWorkingFactory")
   
-  assets       Asset[]
+  assets      Asset[]
 
-  createdAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
 }
 
 model Warehouse {
@@ -252,18 +250,18 @@ model Location {
 // ==========================================
 
 model Item {
-  id          String   @id @default(uuid())
-  itemCode    String   @unique
-  itemName    String   
-  baseUnit    String   
-  qrCode      String?  @unique
-  minStock    Float    @default(0)
-  categoryId  String
-  category    ItemCategory @relation(fields: [categoryId], references: [id])
-  stocks      Stock[]
-  suppliers   ItemSupplier[]
-  details     TransactionDetail[]
-  conversions ItemUnitConversion[] 
+  id           String   @id @default(uuid())
+  itemCode     String   @unique
+  itemName     String   
+  baseUnit     String   
+  qrCode       String?  @unique
+  minStock     Float    @default(0)
+  categoryId   String
+  category     ItemCategory @relation(fields: [categoryId], references: [id])
+  stocks       Stock[]
+  suppliers    ItemSupplier[]
+  details      TransactionDetail[]
+  conversions  ItemUnitConversion[] 
 }
 
 model ItemUnitConversion {
@@ -344,15 +342,15 @@ model Post {
 }
 
 model Menu {
-  id       Int     @id @default(autoincrement())
-  title    String
-  slug     String?
-  order    Int     @default(0)
+  id        Int     @id @default(autoincrement())
+  title     String
+  slug      String?
+  order     Int     @default(0)
   isVisible Boolean @default(true)
-  parentId Int?
-  parent   Menu?   @relation("MenuHierarchy", fields: [parentId], references: [id])
-  children Menu[]  @relation("MenuHierarchy")
-  posts    Post[]
+  parentId  Int?
+  parent    Menu?   @relation("MenuHierarchy", fields: [parentId], references: [id])
+  children  Menu[]  @relation("MenuHierarchy")
+  posts     Post[]
   @@map("menus")
 }
 
@@ -383,32 +381,32 @@ model TransactionCounter {
 }
 
 // ==========================================
-// 7. MODULE QUẢN LÝ TÀI SẢN (ITAM)
+// 7. MODULE QUẢN LÝ TÀI SẢN (ITAM) - ĐÃ UPDATE
 // ==========================================
 
 model AssetType {
-  id          String   @id @default(uuid())
-  code        String   @unique 
-  name        String   
-  models      AssetModel[]
-  assets      Asset[]
+  id     String       @id @default(uuid())
+  code   String       @unique 
+  name   String   
+  models AssetModel[]
+  assets Asset[]
 }
 
 model AssetModel {
-  id           String   @id @default(uuid())
-  name         String   
-  manufacturer String   
-  modelNumber  String?  
-  typeId       String
-  type         AssetType @relation(fields: [typeId], references: [id])
+  id            String    @id @default(uuid())
+  name          String   
+  manufacturer  String   
+  modelNumber   String?  
+  typeId        String
+  type          AssetType @relation(fields: [typeId], references: [id])
   standardSpecs Json?   
-  assets       Asset[]
-  createdAt    DateTime @default(now())
+  assets        Asset[]
+  createdAt     DateTime  @default(now())
 }
 
 model Asset {
   id           String   @id @default(uuid())
-  name         String   @unique 
+  name         String   @unique  // Hostname
   serialNumber String?  
   
   modelId      String?
@@ -419,7 +417,7 @@ model Asset {
 
   status       String   @default("NEW") 
   
-  // Agent Data
+  // --- THÔNG TIN TỰ ĐỘNG (AGENT) ---
   ipAddress    String?
   macAddress   String?
   osName       String?
@@ -427,6 +425,10 @@ model Asset {
   osVersion    String?  
   manufacturer String? 
   lastSeen     DateTime @default(now())
+  
+  // [MỚI] User Domain thực tế đang ngồi máy (VD: "TOWA\NguyenVanA")
+  domainUser   String? 
+  
   customSpecs  Json?    
 
   // Hierarchy
@@ -434,17 +436,17 @@ model Asset {
   parent       Asset?      @relation("AssetHierarchy", fields: [parentId], references: [id])
   children     Asset[]     @relation("AssetHierarchy")
 
-  // Location
+  // Location & Assignment
   factoryId    String?
   factory      Factory?    @relation(fields: [factoryId], references: [id])
   
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
   
-  // [QUAN TRỌNG - SỬA LỖI] Quan hệ N-N với User (Nhiều người dùng 1 máy)
+  // Quan hệ quản lý (trên giấy tờ): Những ai được biên chế dùng máy này
   users        User[]      
   
-  // Details
+  // Details (Cascade Delete: Xóa máy là xóa luôn linh kiện/phần mềm đi kèm)
   components   AssetComponent[]
   maintenances MaintenanceLog[]
   softwares    InstalledSoftware[]
@@ -455,12 +457,12 @@ model Asset {
 
 model AssetComponent {
   id           String   @id @default(uuid())
-  type         String   
+  type         String   // HARD_DISK, RAM...
   name         String   
   serialNumber String?  
-  specs        Json?    
+  specs        Json?    // Lưu dung lượng, loại SSD/HDD
   assetId      String?
-  asset        Asset?   @relation(fields: [assetId], references: [id])
+  asset        Asset?   @relation(fields: [assetId], references: [id], onDelete: Cascade)
   status       String   @default("ACTIVE") 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -469,7 +471,7 @@ model AssetComponent {
 model MaintenanceLog {
   id           String   @id @default(uuid())
   assetId      String
-  asset        Asset    @relation(fields: [assetId], references: [id])
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
   type         String   
   description  String   
   providerType String   
@@ -481,12 +483,18 @@ model MaintenanceLog {
   createdAt    DateTime @default(now())
 }
 
+// Bảng lưu danh sách phần mềm
 model InstalledSoftware {
-  id           String   @id @default(uuid())
-  name         String   
-  version      String?
-  publisher    String?
-  installDate  DateTime?
-  assetId      String
-  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid())
+  name        String   
+  version     String?
+  publisher   String?
+  installDate DateTime?
+  
+  assetId     String
+  asset       Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Đánh Index để tìm kiếm nhanh
+  @@index([assetId])
+  @@index([name])
 }

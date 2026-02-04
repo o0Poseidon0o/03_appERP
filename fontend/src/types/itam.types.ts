@@ -1,6 +1,23 @@
 // src/types/itam.types.ts
 
-// 1. Interface cho Tài sản
+// 1. Interface cho Phần mềm đã cài (Dùng trong chi tiết tài sản)
+export interface IInstalledSoftware {
+  id: string;
+  name: string;
+  version?: string;
+  publisher?: string;
+  installDate?: string;
+}
+
+// 2. Interface cho Linh kiện (Ổ cứng, RAM rời...)
+export interface IAssetComponent {
+  id: string;
+  type: string; // 'HARD_DISK', 'RAM', etc.
+  name: string;
+  specs?: any;  // JSON chứa sizeGB, type...
+}
+
+// 3. Interface Chính cho Tài sản
 export interface IAsset {
   id: string;
   name: string;          // Hostname / Tên thiết bị
@@ -11,29 +28,33 @@ export interface IAsset {
   typeId: string;
   type?: { id: string; name: string; code: string };
 
-  // Thông tin kỹ thuật
+  // Thông tin kỹ thuật (Agent gửi về)
   manufacturer?: string;
   modelName?: string;
   osName?: string;
+  osVersion?: string;    // [NEW] Phiên bản OS (vd: 22H2)
   ipAddress?: string;
   macAddress?: string;
   lastSeen?: string;
 
-  // Cấu hình tóm tắt (JSON từ Backend)
+  // [NEW] User Domain thực tế đang ngồi máy (VD: "TOWA\NguyenVanA")
+  domainUser?: string;
+
+  // Cấu hình tóm tắt (JSON)
   customSpecs?: {
     cpu?: string;
     ram?: string;
-    disk?: string;      // Chuỗi tổng hợp "250GB + 1TB"
+    disk?: string;      // Chuỗi tổng hợp "250GB (SSD) + 1TB (HDD)"
     lastAgentSync?: string;
   };
 
-  // Vị trí
+  // Vị trí & Tổ chức
   factoryId?: string;
   factory?: { id: string; name: string };
   departmentId?: string;
   department?: { id: string; name: string };
   
-  // [UPDATED] Quan hệ N-N: Danh sách người dùng (Thay cho currentUserId cũ)
+  // Quan hệ N-N: Danh sách người dùng được biên chế (Admin gán)
   users?: { 
       id: string; 
       fullName: string; 
@@ -44,13 +65,23 @@ export interface IAsset {
   parentId?: string;
   parent?: { id: string; name: string };  // Máy mẹ
   children?: IAsset[];                    // Các thiết bị con đi kèm
+
+  // [NEW] Chi tiết (Dùng khi getById)
+  softwares?: IInstalledSoftware[];
+  components?: IAssetComponent[];
+
+  // [NEW] Số lượng (Dùng để hiển thị Badge trên bảng)
+  _count?: {
+    softwares?: number;
+    children?: number;
+  };
 }
 
-// 2. Interface cho Param Search/Filter
+// 4. Interface cho Param Search/Filter
 export interface IAssetParams {
   page?: number;
   limit?: number;
-  search?: string;
+  search?: string;     // Tìm theo tên, IP, Serial, User Domain...
   typeId?: string;
   factoryId?: string;
   departmentId?: string;
