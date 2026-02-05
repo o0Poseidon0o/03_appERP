@@ -17,11 +17,11 @@ export const getUsers = async (req: Request, res: Response) => {
         isActive: true,
         roleId: true,
         departmentId: true,
-        factoryId: true, // [NEW] Lấy ID nhà máy
+        factoryId: true,
         
         role: { select: { id: true, name: true } },
         department: { select: { id: true, name: true } },
-        factory: { select: { id: true, name: true } }, // [NEW] Lấy tên nhà máy để hiển thị table
+        factory: { select: { id: true, name: true } },
         
         userPermissions: {
           select: { permissionId: true }
@@ -39,9 +39,7 @@ export const getUsers = async (req: Request, res: Response) => {
   }
 };
 
-// ... (Hàm getAllAvailablePermissions giữ nguyên) ...
 export const getAllAvailablePermissions = async (req: Request, res: Response, next: NextFunction) => {
-    // ... (Giữ nguyên code cũ)
     try {
         const permissions = await prisma.permission.findMany({
           orderBy: [
@@ -65,7 +63,6 @@ export const getAllAvailablePermissions = async (req: Request, res: Response, ne
  */
 export const createUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // [UPDATE] Nhận thêm factoryId từ frontend
     const { id, email, fullName, departmentId, roleId, factoryId, password } = req.body;
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -84,10 +81,7 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
         password: hashedPassword,
         departmentId,
         roleId,
-        
-        // [NEW] Lưu factoryId (nếu user không chọn thì là null)
         factoryId: factoryId || null,
-
         isActive: true,
         mustChangePassword: true,
       },
@@ -101,24 +95,41 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
 };
 
 /**
- * @desc    Cập nhật thông tin cơ bản của nhân viên
+ * @desc    Cập nhật thông tin cơ bản của nhân viên (Bao gồm cả Email)
  * @route   PATCH /api/users/:id
  */
 export const updateUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    // [UPDATE] Nhận thêm factoryId
-    const { fullName, departmentId, roleId, factoryId, isActive, password } = req.body;
+    // [UPDATE] Lấy thêm trường email từ body
+    const { fullName, email, departmentId, roleId, factoryId, isActive, password } = req.body;
 
-    // [UPDATE] Thêm factoryId vào object update
     const updateData: any = { 
         fullName, 
         departmentId, 
         roleId, 
         isActive,
-        factoryId: factoryId || null // Cho phép gán null để xóa nhà máy khỏi user
+        factoryId: factoryId || null 
     };
 
+    // [LOGIC MỚI] Kiểm tra trùng Email nếu có thay đổi
+    if (email) {
+        // Tìm xem có ai đang dùng email này không
+        const existingEmailUser = await prisma.user.findUnique({
+            where: { email }
+        });
+
+        // Nếu tìm thấy user có email này NHƯNG ID lại khác với ID đang sửa 
+        // => Tức là trùng với người khác
+        if (existingEmailUser && existingEmailUser.id !== id) {
+            return next(new AppError("Email này đã được sử dụng bởi nhân viên khác!", 400));
+        }
+
+        // Nếu hợp lệ thì thêm vào data để update
+        updateData.email = email;
+    }
+
+    // Cập nhật mật khẩu nếu có
     if (password && password.trim().length >= 6) {
       updateData.password = await bcrypt.hash(password, 10);
       updateData.mustChangePassword = true;
@@ -132,23 +143,24 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     const { password: _, ...result } = updatedUser;
     res.status(200).json({ status: "success", data: result });
   } catch (error) {
+    // console.log(error); // Debug nếu cần
     next(new AppError("Không tìm thấy người dùng hoặc lỗi dữ liệu", 404));
   }
 };
 
-// ... (Các hàm updateUserPermissions, deleteUser giữ nguyên) ...
+/**
+ * @desc    Cập nhật quyền riêng lẻ (Ghi đè)
+ * @route   PATCH /api/users/:id/permissions
+ */
 export const updateUserPermissions = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params; 
-      const { permissionIds } = req.body; // Mảng string ID quyền: ["USER_VIEW", "POST_DELETE"]
+      const { permissionIds } = req.body; 
   
-      // Sử dụng Transaction để đảm bảo tính toàn vẹn (Xóa sạch cũ - Nạp lại mới)
       await prisma.$transaction([
-        // 1. Xóa các quyền riêng lẻ cũ
         prisma.userPermission.deleteMany({
           where: { userId: id }
         }),
-        // 2. Thêm các quyền mới nếu có
         ...(permissionIds && permissionIds.length > 0 
           ? [prisma.userPermission.createMany({
               data: permissionIds.map((pId: string) => ({
@@ -176,7 +188,6 @@ export const updateUserPermissions = async (req: Request, res: Response, next: N
     try {
       const { id } = req.params;
   
-      // Chặn xóa tài khoản Admin tối cao
       if (id === "ADMIN-01") {
         return next(new AppError("Không thể xóa tài khoản Quản trị viên hệ thống!", 403));
       }
@@ -188,7 +199,6 @@ export const updateUserPermissions = async (req: Request, res: Response, next: N
         message: "Đã xóa nhân sự vĩnh viễn khỏi hệ thống."
       });
     } catch (error: any) {
-      // Lỗi P2003: Ràng buộc khóa ngoại (User đã có bài viết, thông báo...)
       if (error.code === "P2003") {
         return next(new AppError("Không thể xóa vì nhân sự này đã có dữ liệu ràng buộc. Hãy sử dụng chức năng 'Khóa tài khoản'.", 400));
       }

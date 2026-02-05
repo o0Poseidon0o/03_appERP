@@ -7,7 +7,7 @@ import {
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
   DeleteOutlined, ReloadOutlined, KeyOutlined, SafetyCertificateOutlined, UserOutlined,
-  GlobalOutlined // Icon cho Nhà máy
+  GlobalOutlined 
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import axiosClient from '../../api/axiosClient';
@@ -22,10 +22,10 @@ interface User {
   isActive: boolean;
   roleId: string;
   departmentId: string;
-  factoryId?: string; // [NEW] Thêm trường này
+  factoryId?: string; 
   role?: { id: string; name: string; };
   department?: { name: string };
-  factory?: { name: string }; // [NEW] Để hiển thị tên nhà máy
+  factory?: { name: string }; 
   userPermissions?: { permissionId: string }[];
 }
 
@@ -48,7 +48,7 @@ const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [rolesList, setRolesList] = useState<any[]>([]); 
   const [deptList, setDeptList] = useState<any[]>([]);
-  const [factoryList, setFactoryList] = useState<any[]>([]); // [NEW] List nhà máy
+  const [factoryList, setFactoryList] = useState<any[]>([]); 
   const [allPermissions, setAllPermissions] = useState<PermissionItem[]>([]);
   const [loading, setLoading] = useState(false);
   
@@ -67,14 +67,14 @@ const UserManagement: React.FC = () => {
         axiosClient.get('/users'),
         axiosClient.get('/roles'),
         axiosClient.get('/departments'),
-        axiosClient.get('/factories'), // [NEW] API lấy danh sách nhà máy
+        axiosClient.get('/factories'), 
         axiosClient.get('/users/permissions/all').catch(() => ({ data: { data: [] } }))
       ]);
 
       setUsers(usersRes.data?.data || usersRes.data || []);
       setRolesList(rolesRes.data?.data || rolesRes.data || []); 
       setDeptList(deptsRes.data?.data || deptsRes.data || []);
-      setFactoryList(factsRes.data?.data || factsRes.data || []); // [NEW]
+      setFactoryList(factsRes.data?.data || factsRes.data || []); 
       setAllPermissions(permsRes.data?.data || permsRes.data || []);
     } catch (error: any) {
       message.error('Không thể tải dữ liệu hệ thống.');
@@ -95,7 +95,7 @@ const UserManagement: React.FC = () => {
       email: record.email,
       roleId: record.roleId, 
       departmentId: record.departmentId,
-      factoryId: record.factoryId, // [NEW] Load factoryId lên form
+      factoryId: record.factoryId, 
       isActive: record.isActive,
       password: '' 
     });
@@ -155,7 +155,7 @@ const UserManagement: React.FC = () => {
       ),
     },
     {
-        title: 'Khu vực làm việc', // [NEW] Cột mới để hiển thị Nhà máy
+        title: 'Khu vực làm việc', 
         key: 'factory',
         render: (_, record) => (
             <Space direction="vertical" size={0}>
@@ -256,8 +256,14 @@ const UserManagement: React.FC = () => {
               children: (
                 <div style={{ padding: '10px 0' }}>
                   <Row gutter={16}>
-                    <Col span={12}><Form.Item name="id" label="Mã NV" rules={[{ required: true }]}><Input disabled={!!editingUser} /></Form.Item></Col>
-                    <Col span={12}><Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}><Input disabled={!!editingUser} /></Form.Item></Col>
+                    <Col span={12}>
+                        {/* MÃ NV GIỮ NGUYÊN DISABLED VÌ LÀ KEY */}
+                        <Form.Item name="id" label="Mã NV" rules={[{ required: true }]}><Input disabled={!!editingUser} /></Form.Item>
+                    </Col>
+                    <Col span={12}>
+                        {/* [ĐÃ SỬA] BỎ disabled={!!editingUser} ĐỂ CHO PHÉP SỬA EMAIL */}
+                        <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}><Input /></Form.Item>
+                    </Col>
                   </Row>
                   <Form.Item name="fullName" label="Họ tên" rules={[{ required: true }]}><Input /></Form.Item>
                   <Form.Item name="password" label="Mật khẩu"><Input.Password placeholder={editingUser ? "Để trống nếu không đổi" : "Nhập mật khẩu"} /></Form.Item>
@@ -275,7 +281,6 @@ const UserManagement: React.FC = () => {
                     </Col>
                   </Row>
 
-                  {/* [NEW] DROPDOWN CHỌN NHÀ MÁY */}
                   <Form.Item 
                     name="factoryId" 
                     label={
