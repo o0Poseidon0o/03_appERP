@@ -20,7 +20,7 @@ import UserManagement from "./pages/admin/UserManagement";
 import DepartmentManagement from "./pages/department/DepartmentManagement";
 import RoleManagement from "./pages/Role/RoleManagement";
 import MenuManagement from "./pages/admin/MenuManagement";
-import WorkflowManagement from "./pages/admin/WorkflowManagement"; 
+import WorkflowManagement from "./pages/admin/WorkflowManagement";
 
 // 4. Warehouse System (Kho & Nhà máy & Vật tư)
 import ItemManagement from "./pages/warehouse/ItemManagement";
@@ -30,7 +30,7 @@ import WarehouseManagement from "./pages/warehouse/WarehouseManagement";
 import PendingApprovals from "./pages/warehouse/PendingApprovals";
 import StockTransaction from "./pages/warehouse/StockTransaction";
 import StockActual from "./pages/warehouse/StockActual";
-import MonthlyReport from "./pages/warehouse/MonthlyReport"; 
+import MonthlyReport from "./pages/warehouse/MonthlyReport";
 
 // 5. [NEW] IT Asset Management (ITAM)
 import AssetList from "./pages/itam/AssetList";
@@ -44,7 +44,7 @@ import RoleRoute from "./components/RoleRoute";
 // Component chặn người chưa đăng nhập
 const PrivateRoute = ({ children }: { children: JSX.Element }) => {
   const { token, isLoading } = useAuth();
-  
+
   if (isLoading) {
     return (
       <div className="h-screen flex justify-center items-center bg-gray-50">
@@ -52,7 +52,7 @@ const PrivateRoute = ({ children }: { children: JSX.Element }) => {
       </div>
     );
   }
-  
+
   return token ? children : <Navigate to="/login" replace />;
 };
 
@@ -76,10 +76,10 @@ const AppContent = () => {
     <ConfigProvider
       theme={{
         algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: { 
-          colorPrimary: "#6366f1", 
-          borderRadius: 8, 
-          fontFamily: "'Inter', system-ui, sans-serif" 
+        token: {
+          colorPrimary: "#6366f1",
+          borderRadius: 8,
+          fontFamily: "'Inter', system-ui, sans-serif",
         },
         components: {
           Layout: {
@@ -102,11 +102,17 @@ const AppContent = () => {
           {/* ========================================================= */}
           {/* 2. PROTECTED ROUTES (Phải đăng nhập) */}
           {/* ========================================================= */}
-          <Route path="/" element={<PrivateRoute><MainLayout /></PrivateRoute>}>
-            
+          <Route
+            path="/"
+            element={
+              <PrivateRoute>
+                <MainLayout />
+              </PrivateRoute>
+            }
+          >
             {/* Trang chủ: Tự động điều hướng dựa trên Role */}
             <Route index element={<DashboardGuard />} />
-            
+
             {/* Các trang chung */}
             <Route path="posts" element={<PostPage />} />
             <Route path="profile" element={<Profile />} />
@@ -120,47 +126,67 @@ const AppContent = () => {
 
             {/* B. PHÒNG BAN: Cần quyền DEPT_VIEW */}
             <Route element={<RoleRoute requiredPermission="DEPT_VIEW" />}>
-              <Route path="admin/departments" element={<DepartmentManagement />} />
+              <Route
+                path="admin/departments"
+                element={<DepartmentManagement />}
+              />
             </Route>
 
             {/* C. HẠ TẦNG & KHO: Cần quyền WMS_VIEW */}
             <Route element={<RoleRoute requiredPermission="WMS_VIEW" />}>
-              <Route path="warehouse/locations" element={<WarehouseManagement />} /> 
+              <Route
+                path="warehouse/locations"
+                element={<WarehouseManagement />}
+              />
               <Route path="warehouse/items" element={<ItemManagement />} />
-              <Route path="warehouse/categories" element={<CategoryManagement />} />
+              <Route
+                path="warehouse/categories"
+                element={<CategoryManagement />}
+              />
               <Route path="warehouse/stock" element={<StockActual />} />
               <Route path="warehouse/suppliers" element={<SupplierPage />} />
-              <Route path="warehouse/transactions" element={<StockTransaction />} />
-              <Route path="warehouse/report/monthly" element={<MonthlyReport />} />
+              <Route
+                path="warehouse/transactions"
+                element={<StockTransaction />}
+              />
+              <Route
+                path="warehouse/report/monthly"
+                element={<MonthlyReport />}
+              />
             </Route>
 
             {/* D. PHÊ DUYỆT PHIẾU: Cần quyền WMS_APPROVE */}
             <Route element={<RoleRoute requiredPermission="WMS_APPROVE" />}>
-              <Route path="warehouse/approvals" element={<PendingApprovals />} />
+              <Route
+                path="warehouse/approvals"
+                element={<PendingApprovals />}
+              />
             </Route>
 
             {/* [NEW] E. QUẢN LÝ THIẾT BỊ (ITAM): Cần quyền ASSET_VIEW hoặc Admin */}
             {/* Tạm thời cho Admin vào trước, sau này bạn seed quyền ASSET_VIEW vào DB thì đổi lại */}
-            <Route element={<RoleRoute allowedRoles={["ROLE-ADMIN", "ROLE-IT"]} />}>
-                <Route path="assets" element={<AssetList />} />
-                {/* <Route path="assets/:id" element={<AssetDetail />} /> */}
+            <Route
+              element={<RoleRoute allowedRoles={["ROLE-ADMIN", "ROLE-IT"]} />}
+            >
+              <Route path="itam" element={<AssetList />} />
+              {/* <Route path="assets/:id" element={<AssetDetail />} /> */}
             </Route>
 
             {/* F. CẤU HÌNH HỆ THỐNG: Cần quyền ROLE_VIEW */}
             <Route element={<RoleRoute requiredPermission="ROLE_VIEW" />}>
-                <Route path="admin/roles" element={<RoleManagement />} />
+              <Route path="admin/roles" element={<RoleManagement />} />
             </Route>
-            
+
             {/* G. QUẢN LÝ MENU & WORKFLOW (Admin tối cao) */}
             <Route element={<RoleRoute allowedRoles={["ROLE-ADMIN"]} />}>
-                <Route path="admin/menus" element={<MenuManagement />} />
-                <Route path="admin/workflows" element={<WorkflowManagement />} />
+              <Route path="admin/menus" element={<MenuManagement />} />
+              <Route path="admin/workflows" element={<WorkflowManagement />} />
             </Route>
 
             {/* Route không tồn tại -> Quay về trang chủ */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
-          
+
           {/* Route rác -> Login */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

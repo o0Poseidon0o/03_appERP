@@ -286,7 +286,7 @@ const MainLayout: React.FC = () => {
     const canSeeAssets = hasPermission('ASSET_VIEW') || user?.roleId === 'ROLE-ADMIN';
     if (canSeeAssets) {
         items.push({
-            key: '/assets', // Link tới trang AssetList
+            key: '/itam', // Link tới trang AssetList
             icon: <DesktopOutlined />,
             label: 'Quản lý thiết bị (IT)'
         });
