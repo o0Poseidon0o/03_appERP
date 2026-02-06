@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Input, Select, message, Row, Col } from 'antd'; // Bỏ Divider
+import { Modal, Form, Input, Select, message, Row, Col } from 'antd'; 
 import { assetService } from '../../services/assetService';
 import axiosClient from '../../api/axiosClient';
 
@@ -16,10 +16,11 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
   
   // State dữ liệu cho Dropdown
   const [types, setTypes] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);       // List nhân viên
-  const [factories, setFactories] = useState<any[]>([]);// List nhà máy
+  const [users, setUsers] = useState<any[]>([]);       
+  const [factories, setFactories] = useState<any[]>([]);
   const [parentDevices, setParentDevices] = useState<any[]>([]);
 
+  // 1. Load danh mục (Giữ nguyên)
   useEffect(() => {
     if (open) {
         const fetchMasterData = async () => {
@@ -31,11 +32,10 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
                     assetService.getAll({ search: '', limit: 100 })
                 ]);
 
-                setTypes(typeRes);
+                setTypes(typeRes.data.data || []); 
                 setUsers(userRes.data.data?.users || userRes.data.data || []); 
                 setFactories(factoryRes.data.data || []); 
                 setParentDevices(pcRes.data.data);
-
             } catch (error) {
                 console.error("Lỗi tải dữ liệu nguồn:", error);
             }
@@ -44,8 +44,12 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
     }
   }, [open]);
 
+  // 2. [QUAN TRỌNG] Fill dữ liệu vào Form khi mở Modal (Sửa)
   useEffect(() => {
     if (open && initialValues) {
+      // Tách customSpecs (JSON) ra thành các field lẻ để hiển thị lên input
+      const specs = initialValues.customSpecs || {};
+
       form.setFieldsValue({
         ...initialValues,
         typeId: initialValues.typeId,
@@ -55,20 +59,45 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
         serialNumber: initialValues.serialNumber,
         domainUser: initialValues.domainUser,
         userIds: initialValues.users?.map((u: any) => u.id) || [], 
+        
+        // [MỚI] Map các trường phần cứng
+        manufacturer: initialValues.manufacturer,
+        modelName: initialValues.modelName,
+        osName: initialValues.osName,
+        ipAddress: initialValues.ipAddress,
+        macAddress: initialValues.macAddress,
+        
+        // [MỚI] Map thông số kỹ thuật từ JSON ra Input
+        cpu: specs.cpu,
+        ram: specs.ram,
+        disk: specs.disk,
       });
     } else if (open && !initialValues) {
       form.resetFields();
     }
   }, [initialValues, open, form]);
 
+  // 3. [QUAN TRỌNG] Xử lý trước khi Lưu (Gom lại thành JSON)
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
+      // Chuẩn bị payload: Gom CPU, RAM, Disk vào lại customSpecs
+      const payload = {
+          ...values,
+          customSpecs: {
+              cpu: values.cpu,
+              ram: values.ram,
+              disk: values.disk,
+              // Giữ lại các field khác trong customSpecs cũ nếu có (để không bị mất dữ liệu Agent cũ)
+              ...(initialValues?.customSpecs || {}) 
+          }
+      };
+
       if (initialValues?.id) {
-        await assetService.update(initialValues.id, values);
+        await assetService.update(initialValues.id, payload);
         message.success("Cập nhật thành công!");
       } else {
-        await assetService.create(values);
+        await assetService.create(payload);
         message.success("Tạo mới thành công!");
       }
       onSuccess();
@@ -79,68 +108,109 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
     }
   };
 
-  // Component tiêu đề Section dùng Tailwind
   const SectionTitle = ({ title }: { title: string }) => (
     <div className="flex items-center gap-3 mb-4 mt-2">
       <span className="text-blue-700 font-bold text-base uppercase tracking-wide whitespace-nowrap">
         {title}
       </span>
-      <div className="h-px bg-gray-200 flex-1"></div> {/* Đường kẻ mờ */}
+      <div className="h-px bg-gray-200 flex-1"></div>
     </div>
   );
 
   return (
     <Modal
-      title={initialValues ? "Cập nhật thông tin tài sản" : "Thêm tài sản mới"}
+      title={initialValues ? <span className="text-blue-600 font-bold">Cập nhật: {initialValues.name}</span> : "Thêm tài sản mới"}
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}
       confirmLoading={loading}
-      width={850}
-      maskClosable={false} // Chặn click ra ngoài đóng form
+      width={900}
+      maskClosable={false}
+      style={{ top: 20 }}
     >
       <Form form={form} layout="vertical" onFinish={onFinish} className="pt-2">
         
         {/* --- PHẦN 1: THÔNG TIN CƠ BẢN --- */}
-        <SectionTitle title="Thông tin thiết bị" />
+        <SectionTitle title="Thông tin chung" />
         
         <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item name="name" label="Tên thiết bị (Hostname)" rules={[{ required: true, message: 'Vui lòng nhập tên máy' }]}>
-              <Input placeholder="VD: PC-IT-01, LAPTOP-KETOAN..." />
+          <Col span={8}>
+            <Form.Item name="name" label="Hostname (Tên máy)" rules={[{ required: true, message: 'Bắt buộc nhập' }]}>
+              <Input placeholder="VD: PC-IT-01..." />
             </Form.Item>
           </Col>
-          <Col span={12}>
-            <Form.Item name="typeId" label="Loại thiết bị" rules={[{ required: true, message: 'Chọn loại thiết bị' }]}>
+          <Col span={8}>
+            <Form.Item name="typeId" label="Loại thiết bị" rules={[{ required: true, message: 'Bắt buộc chọn' }]}>
               <Select placeholder="Chọn loại...">
                 {types.map(t => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
               </Select>
             </Form.Item>
           </Col>
-        </Row>
-
-        <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item name="serialNumber" label="Serial Number">
-              <Input placeholder="Nhập số Serial..." />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item 
-                name="domainUser" 
-                label="User Domain (Windows Account)" 
-                tooltip="Tên tài khoản đang đăng nhập trên máy (VD: TOWA\NguyenVanA)"
-            >
-              <Input placeholder="VD: TOWA\Admin..." />
+          <Col span={8}>
+             <Form.Item name="serialNumber" label="Serial Number">
+              <Input placeholder="Số Serial..." />
             </Form.Item>
           </Col>
         </Row>
 
-        {/* --- PHẦN 2: QUẢN LÝ & VỊ TRÍ --- */}
+        {/* --- PHẦN 2: CHI TIẾT PHẦN CỨNG (NHẬP TAY) --- */}
+        <SectionTitle title="Chi tiết Phần cứng (Nhập tay)" />
+        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-4">
+            <Row gutter={16}>
+                <Col span={12}>
+                    <Form.Item name="manufacturer" label="Hãng sản xuất">
+                        <Input placeholder="VD: Dell, HP, Lenovo..." />
+                    </Form.Item>
+                </Col>
+                <Col span={12}>
+                    <Form.Item name="modelName" label="Tên Model">
+                        <Input placeholder="VD: OptiPlex 3050..." />
+                    </Form.Item>
+                </Col>
+            </Row>
+            
+            <Row gutter={16}>
+                <Col span={12}>
+                    <Form.Item name="cpu" label="CPU (Vi xử lý)">
+                        <Input placeholder="VD: Intel Core i5-8500 @ 3.00GHz" />
+                    </Form.Item>
+                </Col>
+                <Col span={6}>
+                    <Form.Item name="ram" label="RAM">
+                        <Input placeholder="VD: 16 GB" />
+                    </Form.Item>
+                </Col>
+                <Col span={6}>
+                    <Form.Item name="disk" label="Ổ cứng">
+                        <Input placeholder="VD: 256GB SSD + 1TB HDD" />
+                    </Form.Item>
+                </Col>
+            </Row>
+
+            <Row gutter={16}>
+                <Col span={8}>
+                    <Form.Item name="osName" label="Hệ điều hành">
+                        <Input placeholder="VD: Microsoft Windows 10 Pro" />
+                    </Form.Item>
+                </Col>
+                <Col span={8}>
+                    <Form.Item name="ipAddress" label="Địa chỉ IP (LAN)">
+                        <Input placeholder="VD: 192.168.1.105" />
+                    </Form.Item>
+                </Col>
+                <Col span={8}>
+                    <Form.Item name="macAddress" label="Địa chỉ MAC">
+                        <Input placeholder="VD: AA:BB:CC:11:22:33" />
+                    </Form.Item>
+                </Col>
+            </Row>
+        </div>
+
+        {/* --- PHẦN 3: QUẢN LÝ & VỊ TRÍ --- */}
         <SectionTitle title="Quản lý & Vị trí" />
 
         <Row gutter={16}>
-          <Col span={12}>
+          <Col span={8}>
              <Form.Item name="factoryId" label="Nhà máy / Chi nhánh">
                 <Select placeholder="Chọn nhà máy..." allowClear>
                     {factories.map((f: any) => (
@@ -149,7 +219,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
                 </Select>
              </Form.Item>
           </Col>
-          <Col span={12}>
+          <Col span={8}>
             <Form.Item name="status" label="Trạng thái" initialValue="NEW">
               <Select>
                 <Select.Option value="NEW">Mới nhập</Select.Option>
@@ -160,14 +230,18 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
               </Select>
             </Form.Item>
           </Col>
+          <Col span={8}>
+            <Form.Item name="domainUser" label="User Domain (Đang Login)">
+              <Input placeholder="VD: TOWA\Admin..." />
+            </Form.Item>
+          </Col>
         </Row>
 
         <Row gutter={16}>
            <Col span={24}>
              <Form.Item 
                name="userIds" 
-               label="Người được biên chế sử dụng (Có thể chọn nhiều)" 
-               tooltip="Chọn nhân viên chịu trách nhiệm quản lý máy này"
+               label="Người được biên chế sử dụng (ITAM Assign)" 
              >
                <Select 
                  mode="multiple" 
@@ -186,21 +260,6 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
              </Form.Item>
            </Col>
         </Row>
-
-        <Row gutter={16}>
-           <Col span={12}>
-             <Form.Item name="parentId" label="Thiết bị cha (Nếu là linh kiện đi kèm)">
-               <Select allowClear showSearch placeholder="Chọn PC quản lý..." optionFilterProp="children">
-                 {parentDevices.map((pc: any) => (
-                    <Select.Option key={pc.id} value={pc.id}>{pc.name}</Select.Option>
-                 ))}
-               </Select>
-             </Form.Item>
-           </Col>
-        </Row>
-
-        {/* Các field ẩn */}
-        <Form.Item name="customSpecs" hidden><Input /></Form.Item>
       </Form>
     </Modal>
   );

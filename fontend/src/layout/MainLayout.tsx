@@ -286,9 +286,16 @@ const MainLayout: React.FC = () => {
     const canSeeAssets = hasPermission('ASSET_VIEW') || user?.roleId === 'ROLE-ADMIN';
     if (canSeeAssets) {
         items.push({
-            key: '/itam', // Link tới trang AssetList
-            icon: <DesktopOutlined />,
-            label: 'Quản lý thiết bị (IT)'
+            key: 'grp-itam', 
+            icon: <DesktopOutlined />, 
+            label: 'Quản lý thiết bị (IT)',
+            children: [
+                // [MỚI] Thêm Dashboard vào đầu danh sách
+                { key: '/itam/dashboard', label: 'Dashboard (Tổng quan)' }, 
+                
+                { key: '/itam', label: 'Máy tính (PC/Laptop)' }, 
+                { key: '/itam/peripherals', label: 'Thiết bị ngoại vi' }, 
+            ]
         });
     }
 

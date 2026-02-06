@@ -1,15 +1,25 @@
 import dotenv from 'dotenv';
+import http from 'http'; // [1] Import module http
 import app from './app';
+import { initSocket } from './socket'; // [2] Import file socket
 
 dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 
-const server = app.listen(PORT, () => {
+// [3] Tạo HTTP Server bọc lấy Express App
+const httpServer = http.createServer(app);
+
+// [4] Khởi tạo Socket.io gắn vào server này
+initSocket(httpServer);
+
+// [5] QUAN TRỌNG: Đổi app.listen thành httpServer.listen
+const server = httpServer.listen(PORT, () => {
   console.log(`✅ Server đang chạy tại port ${PORT}`);
+  console.log(`🚀 Socket.io đã sẵn sàng!`);
 });
 
-// Xử lý lỗi Unhandled Rejection (ví dụ DB rớt mạng)
+// Xử lý lỗi Unhandled Rejection (Giữ nguyên)
 process.on('unhandledRejection', (err: any) => {
   console.log('UNHANDLED REJECTION! 💥 Đang tắt server...');
   console.log(err.name, err.message);

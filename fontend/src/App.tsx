@@ -35,9 +35,11 @@ import MonthlyReport from "./pages/warehouse/MonthlyReport";
 // 5. [NEW] IT Asset Management (ITAM)
 import AssetList from "./pages/itam/AssetList";
 // import AssetDetail from "./pages/itam/AssetDetail"; // (Bật lên khi đã tạo file này)
+import DashboardItam from "./pages/itam/Dashboard";
 
 // 6. Security Component
 import RoleRoute from "./components/RoleRoute";
+import PeripheralList from "./pages/itam/PeripheralList";
 
 // --- COMPONENTS BẢO VỆ ---
 
@@ -170,6 +172,9 @@ const AppContent = () => {
             >
               <Route path="itam" element={<AssetList />} />
               {/* <Route path="assets/:id" element={<AssetDetail />} /> */}
+              {/* Route cho Ngoại vi (Màn hình, Chuột, Phím...) */}
+              <Route path="itam/peripherals" element={<PeripheralList />} />
+              <Route path="/itam/dashboard" element={<DashboardItam />} />
             </Route>
 
             {/* F. CẤU HÌNH HỆ THỐNG: Cần quyền ROLE_VIEW */}

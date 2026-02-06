@@ -26,6 +26,12 @@ import workflowRoutes from './routes/workflow.routes';
 import ticketRoutes from './routes/ticket.routes';
 // -------------Quản lý thiết bị ITAM ---------------
 import assetRoutes from './routes/itam/asset.routes';
+import assetTypeRoutes from "./routes/itam/assetType.routes";
+import dashboardRoutes from './routes/itam/dashboard.routes';
+
+import maintenanceRoutes from './routes/itam/maintenance.routes';
+
+
 const app = express();
 
 // --- [SỬA LỖI 413] TĂNG GIỚI HẠN KÍCH THƯỚC BODY ---
@@ -83,6 +89,9 @@ app.use('/api/workflows', workflowRoutes);
 app.use('/api/tickets', ticketRoutes);
 // ----Quản lý thiết bị ITAM ----
 app.use('/api/assets', assetRoutes);
+app.use('/api/asset-types', assetTypeRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/maintenance", maintenanceRoutes);
 
 // --- 4. ERROR HANDLING ---
 app.all('*', (req: Request, res: Response, next: NextFunction) => {
