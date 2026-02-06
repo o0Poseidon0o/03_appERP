@@ -14,13 +14,14 @@ import axiosClient from '../../api/axiosClient';
 const { Title, Text } = Typography;
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
+// Kết nối Socket (đảm bảo URL đúng với backend)
 const socket = io("http://localhost:3000"); 
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
 
-  // [MỚI] State quản lý Modal chi tiết
+  // State quản lý Modal chi tiết
   const [modalConfig, setModalConfig] = useState<{ open: boolean, title: string, data: any[], type: 'BROKEN' | 'LOW_RAM' | null }>({
       open: false, title: '', data: [], type: null
   });
@@ -38,18 +39,21 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchStats();
+    
+    // Lắng nghe sự kiện realtime từ Socket
     socket.on("asset_updated", () => fetchStats());
     socket.on("hardware_alert", (data: any) => {
         message.warning(data.message);
         fetchStats();
     });
+    
     return () => {
         socket.off("asset_updated");
         socket.off("hardware_alert");
     };
   }, []);
 
-  // [MỚI] Hàm mở Modal xem danh sách
+  // Hàm mở Modal xem danh sách
   const showDetails = (type: 'BROKEN' | 'LOW_RAM') => {
       if (type === 'BROKEN') {
           setModalConfig({
@@ -68,7 +72,7 @@ const Dashboard = () => {
       }
   };
 
-  // [MỚI] Cấu hình cột cho bảng trong Modal
+  // Cấu hình cột cho bảng trong Modal
   const getModalColumns = () => {
       const baseColumns = [
           { title: 'Tên máy', dataIndex: 'name', key: 'name', render: (t: string) => <b className="text-blue-600">{t}</b> },
@@ -94,13 +98,21 @@ const Dashboard = () => {
                   title: 'Trạng thái', 
                   dataIndex: 'status', 
                   key: 'status',
-                  render: (s: string) => <Tag color="red">{s}</Tag>
+                  render: (s: string) => {
+                      const color = s === 'BROKEN' ? 'red' : s === 'REPAIR' ? 'orange' : 'default';
+                      return <Tag color={color}>{s}</Tag>;
+                  }
               }
           ];
       }
   };
 
   if (loading) return <div className="flex justify-center items-center h-screen bg-slate-50"><Spin size="large" /></div>;
+
+  // Safe data access (tránh lỗi undefined khi render biểu đồ)
+  const pieData = stats?.charts?.byStatus || [];
+  const barTypeData = stats?.charts?.byType || [];
+  const barFactoryData = stats?.charts?.byFactory || [];
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen">
@@ -115,7 +127,7 @@ const Dashboard = () => {
       {/* --- HÀNG 1: CARDS --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         
-        {/* Card Tổng (Không click) */}
+        {/* Card Tổng */}
         <Card bordered={false} className="shadow-sm rounded-xl">
           <Statistic 
             title={<span className="text-slate-500 font-medium">Tổng tài sản</span>}
@@ -172,25 +184,24 @@ const Dashboard = () => {
 
       {/* --- CÁC BIỂU ĐỒ --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-         {/* Card 1: PieChart */}
+         
+         {/* Chart 1: Trạng thái (Pie) */}
          <Card title="Tỷ lệ trạng thái" bordered={false} className="shadow-sm rounded-xl h-96">
-            {stats?.charts?.byStatus?.length > 0 ? (
+            {pieData.length > 0 ? (
                 <div className="h-80 w-full"> 
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                     <Pie
-                        data={stats?.charts?.byStatus}
+                        data={pieData}
                         cx="50%" cy="50%"
                         innerRadius={60} outerRadius={80}
                         fill="#8884d8"
                         paddingAngle={5}
                         dataKey="value"
-                        // [FIX TS18048] Thêm fallback || 0 cho percent
                         label={({percent}) => `${((percent || 0) * 100).toFixed(0)}%`}
                     >
-                        {/* [FIX TS6133] Đổi tên biến entry thành _ để báo hiệu không dùng */}
-                        {stats?.charts?.byStatus.map((_: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        {pieData.map((_: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                     </Pie>
                     <Tooltip />
@@ -201,12 +212,12 @@ const Dashboard = () => {
             ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dữ liệu" />}
         </Card>
 
-        {/* Card 2: BarChart Type */}
+        {/* Chart 2: Loại thiết bị (Bar) */}
         <Card title="Phân loại thiết bị" bordered={false} className="shadow-sm rounded-xl h-96">
-            {stats?.charts?.byType?.length > 0 ? (
+            {barTypeData.length > 0 ? (
                 <div className="h-80 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={stats?.charts?.byType} margin={{ top: 20, right: 10, left: 0, bottom: 5 }}>
+                    <BarChart data={barTypeData} margin={{ top: 20, right: 10, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis dataKey="name" tick={{fill: '#64748b', fontSize: 12}} />
                     <Tooltip cursor={{fill: '#f1f5f9'}} />
@@ -217,12 +228,12 @@ const Dashboard = () => {
             ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dữ liệu" />}
         </Card>
 
-        {/* Card 3: BarChart Factory */}
+        {/* Chart 3: Nhà máy (Horizontal Bar) */}
         <Card title={<><ShopOutlined className="mr-2 text-indigo-500"/>PC/Laptop tại Nhà máy</>} bordered={false} className="shadow-sm rounded-xl h-96">
-            {stats?.charts?.byFactory?.length > 0 ? (
+            {barFactoryData.length > 0 ? (
                 <div className="h-80 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart layout="vertical" data={stats?.charts?.byFactory} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
+                    <BarChart layout="vertical" data={barFactoryData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                     <XAxis type="number" hide />
                     <YAxis dataKey="name" type="category" width={100} tick={{fill: '#475569', fontWeight: 500}} />

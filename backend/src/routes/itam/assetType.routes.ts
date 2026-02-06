@@ -6,22 +6,28 @@ import {
     deleteAssetType, 
     seedAssetTypes 
 } from '../../controllers/itam/assetType.controller';
+import { protect, hasPermission } from '../../middlewares/authMiddleware';
 
 const router = express.Router();
 
-// GET /api/asset-types -> Lấy danh sách
-router.get('/', getAssetTypes);
+// ==========================================
+// BẢO VỆ ROUTE (Yêu cầu đăng nhập)
+// ==========================================
+router.use(protect);
 
-// POST /api/asset-types -> Tạo mới
-router.post('/', createAssetType);
+// GET /api/asset-types -> Lấy danh sách (Cần quyền Xem)
+router.get('/', hasPermission('ITAM_ASSET_VIEW'), getAssetTypes);
 
-// PATCH /api/asset-types/:id -> Cập nhật
-router.patch('/:id', updateAssetType);
+// POST /api/asset-types -> Tạo mới loại tài sản (Cần quyền Tạo)
+router.post('/', hasPermission('ITAM_ASSET_CREATE'), createAssetType);
 
-// DELETE /api/asset-types/:id -> Xóa
-router.delete('/:id', deleteAssetType);
+// PATCH /api/asset-types/:id -> Cập nhật (Cần quyền Cập nhật)
+router.patch('/:id', hasPermission('ITAM_ASSET_UPDATE'), updateAssetType);
 
-// POST /api/asset-types/seed -> Reset/Init data
-router.post('/seed', seedAssetTypes);
+// DELETE /api/asset-types/:id -> Xóa (Cần quyền Xóa)
+router.delete('/:id', hasPermission('ITAM_ASSET_DELETE'), deleteAssetType);
+
+// POST /api/asset-types/seed -> Reset/Init data (Cần quyền Tạo - thường dành cho Admin lúc setup)
+router.post('/seed', hasPermission('ITAM_ASSET_CREATE'), seedAssetTypes);
 
 export default router;

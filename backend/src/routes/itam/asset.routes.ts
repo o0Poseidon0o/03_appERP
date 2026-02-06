@@ -1,26 +1,41 @@
 import express from 'express';
-import { syncAssetAgent, getAllAssets, deleteAsset, updateAsset, getAssetById, createAsset } from '../../controllers/itam/asset.controller';
+import { 
+    syncAssetAgent, 
+    getAllAssets, 
+    deleteAsset, 
+    updateAsset, 
+    getAssetById, 
+    createAsset 
+} from '../../controllers/itam/asset.controller';
 import { protect, hasPermission } from '../../middlewares/authMiddleware';
-// (Lưu ý: Chỉnh lại đường dẫn import bên trên cho đúng vị trí file controller của bạn)
 
 const router = express.Router();
 
 // ==========================================
-// ĐỊNH NGHĨA CÁC API CHO ITAM (ASSET)
+// 1. PUBLIC ROUTE (Dùng API Key riêng)
 // ==========================================
+// Route này dành cho PowerShell Agent gửi dữ liệu lên, không cần login User
+// Bảo mật bằng x-api-key trong header (đã check trong controller)
+router.post('/sync', syncAssetAgent);
 
-// 1. API nhận dữ liệu từ PowerShell Agent
-// URL đầy đủ sẽ là: POST /api/assets/sync
-router.post('/sync',syncAssetAgent);
 
-// Sau này bạn có thể thêm các route khác ở đây, ví dụ:
-// router.get('/', getAllAssets); // Lấy danh sách máy
-// router.get('/:id', getAssetDetail); // Xem chi tiết 1 máy
-router.get('/', getAllAssets);
+// ==========================================
+// 2. PROTECTED ROUTES (Cần Login)
+// ==========================================
+// Áp dụng middleware protect cho tất cả các route bên dưới
+router.use(protect);
 
-router.get('/', getAllAssets);           // Lấy danh sách
-router.post('/', createAsset);           // Tạo mới (POST /api/assets)
-router.get('/:id', getAssetById);        // Xem chi tiết (GET /api/assets/uuid-123)
-router.patch('/:id', updateAsset);       // Cập nhật (PATCH /api/assets/uuid-123)
-router.delete('/:id', deleteAsset);      // Xóa (DELETE /api/assets/uuid-123)
+// --- Xem danh sách & Chi tiết (Cần quyền VIEW) ---
+router.get('/', hasPermission('ITAM_ASSET_VIEW'), getAllAssets);
+router.get('/:id', hasPermission('ITAM_ASSET_VIEW'), getAssetById);
+
+// --- Tạo mới (Cần quyền CREATE) ---
+router.post('/', hasPermission('ITAM_ASSET_CREATE'), createAsset);
+
+// --- Cập nhật (Cần quyền UPDATE) ---
+router.patch('/:id', hasPermission('ITAM_ASSET_UPDATE'), updateAsset);
+
+// --- Xóa (Cần quyền DELETE) ---
+router.delete('/:id', hasPermission('ITAM_ASSET_DELETE'), deleteAsset);
+
 export default router;

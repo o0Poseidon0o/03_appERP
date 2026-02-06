@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Table, Button, Input, Tag, Space, Popconfirm, message, Select } from 'antd';
+import { Table, Button, Input, Tag, Space, Popconfirm, message, Select, Tooltip } from 'antd';
 import { 
   ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined, 
   LinkOutlined, QrcodeOutlined 
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { assetService } from '../../services/assetService';
- // Tái sử dụng Form cũ
 import type { IAsset } from '../../types/itam.types';
 import PeripheralForm from './PeripheralForm';
+
+// [1] Import hook check quyền
+import { useHasPermission } from '../../hooks/useHasPermission';
 
 const PeripheralList = () => {
   const [data, setData] = useState<IAsset[]>([]);
@@ -16,7 +18,9 @@ const PeripheralList = () => {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [searchText, setSearchText] = useState('');
   
-  // Bộ lọc loại thiết bị (Chỉ load các loại ngoại vi)
+  // [2] Lấy hàm check quyền
+  const { hasPermission } = useHasPermission();
+
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
   const [peripheralTypes, setPeripheralTypes] = useState<any[]>([]);
 
@@ -28,7 +32,6 @@ const PeripheralList = () => {
     const fetchTypes = async () => {
         try {
             const res = await assetService.getAssetTypes();
-            // Lọc bỏ PC, Laptop, Server -> Chỉ lấy ngoại vi
             const pTypes = res.data.data.filter((t: any) => 
                 !['PC', 'LAPTOP', 'SERVER'].includes(t.code)
             );
@@ -42,20 +45,15 @@ const PeripheralList = () => {
   const fetchData = async (page = 1) => {
     setLoading(true);
     try {
-      // Nếu user chọn loại cụ thể thì lọc, nếu không thì backend trả về hết (hoặc bạn cần BE hỗ trợ lọc nhiều loại)
-      // Tạm thời ở đây ta lọc theo typeId nếu có
       const res = await assetService.getAll({
         page,
         limit: pagination.pageSize,
         search: searchText,
-        typeId: selectedType, // Lọc theo dropdown
+        typeId: selectedType, 
       });
       
-      // [QUAN TRỌNG] Nếu API chưa hỗ trợ lọc "Ngoại vi", ta có thể lọc phía Client tạm thời
-      // Tuy nhiên tốt nhất là chọn Type từ Dropdown
       let fetchedData = res.data.data;
       
-      // Nếu chưa chọn type, ta lọc thủ công bỏ PC/Laptop để bảng nhìn sạch sẽ (Optional)
       if (!selectedType) {
           fetchedData = fetchedData.filter((item: IAsset) => 
             !['PC', 'LAPTOP', 'SERVER'].includes(item.type?.code || '')
@@ -63,7 +61,7 @@ const PeripheralList = () => {
       }
 
       setData(fetchedData);
-      setPagination({ ...pagination, current: page, total: res.data.total }); // Total này có thể sai nếu filter client, nên update BE chuẩn hơn sau
+      setPagination({ ...pagination, current: page, total: res.data.total }); 
     } catch (error) {
       console.error(error);
     } finally {
@@ -146,13 +144,22 @@ const PeripheralList = () => {
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
-          <Button 
-            size="small" type="text" className="text-blue-600" icon={<EditOutlined />} 
-            onClick={() => { setEditingItem(record); setIsModalOpen(true); }} 
-          />
-          <Popconfirm title="Xóa thiết bị này?" onConfirm={() => handleDelete(record.id)}>
-             <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {/* [3] Check quyền Sửa */}
+          {hasPermission('ITAM_ASSET_UPDATE') && (
+              <Tooltip title="Chỉnh sửa">
+                  <Button 
+                    size="small" type="text" className="text-blue-600" icon={<EditOutlined />} 
+                    onClick={() => { setEditingItem(record); setIsModalOpen(true); }} 
+                  />
+              </Tooltip>
+          )}
+          
+          {/* [4] Check quyền Xóa */}
+          {hasPermission('ITAM_ASSET_DELETE') && (
+              <Popconfirm title="Xóa thiết bị này?" onConfirm={() => handleDelete(record.id)}>
+                 <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+          )}
         </Space>
       )
     }
@@ -180,9 +187,13 @@ const PeripheralList = () => {
             </Select>
             <Button icon={<ReloadOutlined />} onClick={() => fetchData(pagination.current)} />
          </Space>
-         <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); setIsModalOpen(true); }}>
-            Thêm ngoại vi
-         </Button>
+
+         {/* [5] Check quyền Thêm mới */}
+         {hasPermission('ITAM_ASSET_CREATE') && (
+             <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); setIsModalOpen(true); }}>
+                Thêm ngoại vi
+             </Button>
+         )}
       </div>
 
       <Table 

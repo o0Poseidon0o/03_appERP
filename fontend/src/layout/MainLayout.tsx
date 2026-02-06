@@ -281,20 +281,26 @@ const MainLayout: React.FC = () => {
       }
     }
 
-    // [UPDATE] Module Quản lý thiết bị (ITAM)
-    // Hiển thị nếu User là Admin hoặc có quyền xem tài sản
-    const canSeeAssets = hasPermission('ASSET_VIEW') || user?.roleId === 'ROLE-ADMIN';
+    // 5. [UPDATE] QUẢN LÝ THIẾT BỊ (ITAM)
+    // Check quyền: Admin hoặc người có quyền xem tài sản (ITAM_ASSET_VIEW)
+    const canSeeAssets = hasPermission('ITAM_ASSET_VIEW') || user?.roleId === 'ROLE-ADMIN' || user?.roleId === 'IT_MANAGER';
+    
     if (canSeeAssets) {
         items.push({
             key: 'grp-itam', 
             icon: <DesktopOutlined />, 
             label: 'Quản lý thiết bị (IT)',
             children: [
-                // [MỚI] Thêm Dashboard vào đầu danh sách
-                { key: '/itam/dashboard', label: 'Dashboard (Tổng quan)' }, 
+                // Dashboard ITAM
+                { key: '/itam/dashboard', label: 'Dashboard IT', icon: <BarChartOutlined /> }, 
                 
-                { key: '/itam', label: 'Máy tính (PC/Laptop)' }, 
-                { key: '/itam/peripherals', label: 'Thiết bị ngoại vi' }, 
+                // Danh sách máy tính
+                { key: '/itam', label: 'Máy tính & Server', icon: <DatabaseOutlined /> }, 
+                
+                // Danh mục loại tài sản (Chỉ Admin/IT Manager)
+                ...(hasPermission('ITAM_ASSET_CREATE') ? [
+                    { key: '/itam/types', label: 'Loại tài sản', icon: <TagsOutlined /> }
+                ] : [])
             ]
         });
     }

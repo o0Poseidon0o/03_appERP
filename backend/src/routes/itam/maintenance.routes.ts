@@ -4,16 +4,22 @@ import {
     createMaintenanceLog, 
     completeMaintenanceLog 
 } from '../../controllers/itam/maintenance.controller';
+import { protect, hasPermission } from '../../middlewares/authMiddleware';
 
 const router = express.Router();
 
-// GET /api/maintenance/:assetId -> Lấy lịch sử của 1 máy
-router.get('/:assetId', getAssetMaintenanceHistory);
+// ==========================================
+// BẢO VỆ ROUTE (Yêu cầu đăng nhập)
+// ==========================================
+router.use(protect);
 
-// POST /api/maintenance -> Tạo phiếu mới (Máy chuyển sang màu đỏ REPAIR)
-router.post('/', createMaintenanceLog);
+// GET /api/maintenance/:assetId -> Lấy lịch sử (Chỉ cần quyền Xem tài sản)
+router.get('/:assetId', hasPermission('ITAM_ASSET_VIEW'), getAssetMaintenanceHistory);
 
-// PATCH /api/maintenance/:id/complete -> Báo đã sửa xong (Máy chuyển sang màu xanh IN_USE)
-router.patch('/:id/complete', completeMaintenanceLog);
+// POST /api/maintenance -> Tạo phiếu mới (Cần quyền Quản lý Bảo trì)
+router.post('/', hasPermission('ITAM_MAINTENANCE'), createMaintenanceLog);
+
+// PATCH /api/maintenance/:id/complete -> Báo sửa xong (Cần quyền Quản lý Bảo trì)
+router.patch('/:id/complete', hasPermission('ITAM_MAINTENANCE'), completeMaintenanceLog);
 
 export default router;

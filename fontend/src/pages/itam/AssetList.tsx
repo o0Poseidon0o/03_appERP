@@ -14,6 +14,9 @@ import AssetSoftwareDrawer from './AssetSoftwareDrawer';
 import AssetMaintenanceDrawer from './AssetMaintenanceDrawer'; 
 import type { IAsset } from '../../types/itam.types';
 
+// [UPDATE 1] Import hook check quyền
+import { useHasPermission } from '../../hooks/useHasPermission';
+
 // Kết nối tới Socket Server (Thay IP nếu deploy lên server thật)
 const socket = io("http://localhost:3000"); 
 
@@ -21,6 +24,9 @@ const AssetList = () => {
   const [data, setData] = useState<IAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
+
+  // [UPDATE 2] Lấy hàm check quyền
+  const { hasPermission } = useHasPermission();
 
   // Các state cho Modal/Drawer
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -57,12 +63,14 @@ const AssetList = () => {
 
   useEffect(() => {
     fetchData(); 
-    // [FIX] Xóa biến payload thừa vì không dùng đến
+    
+    // [FIX] Xóa tham số payload thừa
     socket.on("asset_updated", () => {
         if (!searchText) {
             fetchData();
         }
     });
+    
     return () => {
         socket.off("asset_updated");
     };
@@ -95,6 +103,7 @@ const AssetList = () => {
   };
 
   const columns: ColumnsType<IAsset> = [
+    // ... (Giữ nguyên các cột hiển thị thông tin: Thiết bị, Hệ thống, Cấu hình, Màn hình, Quản lý, Trạng thái) ...
     {
       title: 'Thiết bị',
       key: 'info',
@@ -161,25 +170,18 @@ const AssetList = () => {
          </div>
       ) : <span className="text-gray-400">-</span>
     },
-    // [CẬP NHẬT] CỘT MÀN HÌNH (HIỂN THỊ KÍCH THƯỚC)
     {
       title: 'Màn hình',
       key: 'monitors',
       width: 220,
       render: (_, record) => {
-          // Lọc component loại màn hình
           const monitors = record.components?.filter((c: any) => c.type === 'MONITOR') || [];
-          
           if (monitors.length === 0) return <span className="text-gray-300 italic text-xs">Không có thông tin</span>;
 
           return (
               <div className="text-xs flex flex-col gap-2">
                   {monitors.map((m: any) => {
-                      // [LOGIC MỚI] Lấy size từ specs (cột JSON)
-                      // Ép kiểu 'any' để truy cập thuộc tính trong JSON
                       const specs: any = m.specs || {};
-                      
-                      // Kiểm tra xem có size không để hiển thị Tag
                       const sizeTag = specs.size && specs.size !== 'N/A' && specs.size !== 'Unknown' 
                           ? <Tag color="cyan" className="ml-1 text-[10px] py-0 px-1 leading-tight">{specs.size}</Tag> 
                           : null;
@@ -192,7 +194,6 @@ const AssetList = () => {
                                       <div className="font-semibold text-slate-700 truncate" title={m.name}>
                                           {m.name}
                                       </div>
-                                      {/* Hiển thị Tag kích thước ở đây */}
                                       {sizeTag}
                                   </div>
                                   
@@ -205,18 +206,13 @@ const AssetList = () => {
                           </div>
                       );
                   })}
-                  
-                  {monitors.length > 2 && (
-                      <div className="text-right">
-                          <Tag className="mr-0" color="processing">Tổng: {monitors.length} màn hình</Tag>
-                      </div>
-                  )}
+                  {monitors.length > 2 && <div className="text-right"><Tag className="mr-0" color="processing">Tổng: {monitors.length}</Tag></div>}
               </div>
           );
       }
     },
     {
-      title: 'Quản lý & Vị trí',
+      title: 'Quản lý',
       key: 'management',
       width: 200,
       render: (_, record) => (
@@ -235,9 +231,7 @@ const AssetList = () => {
                        </Tooltip>
                    ))}
                </div>
-           ) : (
-               <span className="text-gray-400 italic">Chưa bàn giao</span>
-           )}
+           ) : <span className="text-gray-400 italic">Chưa bàn giao</span>}
         </div>
       )
     },
@@ -253,11 +247,7 @@ const AssetList = () => {
                 return <Tag color={colors[record.status] || 'default'}>{record.status}</Tag>
             })()}
             <div className="text-[10px] text-gray-400 mt-1">
-               {record.lastSeen ? (
-                   <Tooltip title={new Date(record.lastSeen).toLocaleString()}>
-                       <span>🕒 {new Date(record.lastSeen).toLocaleDateString()}</span>
-                   </Tooltip>
-               ) : 'Offline'}
+               {record.lastSeen ? <Tooltip title={new Date(record.lastSeen).toLocaleString()}><span>🕒 {new Date(record.lastSeen).toLocaleDateString()}</span></Tooltip> : 'Offline'}
             </div>
          </div>
       )
@@ -269,23 +259,32 @@ const AssetList = () => {
       fixed: 'right',
       render: (_, record) => (
         <Space direction="horizontal" size="small">
-          <Tooltip title="Lịch sử Sửa chữa / Nâng cấp">
-              <Button 
-                size="small" className="text-orange-600 hover:bg-orange-50 border-orange-200" icon={<ToolOutlined />} 
-                onClick={() => handleOpenMaintenance(record)} 
-              />
-          </Tooltip>
+          {/* [UPDATE 3] Nút Bảo trì - Cần quyền MAINTENANCE */}
+          {hasPermission('ITAM_MAINTENANCE') && (
+              <Tooltip title="Lịch sử Sửa chữa / Nâng cấp">
+                  <Button 
+                    size="small" className="text-orange-600 hover:bg-orange-50 border-orange-200" icon={<ToolOutlined />} 
+                    onClick={() => handleOpenMaintenance(record)} 
+                  />
+              </Tooltip>
+          )}
 
-          <Tooltip title="Chỉnh sửa thông tin">
-            <Button 
-                size="small" type="text" className="text-blue-600 hover:bg-blue-50" icon={<EditOutlined />} 
-                onClick={() => { setEditingItem(record); setIsModalOpen(true); }} 
-            />
-          </Tooltip>
+          {/* [UPDATE 4] Nút Sửa - Cần quyền UPDATE */}
+          {hasPermission('ITAM_ASSET_UPDATE') && (
+              <Tooltip title="Chỉnh sửa thông tin">
+                <Button 
+                    size="small" type="text" className="text-blue-600 hover:bg-blue-50" icon={<EditOutlined />} 
+                    onClick={() => { setEditingItem(record); setIsModalOpen(true); }} 
+                />
+              </Tooltip>
+          )}
           
-          <Popconfirm title="Xóa tài sản này?" onConfirm={() => handleDelete(record.id)}>
-             <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {/* [UPDATE 5] Nút Xóa - Cần quyền DELETE */}
+          {hasPermission('ITAM_ASSET_DELETE') && (
+              <Popconfirm title="Xóa tài sản này?" onConfirm={() => handleDelete(record.id)}>
+                 <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+          )}
         </Space>
       )
     }
@@ -307,9 +306,13 @@ const AssetList = () => {
                 enterButton 
             />
             <Button icon={<ReloadOutlined />} onClick={() => fetchData()} />
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); setIsModalOpen(true); }}>
-                Thêm Máy tính
-            </Button>
+            
+            {/* [UPDATE 6] Nút Thêm mới - Cần quyền CREATE */}
+            {hasPermission('ITAM_ASSET_CREATE') && (
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); setIsModalOpen(true); }}>
+                    Thêm Máy tính
+                </Button>
+            )}
          </Space>
       </div>
 

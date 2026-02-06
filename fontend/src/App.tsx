@@ -36,10 +36,11 @@ import MonthlyReport from "./pages/warehouse/MonthlyReport";
 import AssetList from "./pages/itam/AssetList";
 // import AssetDetail from "./pages/itam/AssetDetail"; // (Bật lên khi đã tạo file này)
 import DashboardItam from "./pages/itam/Dashboard";
+import PeripheralList from "./pages/itam/PeripheralList";
+// import AssetTypeManagement from "./pages/itam/AssetTypeManagement"; // (Bật lên khi đã tạo file này)
 
 // 6. Security Component
 import RoleRoute from "./components/RoleRoute";
-import PeripheralList from "./pages/itam/PeripheralList";
 
 // --- COMPONENTS BẢO VỆ ---
 
@@ -165,17 +166,30 @@ const AppContent = () => {
               />
             </Route>
 
-            {/* [NEW] E. QUẢN LÝ THIẾT BỊ (ITAM): Cần quyền ASSET_VIEW hoặc Admin */}
-            {/* Tạm thời cho Admin vào trước, sau này bạn seed quyền ASSET_VIEW vào DB thì đổi lại */}
-            <Route
-              element={<RoleRoute allowedRoles={["ROLE-ADMIN", "ROLE-IT"]} />}
-            >
-              <Route path="itam" element={<AssetList />} />
-              {/* <Route path="assets/:id" element={<AssetDetail />} /> */}
-              {/* Route cho Ngoại vi (Màn hình, Chuột, Phím...) */}
-              <Route path="itam/peripherals" element={<PeripheralList />} />
-              <Route path="/itam/dashboard" element={<DashboardItam />} />
+            {/* ========================================================= */}
+            {/* [NEW] E. QUẢN LÝ THIẾT BỊ (ITAM) - PHÂN QUYỀN CHUẨN */}
+            {/* ========================================================= */}
+            
+            {/* 1. Nhóm Dashboard ITAM (Cần quyền ITAM_DASHBOARD) */}
+            <Route element={<RoleRoute requiredPermission="ITAM_DASHBOARD" />}>
+                 <Route path="itam/dashboard" element={<DashboardItam />} />
             </Route>
+
+            {/* 2. Nhóm Danh sách Tài sản (Cần quyền ITAM_ASSET_VIEW) */}
+            <Route element={<RoleRoute requiredPermission="ITAM_ASSET_VIEW" />}>
+                 <Route path="itam" element={<AssetList />} />
+                 {/* Route cho Ngoại vi (Màn hình, Chuột, Phím...) */}
+                 <Route path="itam/peripherals" element={<PeripheralList />} />
+                 {/* <Route path="assets/:id" element={<AssetDetail />} /> */}
+            </Route>
+
+            {/* 3. Nhóm Cấu hình Danh mục (Cần quyền ITAM_ASSET_CREATE) */}
+            {/* Ví dụ trang quản lý Loại tài sản - Bật khi có trang AssetTypeManagement */}
+            {/* <Route element={<RoleRoute requiredPermission="ITAM_ASSET_CREATE" />}>
+                 <Route path="itam/types" element={<AssetTypeManagement />} />
+            </Route> */}
+
+            {/* ========================================================= */}
 
             {/* F. CẤU HÌNH HỆ THỐNG: Cần quyền ROLE_VIEW */}
             <Route element={<RoleRoute requiredPermission="ROLE_VIEW" />}>
