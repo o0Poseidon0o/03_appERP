@@ -73,8 +73,6 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
     // 3. Xử lý hoàn tất sửa chữa
     const handleComplete = async (id: string) => {
         try {
-            // Ở đây tạm thời set cost = 0 hoặc giữ nguyên. 
-            // Nếu muốn kỹ hơn, bạn có thể hiện Modal nhỏ bắt nhập chi phí thực tế.
             await axiosClient.patch(`/maintenance/${id}/complete`, { 
                 note: "Hoàn tất bởi Admin" 
             });
@@ -109,7 +107,8 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
             title: 'Thực hiện',
             key: 'provider',
             width: 150,
-            render: (_, record: any) => (
+            // [FIX TS7006] Thêm kiểu : any cho tham số _
+            render: (_: any, record: any) => (
                 <Space direction="vertical" size={0}>
                     <div className="flex items-center gap-1 text-xs font-semibold text-gray-600">
                         {record.providerType === 'INTERNAL' 
@@ -141,7 +140,8 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
             title: '',
             key: 'action',
             width: 80,
-            render: (_, record: any) => record.status === 'IN_PROGRESS' && (
+            // [FIX TS7006] Thêm kiểu : any cho tham số _
+            render: (_: any, record: any) => record.status === 'IN_PROGRESS' && (
                 <Popconfirm title="Xác nhận đã sửa xong?" description="Máy sẽ chuyển về trạng thái Sẵn sàng." onConfirm={() => handleComplete(record.id)}>
                     <Button size="small" type="primary" icon={<CheckCircleOutlined />}>Xong</Button>
                 </Popconfirm>
@@ -222,7 +222,8 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
                                 <InputNumber 
                                     className="w-full" 
                                     formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                                    parser={value => value!.replace(/\$\s?|(,*)/g, '')}
+                                    // [FIX TS2322] Sửa kiểu trả về của parser
+                                    parser={(value) => value ? value.replace(/\$\s?|(,*)/g, '') : ''}
                                     min={0}
                                     step={10000}
                                 />

@@ -57,7 +57,8 @@ const AssetList = () => {
 
   useEffect(() => {
     fetchData(); 
-    socket.on("asset_updated", (payload: any) => {
+    // [FIX] Xóa biến payload thừa vì không dùng đến
+    socket.on("asset_updated", () => {
         if (!searchText) {
             fetchData();
         }

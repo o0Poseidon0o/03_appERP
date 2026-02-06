@@ -170,9 +170,8 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* --- CÁC BIỂU ĐỒ GIỮ NGUYÊN NHƯ CŨ --- */}
+      {/* --- CÁC BIỂU ĐỒ --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-         {/* Copy lại phần biểu đồ từ code cũ dán vào đây (để tiết kiệm không gian hiển thị) */}
          {/* Card 1: PieChart */}
          <Card title="Tỷ lệ trạng thái" bordered={false} className="shadow-sm rounded-xl h-96">
             {stats?.charts?.byStatus?.length > 0 ? (
@@ -186,9 +185,11 @@ const Dashboard = () => {
                         fill="#8884d8"
                         paddingAngle={5}
                         dataKey="value"
-                        label={({percent}) => `${(percent * 100).toFixed(0)}%`}
+                        // [FIX TS18048] Thêm fallback || 0 cho percent
+                        label={({percent}) => `${((percent || 0) * 100).toFixed(0)}%`}
                     >
-                        {stats?.charts?.byStatus.map((entry: any, index: number) => (
+                        {/* [FIX TS6133] Đổi tên biến entry thành _ để báo hiệu không dùng */}
+                        {stats?.charts?.byStatus.map((_: any, index: number) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                     </Pie>
@@ -236,7 +237,7 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* --- GỢI Ý HÀNH ĐỘNG (Giữ nguyên) --- */}
+      {/* --- GỢI Ý HÀNH ĐỘNG --- */}
       <Card title={<><InfoCircleOutlined className="mr-2 text-blue-500"/>Gợi ý hành động quản trị</>} bordered={false} className="shadow-sm rounded-xl">
         <List
             grid={{ gutter: 16, column: 2, xs: 1 }}
@@ -255,7 +256,7 @@ const Dashboard = () => {
         />
       </Card>
 
-      {/* --- [MỚI] MODAL HIỂN THỊ DANH SÁCH CHI TIẾT --- */}
+      {/* --- MODAL HIỂN THỊ DANH SÁCH CHI TIẾT --- */}
       <Modal
         title={modalConfig.title}
         open={modalConfig.open}

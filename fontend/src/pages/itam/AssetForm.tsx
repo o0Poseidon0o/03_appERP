@@ -18,24 +18,24 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
   const [types, setTypes] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);       
   const [factories, setFactories] = useState<any[]>([]);
-  const [parentDevices, setParentDevices] = useState<any[]>([]);
+  
+  // [FIX] Đã xóa state 'parentDevices' vì không dùng đến
 
-  // 1. Load danh mục (Giữ nguyên)
+  // 1. Load danh mục
   useEffect(() => {
     if (open) {
         const fetchMasterData = async () => {
             try {
-                const [typeRes, userRes, factoryRes, pcRes] = await Promise.all([
+                // [FIX] Xóa phần load PC cha để tránh dư thừa
+                const [typeRes, userRes, factoryRes] = await Promise.all([
                     assetService.getAssetTypes(),
                     axiosClient.get('/users?limit=1000'), 
                     axiosClient.get('/factories'),        
-                    assetService.getAll({ search: '', limit: 100 })
                 ]);
 
                 setTypes(typeRes.data.data || []); 
                 setUsers(userRes.data.data?.users || userRes.data.data || []); 
                 setFactories(factoryRes.data.data || []); 
-                setParentDevices(pcRes.data.data);
             } catch (error) {
                 console.error("Lỗi tải dữ liệu nguồn:", error);
             }
@@ -44,30 +44,27 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
     }
   }, [open]);
 
-  // 2. [QUAN TRỌNG] Fill dữ liệu vào Form khi mở Modal (Sửa)
+  // 2. Fill dữ liệu vào Form
   useEffect(() => {
     if (open && initialValues) {
-      // Tách customSpecs (JSON) ra thành các field lẻ để hiển thị lên input
       const specs = initialValues.customSpecs || {};
 
       form.setFieldsValue({
         ...initialValues,
         typeId: initialValues.typeId,
         factoryId: initialValues.factoryId,
-        parentId: initialValues.parentId,
+        // parentId: initialValues.parentId, // [FIX] Đã xóa trường này
         status: initialValues.status,
         serialNumber: initialValues.serialNumber,
         domainUser: initialValues.domainUser,
         userIds: initialValues.users?.map((u: any) => u.id) || [], 
         
-        // [MỚI] Map các trường phần cứng
         manufacturer: initialValues.manufacturer,
         modelName: initialValues.modelName,
         osName: initialValues.osName,
         ipAddress: initialValues.ipAddress,
         macAddress: initialValues.macAddress,
         
-        // [MỚI] Map thông số kỹ thuật từ JSON ra Input
         cpu: specs.cpu,
         ram: specs.ram,
         disk: specs.disk,
@@ -77,18 +74,16 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
     }
   }, [initialValues, open, form]);
 
-  // 3. [QUAN TRỌNG] Xử lý trước khi Lưu (Gom lại thành JSON)
+  // 3. Xử lý trước khi Lưu
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
-      // Chuẩn bị payload: Gom CPU, RAM, Disk vào lại customSpecs
       const payload = {
           ...values,
           customSpecs: {
               cpu: values.cpu,
               ram: values.ram,
               disk: values.disk,
-              // Giữ lại các field khác trong customSpecs cũ nếu có (để không bị mất dữ liệu Agent cũ)
               ...(initialValues?.customSpecs || {}) 
           }
       };
