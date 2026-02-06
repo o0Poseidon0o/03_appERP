@@ -21,14 +21,10 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(false);
     
-    // State điều khiển chế độ xem: List (false) hay Form (true)
     const [isAdding, setIsAdding] = useState(false);
-    
     const [form] = Form.useForm();
-    // Theo dõi loại hình thực hiện để đổi label (Nội bộ / Thuê ngoài)
     const providerType = Form.useWatch('providerType', form);
 
-    // 1. Hàm lấy dữ liệu lịch sử
     const fetchHistory = async () => {
         if (!asset) return;
         setLoading(true);
@@ -42,7 +38,6 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
         }
     };
 
-    // Reset khi mở Drawer
     useEffect(() => {
         if (open && asset) {
             fetchHistory();
@@ -50,18 +45,14 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
         }
     }, [open, asset]);
 
-    // 2. Xử lý tạo phiếu mới
     const handleCreate = async (values: any) => {
         try {
             await axiosClient.post('/maintenance', {
                 ...values,
                 assetId: asset?.id,
-                // Chuyển date object sang ISO string
                 startDate: values.startDate ? values.startDate.toISOString() : new Date().toISOString()
             });
             message.success("Đã tạo phiếu sửa chữa & Cập nhật trạng thái máy");
-            
-            // Reset form và quay về list
             setIsAdding(false);
             form.resetFields();
             fetchHistory(); 
@@ -70,7 +61,6 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
         }
     };
 
-    // 3. Xử lý hoàn tất sửa chữa
     const handleComplete = async (id: string) => {
         try {
             await axiosClient.patch(`/maintenance/${id}/complete`, { 
@@ -83,7 +73,6 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
         }
     };
 
-    // Cấu hình cột cho bảng lịch sử
     const columns = [
         {
             title: 'Ngày',
@@ -107,7 +96,6 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
             title: 'Thực hiện',
             key: 'provider',
             width: 150,
-            // [FIX TS7006] Thêm kiểu : any cho tham số _
             render: (_: any, record: any) => (
                 <Space direction="vertical" size={0}>
                     <div className="flex items-center gap-1 text-xs font-semibold text-gray-600">
@@ -140,7 +128,6 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
             title: '',
             key: 'action',
             width: 80,
-            // [FIX TS7006] Thêm kiểu : any cho tham số _
             render: (_: any, record: any) => record.status === 'IN_PROGRESS' && (
                 <Popconfirm title="Xác nhận đã sửa xong?" description="Máy sẽ chuyển về trạng thái Sẵn sàng." onConfirm={() => handleComplete(record.id)}>
                     <Button size="small" type="primary" icon={<CheckCircleOutlined />}>Xong</Button>
@@ -162,7 +149,6 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
             onClose={onClose}
             styles={{ body: { paddingBottom: 80 } }}
         >
-            {/* VIEW 1: FORM TẠO MỚI */}
             {isAdding ? (
                 <div className="animate-fade-in">
                     <div className="flex items-center mb-4">
@@ -219,13 +205,13 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
                             </div>
 
                             <Form.Item name="cost" label="Chi phí dự kiến (VNĐ)">
-                                <InputNumber 
+                                {/* [FIX TS2322] Thêm generic <string> và dùng min dạng chuỗi */}
+                                <InputNumber<string>
                                     className="w-full" 
                                     formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                                    // [FIX TS2322] Sửa kiểu trả về của parser
-                                    parser={(value) => value ? value.replace(/\$\s?|(,*)/g, '') : ''}
-                                    min={0}
-                                    step={10000}
+                                    parser={(value) => value?.replace(/\$\s?|(,*)/g, '') || ''}
+                                    min="0"
+                                    step="10000"
                                 />
                             </Form.Item>
 
@@ -239,7 +225,6 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
                     </Form>
                 </div>
             ) : (
-                // VIEW 2: DANH SÁCH LỊCH SỬ
                 <div className="animate-fade-in">
                     <div className="flex justify-between items-center mb-4">
                         <div className="text-gray-500">
