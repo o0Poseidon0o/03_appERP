@@ -46,7 +46,7 @@ const AssetList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IAsset | null>(null);
   
-  // [RESTORED] State cho Software Drawer
+  // State cho Software Drawer
   const [softwareDrawerOpen, setSoftwareDrawerOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<IAsset | null>(null);
 
@@ -80,12 +80,12 @@ const AssetList = () => {
       } catch (err: any) { message.error(err.response?.data?.message || "Không thể xóa"); }
   }
 
-  // [RESTORED] Hàm mở Software Drawer
   const handleViewSoftware = (asset: IAsset) => {
       setSelectedAsset(asset);
       setSoftwareDrawerOpen(true);
   };
 
+  // [FIX TS6133] This function is now used in the Action column
   const handleOpenMaintenance = (asset: IAsset) => {
       setMaintenanceAsset(asset);
       setMaintenanceDrawerOpen(true);
@@ -115,6 +115,7 @@ const AssetList = () => {
         </Space>
       )
     },
+    // --- [CỘT HỆ THỐNG: GIỮ MAC, BỎ VERSION] ---
     {
         title: 'Hệ thống',
         key: 'system',
@@ -187,7 +188,6 @@ const AssetList = () => {
 
                 {disk && <div className="truncate text-gray-500" title={disk}>HDD: {disk}</div>}
                 
-                {/* [RESTORED] Nút xem danh sách phần mềm */}
                 {record._count?.softwares ? (
                     <div className="mt-1 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => handleViewSoftware(record)}>
                         <Badge count={record._count.softwares} overflowCount={999} style={{ backgroundColor: '#52c41a' }} /> 
@@ -291,7 +291,8 @@ const AssetList = () => {
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
-          {hasPermission('ITAM_MAINTENANCE') && <Button size="small" icon={<ToolOutlined />} onClick={() => { setMaintenanceAsset(record); setMaintenanceDrawerOpen(true); }} />}
+          {/* [FIX TS6133] Use handleOpenMaintenance */}
+          {hasPermission('ITAM_MAINTENANCE') && <Button size="small" icon={<ToolOutlined />} onClick={() => handleOpenMaintenance(record)} />}
           {hasPermission('ITAM_ASSET_UPDATE') && <Button size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(record); setIsModalOpen(true); }} />}
           {hasPermission('ITAM_ASSET_DELETE') && <Popconfirm title="Xóa?" onConfirm={() => handleDelete(record.id)}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm>}
         </Space>
