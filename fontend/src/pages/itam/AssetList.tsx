@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Table, Button, Input, Tag, Space, Popconfirm, message, Tooltip, Badge } from 'antd';
+import { Table, Button, Input, Tag, Space, Popconfirm, message, Tooltip, Badge, Popover } from 'antd';
 import { 
   ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined, 
   DesktopOutlined, WindowsOutlined, AuditOutlined, 
   LaptopOutlined, CloudServerOutlined, ToolOutlined, UserOutlined,
-  FundProjectionScreenOutlined, GlobalOutlined 
+  FundProjectionScreenOutlined, GlobalOutlined, 
+  ThunderboltOutlined 
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { io } from "socket.io-client"; 
@@ -13,22 +14,16 @@ import AssetForm from './AssetForm';
 import AssetSoftwareDrawer from './AssetSoftwareDrawer'; 
 import AssetMaintenanceDrawer from './AssetMaintenanceDrawer'; 
 import type { IAsset } from '../../types/itam.types';
-
-// [UPDATE 1] Import hook check quyền
 import { useHasPermission } from '../../hooks/useHasPermission';
 
-// Kết nối tới Socket Server (Thay IP nếu deploy lên server thật)
 const socket = io("http://localhost:3000"); 
 
 const AssetList = () => {
   const [data, setData] = useState<IAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
-
-  // [UPDATE 2] Lấy hàm check quyền
   const { hasPermission } = useHasPermission();
 
-  // Các state cho Modal/Drawer
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IAsset | null>(null);
   
@@ -38,42 +33,23 @@ const AssetList = () => {
   const [maintenanceDrawerOpen, setMaintenanceDrawerOpen] = useState(false);
   const [maintenanceAsset, setMaintenanceAsset] = useState<IAsset | null>(null);
 
-  // Load dữ liệu
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await assetService.getAll({
-        page: 1,      
-        limit: 1000, 
-        search: searchText
-      });
-      
+      const res = await assetService.getAll({ page: 1, limit: 1000, search: searchText });
       const allAssets = res.data.data || [];
       const computingAssets = allAssets.filter((item: IAsset) => 
           ['PC', 'LAPTOP', 'SERVER'].includes(item.type?.code || '')
       );
-
       setData(computingAssets);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { console.error(error); } 
+    finally { setLoading(false); }
   };
 
   useEffect(() => {
     fetchData(); 
-    
-    // [FIX] Xóa tham số payload thừa
-    socket.on("asset_updated", () => {
-        if (!searchText) {
-            fetchData();
-        }
-    });
-    
-    return () => {
-        socket.off("asset_updated");
-    };
+    socket.on("asset_updated", () => !searchText && fetchData());
+    return () => { socket.off("asset_updated"); };
   }, [searchText]); 
 
   const handleDelete = async (id: string) => {
@@ -81,9 +57,7 @@ const AssetList = () => {
           await assetService.delete(id);
           message.success("Đã xóa thiết bị");
           fetchData();
-      } catch (err: any) {
-          message.error(err.response?.data?.message || "Không thể xóa");
-      }
+      } catch (err: any) { message.error(err.response?.data?.message || "Không thể xóa"); }
   }
 
   const handleViewSoftware = (asset: IAsset) => {
@@ -103,11 +77,10 @@ const AssetList = () => {
   };
 
   const columns: ColumnsType<IAsset> = [
-    // ... (Giữ nguyên các cột hiển thị thông tin: Thiết bị, Hệ thống, Cấu hình, Màn hình, Quản lý, Trạng thái) ...
     {
       title: 'Thiết bị',
       key: 'info',
-      width: 250,
+      width: 220,
       render: (_, record) => (
         <Space direction="vertical" size={0}>
           <div className="font-bold text-blue-600 flex items-center gap-2 text-base">
@@ -117,128 +90,163 @@ const AssetList = () => {
              <Tag bordered={false} className="mr-0">{record.type?.name}</Tag>
              <span>{record.manufacturer} {record.modelName}</span>
           </div>
-          {record.serialNumber && (
-            <div className="text-xs text-gray-400 copyable mt-1" title="Serial Number">
-               SN: <span className="font-mono">{record.serialNumber}</span>
-            </div>
-          )}
+          {record.serialNumber && <div className="text-xs text-gray-400 font-mono mt-1">SN: {record.serialNumber}</div>}
         </Space>
       )
     },
+    // --- [CỘT HỆ THỐNG: GIỮ MAC, BỎ VERSION] ---
     {
-      title: 'Hệ thống',
-      key: 'system',
-      width: 220,
-      render: (_, record) => (
-         <div className="text-xs space-y-1">
-            {record.osName && (
-                <div className="flex items-center gap-1 text-gray-700">
-                    <WindowsOutlined /> {record.osName} <span className="text-gray-400">{record.osVersion}</span>
-                </div>
-            )}
-            <div className="flex flex-col text-gray-500 font-mono">
-                {record.ipAddress && <span><GlobalOutlined /> IP: {record.ipAddress}</span>}
-                {record.macAddress && <span className="ml-4 text-xs">MAC: {record.macAddress}</span>}
-            </div>
-            {record.domainUser && (
-                <Tooltip title="User Domain đang đăng nhập">
-                    <Tag color="purple" className="m-0 mt-1"><AuditOutlined /> {record.domainUser}</Tag>
-                </Tooltip>
-            )}
-         </div>
-      )
+        title: 'Hệ thống',
+        key: 'system',
+        width: 220,
+        render: (_, record) => (
+           <div className="text-xs space-y-1">
+              {record.osName && (
+                  <div className="flex items-center gap-1 text-gray-700">
+                      <WindowsOutlined /> 
+                      {/* Chỉ hiện tên OS, đã xóa phần record.osVersion */}
+                      {record.osName} 
+                  </div>
+              )}
+              <div className="flex flex-col text-gray-500 font-mono">
+                  {record.ipAddress && <span><GlobalOutlined /> IP: {record.ipAddress}</span>}
+                  {/* Vẫn giữ dòng MAC Address */}
+                  {record.macAddress && <span className="ml-4 text-xs">MAC: {record.macAddress}</span>}
+              </div>
+              {record.domainUser && (
+                  <Tooltip title="User Domain đang đăng nhập">
+                      <Tag color="purple" className="m-0 mt-1"><AuditOutlined /> {record.domainUser}</Tag>
+                  </Tooltip>
+              )}
+           </div>
+        )
     },
     {
-      title: 'Cấu hình',
+      title: 'Cấu hình (CPU/RAM/GPU)',
       key: 'specs',
-      width: 180,
-      render: (_, record) => record.customSpecs ? (
-         <div className="text-xs space-y-1">
-            {record.customSpecs.cpu && <div className="truncate font-semibold" title={record.customSpecs.cpu}>CPU: {record.customSpecs.cpu}</div>}
-            {record.customSpecs.ram && <div>RAM: <span className="text-green-600 font-bold">{record.customSpecs.ram}</span></div>}
-            {record.customSpecs.disk && <div className="truncate text-gray-500" title={record.customSpecs.disk}>HDD: {record.customSpecs.disk}</div>}
-            
-            {record._count?.softwares ? (
-                <div 
-                    className="mt-1 cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => handleViewSoftware(record)} 
-                >
-                    <Badge count={record._count.softwares} overflowCount={999} style={{ backgroundColor: '#52c41a' }} /> 
-                    <span className="ml-1 text-blue-600 underline">Xem apps đã cài</span>
+      width: 200,
+      render: (_, record) => {
+          if (!record.customSpecs) return <span className="text-gray-400">-</span>;
+          const { cpu, ram, disk, ramDetails, gpus } = record.customSpecs;
+
+          const ramContent = (
+              <div className="text-xs">
+                  <div className="font-bold border-b mb-1 pb-1">Chi tiết RAM ({ram})</div>
+                  {Array.isArray(ramDetails) && ramDetails.length > 0 ? ramDetails.map((r: any, idx: number) => (
+                      <div key={idx} className="mb-1">Slot {r.Slot}: <b>{r.Capacity}</b> ({r.Speed}) - {r.Manufacturer}</div>
+                  )) : "Không có thông tin chi tiết"}
+              </div>
+          );
+
+          const gpuContent = (
+              <div className="text-xs">
+                  <div className="font-bold border-b mb-1 pb-1">Card Đồ họa (GPU)</div>
+                  {Array.isArray(gpus) && gpus.length > 0 ? gpus.map((g: any, idx: number) => (
+                      <div key={idx} className="mb-1">- {g.Name} (VRAM: {g.VRAM})</div>
+                  )) : "Onboard / Không có thông tin"}
+              </div>
+          );
+
+          return (
+             <div className="text-xs space-y-1">
+                {cpu && <div className="truncate font-semibold" title={cpu}>CPU: {cpu}</div>}
+                
+                <div className="flex items-center gap-2">
+                    <Popover content={ramContent} title={null}>
+                        <Tag color="geekblue" className="cursor-help m-0">RAM: {ram}</Tag>
+                    </Popover>
+                    {Array.isArray(gpus) && gpus.length > 0 && (
+                        <Popover content={gpuContent} title={null}>
+                            <Tag color="orange" className="cursor-help m-0">GPU</Tag>
+                        </Popover>
+                    )}
                 </div>
-            ) : null}
-         </div>
-      ) : <span className="text-gray-400">-</span>
+
+                {disk && <div className="truncate text-gray-500" title={disk}>HDD: {disk}</div>}
+                
+                {record._count?.softwares ? (
+                    <div className="mt-1 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => handleViewSoftware(record)}>
+                        <Badge count={record._count.softwares} overflowCount={999} style={{ backgroundColor: '#52c41a' }} /> 
+                        <span className="ml-1 text-blue-600 underline">Xem apps đã cài</span>
+                    </div>
+                ) : null}
+             </div>
+          );
+      }
     },
     {
-      title: 'Màn hình',
-      key: 'monitors',
-      width: 220,
+      title: 'Ngoại vi & Màn hình',
+      key: 'components',
+      width: 250,
       render: (_, record) => {
-          const monitors = record.components?.filter((c: any) => c.type === 'MONITOR') || [];
-          if (monitors.length === 0) return <span className="text-gray-300 italic text-xs">Không có thông tin</span>;
+          const comps = record.components || [];
+          const monitors = comps.filter((c: any) => c.type === 'MONITOR');
+          const peripherals = comps.filter((c: any) => ['MOUSE', 'KEYBOARD'].includes(c.type));
+
+          if (monitors.length === 0 && peripherals.length === 0) return <span className="text-gray-300 italic text-xs">-</span>;
 
           return (
               <div className="text-xs flex flex-col gap-2">
                   {monitors.map((m: any) => {
                       const specs: any = m.specs || {};
-                      const sizeTag = specs.size && specs.size !== 'N/A' && specs.size !== 'Unknown' 
-                          ? <Tag color="cyan" className="ml-1 text-[10px] py-0 px-1 leading-tight">{specs.size}</Tag> 
-                          : null;
-
                       return (
-                          <div key={m.id} className="flex items-start gap-2 p-1.5 bg-gray-50 rounded border border-gray-100 hover:bg-blue-50 transition-colors">
-                              <FundProjectionScreenOutlined className="text-blue-500 mt-1 text-sm" />
-                              <div className="overflow-hidden flex-1">
-                                  <div className="flex items-center justify-between">
-                                      <div className="font-semibold text-slate-700 truncate" title={m.name}>
-                                          {m.name}
-                                      </div>
-                                      {sizeTag}
-                                  </div>
-                                  
-                                  {m.serialNumber && m.serialNumber !== "0" && m.serialNumber !== "N/A" && (
-                                      <div className="text-[10px] text-gray-400 font-mono truncate mt-0.5" title={m.serialNumber}>
-                                          SN: {m.serialNumber}
-                                      </div>
-                                  )}
-                              </div>
+                          <div key={m.id} className="flex items-center gap-2">
+                              <FundProjectionScreenOutlined className="text-blue-500" />
+                              <span className="truncate flex-1 font-medium" title={m.name}>{m.name}</span>
+                              {specs.size && specs.size !== 'N/A' && <Tag className="m-0 text-[10px]">{specs.size}</Tag>}
                           </div>
                       );
                   })}
-                  {monitors.length > 2 && <div className="text-right"><Tag className="mr-0" color="processing">Tổng: {monitors.length}</Tag></div>}
+
+                  {peripherals.length > 0 && (
+                      <div className="mt-1 pt-1 border-t border-dashed border-gray-200">
+                          {peripherals.map((p: any) => {
+                              const isMouse = p.type === 'MOUSE';
+                              const specs: any = p.specs || {};
+                              const icon = isMouse ? <span title="Chuột">🖱️</span> : <span title="Bàn phím">⌨️</span>;
+                              
+                              return (
+                                  <div key={p.id} className="flex items-center gap-2 text-gray-600 mt-1">
+                                      {icon}
+                                      <span className="truncate" title={p.name}>
+                                          {specs.brand && specs.brand !== 'Unknown' ? <b className="text-slate-700">{specs.brand}</b> : ''} {p.name.replace(specs.brand, '').replace('Device', '').trim()}
+                                      </span>
+                                      {specs.connection && specs.connection.includes('Bluetooth') && <ThunderboltOutlined className="text-blue-400" title="Bluetooth" />}
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  )}
               </div>
           );
       }
     },
     {
-      title: 'Quản lý',
-      key: 'management',
-      width: 200,
-      render: (_, record) => (
-        <div className="text-xs">
-           {(record.factory || record.department) && (
-               <div className="mb-2 text-gray-700">
-                   {record.factory && <div>🏭 {record.factory.name}</div>}
-                   {record.department && <div className="ml-4">↳ 🏢 {record.department.name}</div>}
-               </div>
-           )}
-           {record.users && record.users.length > 0 ? (
-               <div className="flex flex-wrap gap-1">
-                   {record.users.map((u) => (
-                       <Tooltip key={u.id} title={`Email: ${u.email}`}>
-                           <Tag color="cyan" icon={<UserOutlined />}>{u.fullName}</Tag>
-                       </Tooltip>
-                   ))}
-               </div>
-           ) : <span className="text-gray-400 italic">Chưa bàn giao</span>}
-        </div>
-      )
+        title: 'Quản lý',
+        key: 'management',
+        width: 180,
+        render: (_, record) => (
+            <div className="text-xs">
+            {(record.factory || record.department) && (
+                <div className="mb-2 text-gray-700">
+                    {record.factory && <div>🏭 {record.factory.name}</div>}
+                    {record.department && <div className="ml-4">↳ 🏢 {record.department.name}</div>}
+                </div>
+            )}
+            {record.users && record.users.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                    {record.users.map((u) => (
+                        <Tooltip key={u.id} title={`Email: ${u.email}`}><Tag color="cyan" icon={<UserOutlined />}>{u.fullName}</Tag></Tooltip>
+                    ))}
+                </div>
+            ) : <span className="text-gray-400 italic">Chưa bàn giao</span>}
+            </div>
+        )
     },
     {
       title: 'Trạng thái',
       key: 'status',
-      width: 110,
+      width: 100,
       align: 'center',
       render: (_, record) => (
          <div className="flex flex-col items-center gap-1">
@@ -258,33 +266,10 @@ const AssetList = () => {
       width: 100,
       fixed: 'right',
       render: (_, record) => (
-        <Space direction="horizontal" size="small">
-          {/* [UPDATE 3] Nút Bảo trì - Cần quyền MAINTENANCE */}
-          {hasPermission('ITAM_MAINTENANCE') && (
-              <Tooltip title="Lịch sử Sửa chữa / Nâng cấp">
-                  <Button 
-                    size="small" className="text-orange-600 hover:bg-orange-50 border-orange-200" icon={<ToolOutlined />} 
-                    onClick={() => handleOpenMaintenance(record)} 
-                  />
-              </Tooltip>
-          )}
-
-          {/* [UPDATE 4] Nút Sửa - Cần quyền UPDATE */}
-          {hasPermission('ITAM_ASSET_UPDATE') && (
-              <Tooltip title="Chỉnh sửa thông tin">
-                <Button 
-                    size="small" type="text" className="text-blue-600 hover:bg-blue-50" icon={<EditOutlined />} 
-                    onClick={() => { setEditingItem(record); setIsModalOpen(true); }} 
-                />
-              </Tooltip>
-          )}
-          
-          {/* [UPDATE 5] Nút Xóa - Cần quyền DELETE */}
-          {hasPermission('ITAM_ASSET_DELETE') && (
-              <Popconfirm title="Xóa tài sản này?" onConfirm={() => handleDelete(record.id)}>
-                 <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-              </Popconfirm>
-          )}
+        <Space size="small">
+          {hasPermission('ITAM_MAINTENANCE') && <Button size="small" icon={<ToolOutlined />} onClick={() => handleOpenMaintenance(record)} />}
+          {hasPermission('ITAM_ASSET_UPDATE') && <Button size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(record); setIsModalOpen(true); }} />}
+          {hasPermission('ITAM_ASSET_DELETE') && <Popconfirm title="Xóa?" onConfirm={() => handleDelete(record.id)}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm>}
         </Space>
       )
     }
@@ -292,60 +277,18 @@ const AssetList = () => {
 
   return (
     <div className="p-4 bg-white shadow rounded-lg m-4 h-full flex flex-col">
-      <div className="flex justify-between mb-4 flex-wrap gap-2">
-         <div className="flex items-center gap-2">
-            <h3 className="text-lg font-bold text-slate-700 m-0">Máy tính & Server</h3>
-            <Badge count={data.length} style={{ backgroundColor: '#1890ff' }} />
-         </div>
+      <div className="flex justify-between mb-4">
+         <div className="flex items-center gap-2"><h3 className="text-lg font-bold m-0">Máy tính & Server</h3><Badge count={data.length} style={{ backgroundColor: '#1890ff' }} /></div>
          <Space>
-            <Input.Search 
-                placeholder="Tìm hostname, IP, serial..." 
-                onSearch={val => setSearchText(val)} 
-                style={{ width: 250 }} 
-                allowClear 
-                enterButton 
-            />
+            <Input.Search placeholder="Tìm kiếm..." onSearch={setSearchText} style={{ width: 250 }} allowClear />
             <Button icon={<ReloadOutlined />} onClick={() => fetchData()} />
-            
-            {/* [UPDATE 6] Nút Thêm mới - Cần quyền CREATE */}
-            {hasPermission('ITAM_ASSET_CREATE') && (
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); setIsModalOpen(true); }}>
-                    Thêm Máy tính
-                </Button>
-            )}
+            {hasPermission('ITAM_ASSET_CREATE') && <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); setIsModalOpen(true); }}>Thêm</Button>}
          </Space>
       </div>
-
-      <Table 
-         columns={columns} 
-         dataSource={data} 
-         rowKey="id" 
-         loading={loading} 
-         scroll={{ x: 1300 }} 
-         pagination={{
-             defaultPageSize: 10,
-             showSizeChanger: true,
-             showTotal: (total) => `Tổng ${total} thiết bị`
-         }}
-      />
-
-      <AssetForm 
-         open={isModalOpen} onCancel={() => setIsModalOpen(false)}
-         onSuccess={() => { setIsModalOpen(false); fetchData(); }}
-         initialValues={editingItem}
-      />
-
-      <AssetSoftwareDrawer 
-         open={softwareDrawerOpen}
-         asset={selectedAsset}
-         onClose={() => setSoftwareDrawerOpen(false)}
-      />
-
-      <AssetMaintenanceDrawer
-         open={maintenanceDrawerOpen}
-         asset={maintenanceAsset}
-         onClose={() => setMaintenanceDrawerOpen(false)}
-      />
+      <Table columns={columns} dataSource={data} rowKey="id" loading={loading} scroll={{ x: 1300 }} pagination={{ defaultPageSize: 10 }} />
+      <AssetForm open={isModalOpen} onCancel={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); fetchData(); }} initialValues={editingItem} />
+      <AssetSoftwareDrawer open={softwareDrawerOpen} asset={selectedAsset} onClose={() => setSoftwareDrawerOpen(false)} />
+      <AssetMaintenanceDrawer open={maintenanceDrawerOpen} asset={maintenanceAsset} onClose={() => setMaintenanceDrawerOpen(false)} />
     </div>
   );
 };

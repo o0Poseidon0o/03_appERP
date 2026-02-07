@@ -299,7 +299,7 @@ const MainLayout: React.FC = () => {
                 
                 // Danh mục loại tài sản (Chỉ Admin/IT Manager)
                 ...(hasPermission('ITAM_ASSET_CREATE') ? [
-                    { key: '/itam/types', label: 'Loại tài sản', icon: <TagsOutlined /> }
+                    { key: 'itam/peripherals', label: 'Loại tài sản', icon: <TagsOutlined /> }
                 ] : [])
             ]
         });

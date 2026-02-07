@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../../config/prisma";
 
-// --- INTERFACE CHO PAYLOAD CỦA AGENT ---
+// --- INTERFACE CHO PAYLOAD CỦA AGENT V3.13 ---
 interface AgentPayload {
   hostname: string;
   serialNumber: string;
@@ -16,16 +16,38 @@ interface AgentPayload {
   macAddress: string;
   timestamp: string;
 
-  // Trường này do PowerShell gửi lên (PC, LAPTOP, SERVER...)
-  deviceType?: string;
+  deviceType?: string; // PC, LAPTOP, SERVER...
 
-  // [MỚI] Danh sách màn hình từ Agent V3.9
+  // [MỚI] Dữ liệu từ V3.13 - RAM Chi tiết
+  ramDetails?: Array<{
+      Slot: string;
+      Capacity: string;
+      Speed: string;
+      Manufacturer: string;
+  }>;
+
+  // [MỚI] Dữ liệu từ V3.13 - GPU
+  gpus?: Array<{
+      Name: string;
+      VRAM: string;
+      DriverVersion: string;
+  }>;
+
+  // [MỚI] Dữ liệu từ V3.13 - Ngoại vi (Chuột/Phím)
+  peripherals?: Array<{
+      Name: string;
+      Type: string; // Keyboard / Mouse
+      Brand: string;
+      Connection: string;
+      Id: string;
+  }>;
+
   monitors: Array<{
     Manufacturer: string;
     Model: string;
     SerialNumber: string;
     ManufacturedDate: string;
-    ScreenSize?: string; // <--- [FIX] THÊM DÒNG NÀY ĐỂ HẾT LỖI
+    ScreenSize?: string; 
   }>;
 
   disks: Array<{
@@ -36,6 +58,7 @@ interface AgentPayload {
     Interface: string;
     SerialNumber: string;
   }>;
+  
   software: Array<{
     Name: string;
     Version: string;
@@ -76,7 +99,7 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
 
     const uniqueHostname = data.hostname.toUpperCase().trim();
 
-    // 3. [UPDATE] Xử lý AssetType Thông Minh
+    // 3. Xử lý AssetType Thông Minh
     const detectedCode = data.deviceType ? data.deviceType.toUpperCase() : "PC";
     
     let assetType = await prisma.assetType.findUnique({
@@ -99,7 +122,7 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
     const newRamString = `${data.ramGB} GB`;
     const newCpuString = data.cpuName;
 
-    // 5. [LOGIC QUAN TRỌNG] Lấy dữ liệu CŨ từ DB để so sánh
+    // 5. [LOGIC] Lấy dữ liệu CŨ từ DB để so sánh
     const existingAsset = await prisma.asset.findUnique({
         where: { name: uniqueHostname }
     });
@@ -110,19 +133,19 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
     if (existingAsset) {
         const oldSpecs: any = existingAsset.customSpecs || {};
         
-        // A. So sánh RAM
-        const ramLog = generateChangeLog(oldSpecs.ram, newRamString, "RAM");
+        // A. So sánh RAM Tổng
+        const ramLog = generateChangeLog(oldSpecs.ram, newRamString, "RAM Tổng");
         if (ramLog) changeDetails.push(ramLog);
 
         // B. So sánh CPU
         const cpuLog = generateChangeLog(oldSpecs.cpu, newCpuString, "CPU");
         if (cpuLog) changeDetails.push(cpuLog);
 
-        // C. So sánh Ổ cứng (Tổng quan)
+        // C. So sánh Ổ cứng
         const diskLog = generateChangeLog(oldSpecs.disk, newDiskSummary, "Ổ cứng");
         if (diskLog) changeDetails.push(diskLog);
 
-        // D. [MỚI] So sánh số lượng màn hình (Cảnh báo nếu bị tháo)
+        // D. So sánh số lượng màn hình
         const oldMonitorCount = await prisma.assetComponent.count({
             where: { assetId: existingAsset.id, type: 'MONITOR' }
         });
@@ -133,7 +156,7 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
         }
     }
 
-    // 6. TRANSACTION: Cập nhật Máy + Log + Linh kiện (Disk, Monitor) + Software
+    // 6. TRANSACTION: Cập nhật Máy + Log + Linh kiện
     const result = await prisma.$transaction(async (tx) => {
       // Chuẩn bị dữ liệu Asset Update
       const assetData = {
@@ -150,6 +173,11 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
           cpu: newCpuString,
           ram: newRamString,
           disk: newDiskSummary,
+          
+          // [MỚI] Lưu chi tiết RAM & GPU vào JSON để Frontend hiển thị popup
+          ramDetails: data.ramDetails || [],
+          gpus: data.gpus || [],
+          
           lastAgentSync: data.timestamp,
         },
       };
@@ -166,7 +194,7 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
         },
       });
 
-      // B. Ghi Log Thay đổi Linh kiện
+      // B. Ghi Log Thay đổi
       if (changeDetails.length > 0) {
           await tx.maintenanceLog.create({
               data: {
@@ -184,53 +212,81 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
       }
 
       // C. Xử lý Ổ cứng (Xóa cũ -> Thêm mới)
-      if (Array.isArray(data.disks) && data.disks.length > 0) {
+      if (Array.isArray(data.disks)) {
         await tx.assetComponent.deleteMany({
             where: { assetId: asset.id, type: "HARD_DISK" },
         });
 
-        const diskComponents = data.disks.map((d) => ({
-            assetId: asset.id,
-            type: "HARD_DISK",
-            name: d.Model || "Unknown Disk",
-            serialNumber: d.SerialNumber !== "N/A" ? d.SerialNumber : null,
-            status: "ACTIVE",
-            specs: {
-              sizeGB: d.SizeGB,
-              interface: d.Interface,
-              type: d.MediaType,
-              index: d.Index,
-            },
-        }));
-        await tx.assetComponent.createMany({ data: diskComponents });
+        if (data.disks.length > 0) {
+            const diskComponents = data.disks.map((d) => ({
+                assetId: asset.id,
+                type: "HARD_DISK",
+                name: d.Model || "Unknown Disk",
+                serialNumber: d.SerialNumber !== "N/A" ? d.SerialNumber : null,
+                status: "ACTIVE",
+                specs: {
+                    sizeGB: d.SizeGB,
+                    interface: d.Interface,
+                    type: d.MediaType,
+                    index: d.Index,
+                },
+            }));
+            await tx.assetComponent.createMany({ data: diskComponents });
+        }
       }
 
-      // D. [MỚI] Xử lý Màn hình (Xóa cũ -> Thêm mới)
-      if (Array.isArray(data.monitors) && data.monitors.length > 0) {
+      // D. Xử lý Màn hình (Xóa cũ -> Thêm mới)
+      if (Array.isArray(data.monitors)) {
         await tx.assetComponent.deleteMany({
             where: { assetId: asset.id, type: "MONITOR" },
         });
 
-        const monitorComponents = data.monitors.map((m, index) => ({
-            assetId: asset.id,
-            type: "MONITOR",
-            name: m.Model || "Unknown Monitor",
-            serialNumber: m.SerialNumber !== "0" ? m.SerialNumber : null,
-            status: "ACTIVE",
-            specs: {
-                manufacturer: m.Manufacturer,
-                manufacturedDate: m.ManufacturedDate,
-                
-                // ✅ [FIX] THÊM DÒNG NÀY VÀO:
-                size: m.ScreenSize || "N/A", 
-                
-                index: index + 1
-            },
-        }));
-        await tx.assetComponent.createMany({ data: monitorComponents });
+        if (data.monitors.length > 0) {
+            const monitorComponents = data.monitors.map((m, index) => ({
+                assetId: asset.id,
+                type: "MONITOR",
+                name: m.Model || "Unknown Monitor",
+                serialNumber: m.SerialNumber !== "0" ? m.SerialNumber : null,
+                status: "ACTIVE",
+                specs: {
+                    manufacturer: m.Manufacturer,
+                    manufacturedDate: m.ManufacturedDate,
+                    size: m.ScreenSize || "N/A",
+                    index: index + 1
+                },
+            }));
+            await tx.assetComponent.createMany({ data: monitorComponents });
+        }
       }
 
-      // E. Xử lý Phần mềm
+      // E. [MỚI] Xử lý Ngoại vi (Chuột/Phím) -> Lưu vào AssetComponent
+      if (Array.isArray(data.peripherals)) {
+        // Xóa hết component loại KEYBOARD và MOUSE cũ của máy này
+        await tx.assetComponent.deleteMany({
+            where: { 
+                assetId: asset.id, 
+                type: { in: ["KEYBOARD", "MOUSE", "PERIPHERAL"] } 
+            },
+        });
+
+        if (data.peripherals.length > 0) {
+            const periphComponents = data.peripherals.map((p) => ({
+                assetId: asset.id,
+                type: p.Type.toUpperCase(), // KEYBOARD hoặc MOUSE
+                name: p.Name,
+                serialNumber: null, // Ngoại vi ít khi lấy được SN chuẩn
+                status: "ACTIVE",
+                specs: {
+                    brand: p.Brand,
+                    connection: p.Connection,
+                    deviceId: p.Id
+                }
+            }));
+            await tx.assetComponent.createMany({ data: periphComponents });
+        }
+      }
+
+      // F. Xử lý Phần mềm
       if (Array.isArray(data.software) && data.software.length > 0) {
         await tx.installedSoftware.deleteMany({
           where: { assetId: asset.id },
@@ -286,14 +342,7 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
 export const getAllAssets = async (req: Request, res: Response) => {
   try {
     const {
-      page = 1,
-      limit = 10,
-      search,
-      typeId,
-      factoryId,
-      departmentId,
-      status,
-      parentId,
+      page = 1, limit = 10, search, typeId, factoryId, departmentId, status, parentId,
     } = req.query;
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -333,9 +382,10 @@ export const getAllAssets = async (req: Request, res: Response) => {
           users: { select: { id: true, fullName: true, email: true } },
           parent: { select: { id: true, name: true } },
           _count: { select: { children: true, softwares: true } },
-          // [MỚI] Bao gồm Monitors để hiển thị ra bảng
+          
+          // [MỚI] Lấy thêm component (Monitor, Keyboard, Mouse) để hiển thị
           components: {
-             where: { type: 'MONITOR' },
+             where: { type: { in: ['MONITOR', 'KEYBOARD', 'MOUSE'] } },
              select: { id: true, name: true, serialNumber: true, type: true, specs: true }
           }
         },
@@ -370,7 +420,7 @@ export const getAssetById = async (req: Request, res: Response) => {
         users: true,
         parent: true,
         children: { include: { type: true } },
-        components: true, // [MỚI] Sẽ trả về cả Màn hình ở đây
+        components: true, 
         softwares: { orderBy: { name: "asc" } },
         maintenances: { orderBy: { startDate: "desc" } },
       },
