@@ -18,7 +18,7 @@ import { useHasPermission } from '../../hooks/useHasPermission';
 
 const socket = io("http://localhost:3000"); 
 
-// [FIX TS2339] Định nghĩa lại interface customSpecs
+// Định nghĩa interface customSpecs
 interface AssetSpecs {
   cpu?: string;
   ram?: string;
@@ -46,7 +46,6 @@ const AssetList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IAsset | null>(null);
   
-  // State quản lý Drawer
   const [softwareDrawerOpen, setSoftwareDrawerOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<IAsset | null>(null);
   const [maintenanceDrawerOpen, setMaintenanceDrawerOpen] = useState(false);
@@ -79,13 +78,11 @@ const AssetList = () => {
       } catch (err: any) { message.error(err.response?.data?.message || "Không thể xóa"); }
   }
 
-  // Hàm mở xem phần mềm
   const handleViewSoftware = (asset: IAsset) => {
       setSelectedAsset(asset);
       setSoftwareDrawerOpen(true);
   };
 
-  // Hàm mở bảo trì
   const handleOpenMaintenance = (asset: IAsset) => {
       setMaintenanceAsset(asset);
       setMaintenanceDrawerOpen(true);
@@ -102,20 +99,28 @@ const AssetList = () => {
       title: 'Thiết bị',
       key: 'info',
       width: 220,
-      render: (_, record) => (
-        <Space direction="vertical" size={0}>
-          <div className="font-bold text-blue-600 flex items-center gap-2 text-base">
-             {getDeviceIcon(record.type?.code)} {record.name}
-          </div>
-          <div className="text-xs text-gray-600 font-semibold flex gap-2">
-             <Tag bordered={false} className="mr-0">{record.type?.name}</Tag>
-             <span>{record.manufacturer} {record.modelName}</span>
-          </div>
-          {record.serialNumber && <div className="text-xs text-gray-400 font-mono mt-1">SN: {record.serialNumber}</div>}
-        </Space>
-      )
+      render: (_, record) => {
+        // Rút gọn tên loại thiết bị
+        let shortTypeName = record.type?.name || 'Unknown';
+        if (record.type?.code === 'PC') shortTypeName = 'PC';
+        if (record.type?.code === 'LAPTOP') shortTypeName = 'Laptop';
+        if (record.type?.code === 'SERVER') shortTypeName = 'Server';
+
+        return (
+            <Space direction="vertical" size={0}>
+              <div className="font-bold text-blue-600 flex items-center gap-2 text-base">
+                 {getDeviceIcon(record.type?.code)} {record.name}
+              </div>
+              <div className="text-xs text-gray-600 font-semibold flex gap-2">
+                 <Tag bordered={false} className="mr-0">{shortTypeName}</Tag>
+                 <span>{record.manufacturer} {record.modelName}</span>
+              </div>
+              {record.serialNumber && <div className="text-xs text-gray-400 font-mono mt-1">SN: {record.serialNumber}</div>}
+            </Space>
+        );
+      }
     },
-    // --- [CỘT HỆ THỐNG: BỎ VERSION, GIỮ MAC] ---
+    // --- [CỘT HỆ THỐNG] ---
     {
         title: 'Hệ thống',
         key: 'system',
@@ -139,7 +144,7 @@ const AssetList = () => {
            </div>
         )
     },
-    // --- [CỘT CẤU HÌNH: RAM/GPU CHI TIẾT + NÚT XEM APPS] ---
+    // --- [CỘT CẤU HÌNH] ---
     {
       title: 'Cấu hình (CPU/RAM/GPU)',
       key: 'specs',
@@ -147,7 +152,6 @@ const AssetList = () => {
       render: (_, record) => {
           if (!record.customSpecs) return <span className="text-gray-400">-</span>;
           
-          // Cast kiểu dữ liệu để hết lỗi TS2339
           const specs = record.customSpecs as AssetSpecs;
           const { cpu, ram, disk, ramDetails, gpus } = specs;
 
@@ -186,7 +190,6 @@ const AssetList = () => {
 
                 {disk && <div className="truncate text-gray-500" title={disk}>HDD: {disk}</div>}
                 
-                {/* Link xem phần mềm */}
                 {record._count?.softwares ? (
                     <div className="mt-1 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => handleViewSoftware(record)}>
                         <Badge count={record._count.softwares} overflowCount={999} style={{ backgroundColor: '#52c41a' }} /> 
@@ -197,7 +200,7 @@ const AssetList = () => {
           );
       }
     },
-    // --- [CỘT NGOẠI VI: MÀN HÌNH + CHUỘT + PHÍM] ---
+    // --- [CỘT NGOẠI VI] ---
     {
       title: 'Ngoại vi & Màn hình',
       key: 'components',
@@ -245,7 +248,7 @@ const AssetList = () => {
           );
       }
     },
-    // --- [CÁC CỘT KHÁC GIỮ NGUYÊN] ---
+    // --- [CÁC CỘT KHÁC] ---
     {
         title: 'Quản lý',
         key: 'management',
