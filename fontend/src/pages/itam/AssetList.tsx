@@ -18,7 +18,7 @@ import { useHasPermission } from '../../hooks/useHasPermission';
 
 const socket = io("http://localhost:3000"); 
 
-// [FIX TS2339] Define extended interface for customSpecs
+// [FIX TS2339] Định nghĩa lại interface customSpecs
 interface AssetSpecs {
   cpu?: string;
   ram?: string;
@@ -46,10 +46,9 @@ const AssetList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IAsset | null>(null);
   
-  // State cho Software Drawer
+  // State quản lý Drawer
   const [softwareDrawerOpen, setSoftwareDrawerOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<IAsset | null>(null);
-
   const [maintenanceDrawerOpen, setMaintenanceDrawerOpen] = useState(false);
   const [maintenanceAsset, setMaintenanceAsset] = useState<IAsset | null>(null);
 
@@ -80,12 +79,13 @@ const AssetList = () => {
       } catch (err: any) { message.error(err.response?.data?.message || "Không thể xóa"); }
   }
 
+  // Hàm mở xem phần mềm
   const handleViewSoftware = (asset: IAsset) => {
       setSelectedAsset(asset);
       setSoftwareDrawerOpen(true);
   };
 
-  // [FIX TS6133] This function is now used in the Action column
+  // Hàm mở bảo trì
   const handleOpenMaintenance = (asset: IAsset) => {
       setMaintenanceAsset(asset);
       setMaintenanceDrawerOpen(true);
@@ -115,23 +115,20 @@ const AssetList = () => {
         </Space>
       )
     },
-    // --- [CỘT HỆ THỐNG: GIỮ MAC, BỎ VERSION] ---
+    // --- [CỘT HỆ THỐNG: BỎ VERSION, GIỮ MAC] ---
     {
         title: 'Hệ thống',
         key: 'system',
-        width: 220,
+        width: 200,
         render: (_, record) => (
            <div className="text-xs space-y-1">
               {record.osName && (
                   <div className="flex items-center gap-1 text-gray-700">
-                      <WindowsOutlined /> 
-                      {/* Chỉ hiện tên OS */}
-                      {record.osName} 
+                      <WindowsOutlined /> {record.osName} 
                   </div>
               )}
               <div className="flex flex-col text-gray-500 font-mono">
                   {record.ipAddress && <span><GlobalOutlined /> IP: {record.ipAddress}</span>}
-                  {/* Vẫn giữ dòng MAC Address */}
                   {record.macAddress && <span className="ml-4 text-xs">MAC: {record.macAddress}</span>}
               </div>
               {record.domainUser && (
@@ -142,14 +139,15 @@ const AssetList = () => {
            </div>
         )
     },
+    // --- [CỘT CẤU HÌNH: RAM/GPU CHI TIẾT + NÚT XEM APPS] ---
     {
       title: 'Cấu hình (CPU/RAM/GPU)',
       key: 'specs',
-      width: 200,
+      width: 220,
       render: (_, record) => {
           if (!record.customSpecs) return <span className="text-gray-400">-</span>;
           
-          // [FIX TS2339] Cast customSpecs to AssetSpecs interface
+          // Cast kiểu dữ liệu để hết lỗi TS2339
           const specs = record.customSpecs as AssetSpecs;
           const { cpu, ram, disk, ramDetails, gpus } = specs;
 
@@ -188,6 +186,7 @@ const AssetList = () => {
 
                 {disk && <div className="truncate text-gray-500" title={disk}>HDD: {disk}</div>}
                 
+                {/* Link xem phần mềm */}
                 {record._count?.softwares ? (
                     <div className="mt-1 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => handleViewSoftware(record)}>
                         <Badge count={record._count.softwares} overflowCount={999} style={{ backgroundColor: '#52c41a' }} /> 
@@ -198,6 +197,7 @@ const AssetList = () => {
           );
       }
     },
+    // --- [CỘT NGOẠI VI: MÀN HÌNH + CHUỘT + PHÍM] ---
     {
       title: 'Ngoại vi & Màn hình',
       key: 'components',
@@ -245,6 +245,7 @@ const AssetList = () => {
           );
       }
     },
+    // --- [CÁC CỘT KHÁC GIỮ NGUYÊN] ---
     {
         title: 'Quản lý',
         key: 'management',
@@ -291,7 +292,6 @@ const AssetList = () => {
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
-          {/* [FIX TS6133] Use handleOpenMaintenance */}
           {hasPermission('ITAM_MAINTENANCE') && <Button size="small" icon={<ToolOutlined />} onClick={() => handleOpenMaintenance(record)} />}
           {hasPermission('ITAM_ASSET_UPDATE') && <Button size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(record); setIsModalOpen(true); }} />}
           {hasPermission('ITAM_ASSET_DELETE') && <Popconfirm title="Xóa?" onConfirm={() => handleDelete(record.id)}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm>}
