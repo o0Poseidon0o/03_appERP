@@ -33,6 +33,7 @@ import softwareInventoryRoutes from "./routes/itam/softwareInventoryRoutes";
 
 import maintenanceRoutes from './routes/itam/maintenance.routes';
 import router from './routes/ticket.routes';
+import networkRoutes from './controllers/itam/networkRoutes';
 
 
 const app = express();
@@ -96,6 +97,7 @@ app.use('/api/asset-types', assetTypeRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
 app.use("/api/itam/software", softwareInventoryRoutes);
+router.use("/itam/network", networkRoutes);
 
 
 

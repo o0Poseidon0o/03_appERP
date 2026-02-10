@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Table, Card, Input, Tag, Button, Drawer, Space, Typography, Tooltip, message } from 'antd';
+// [FIX] Đã bỏ Typography ra khỏi import vì không dùng
+import { Table, Card, Input, Tag, Button, Drawer, Space, Tooltip, message } from 'antd';
 import { 
   AppstoreOutlined, 
   SearchOutlined, 
@@ -11,7 +12,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { softwareService, type SoftwareSummary, type SoftwareDetail } from '../../services/softwareService';
 
-const { Title, Text } = Typography;
+// [FIX] Đã xóa dòng: const { Title, Text } = Typography; vì không sử dụng
 
 const SoftwareInventory = () => {
   // --- STATE ---
