@@ -37,6 +37,7 @@ import AssetList from "./pages/itam/AssetList";
 // import AssetDetail from "./pages/itam/AssetDetail"; // (Bật lên khi đã tạo file này)
 import DashboardItam from "./pages/itam/Dashboard";
 import PeripheralList from "./pages/itam/PeripheralList";
+import SoftwareInventory from "./pages/itam/SoftwareInventory";
 // import AssetTypeManagement from "./pages/itam/AssetTypeManagement"; // (Bật lên khi đã tạo file này)
 
 // 6. Security Component
@@ -181,6 +182,7 @@ const AppContent = () => {
                  {/* Route cho Ngoại vi (Màn hình, Chuột, Phím...) */}
                  <Route path="itam/peripherals" element={<PeripheralList />} />
                  {/* <Route path="assets/:id" element={<AssetDetail />} /> */}
+                 <Route path="itam/software-inventory" element={<SoftwareInventory />} />
             </Route>
 
             {/* 3. Nhóm Cấu hình Danh mục (Cần quyền ITAM_ASSET_CREATE) */}

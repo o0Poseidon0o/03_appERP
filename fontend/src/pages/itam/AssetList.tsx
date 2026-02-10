@@ -100,20 +100,24 @@ const AssetList = () => {
       key: 'info',
       width: 220,
       render: (_, record) => {
-        // Rút gọn tên loại thiết bị
+        // [UPDATE] Rút gọn tên loại thiết bị cho đẹp
         let shortTypeName = record.type?.name || 'Unknown';
-        if (record.type?.code === 'PC') shortTypeName = 'PC';
-        if (record.type?.code === 'LAPTOP') shortTypeName = 'Laptop';
-        if (record.type?.code === 'SERVER') shortTypeName = 'Server';
+        const code = record.type?.code;
+        if (code === 'PC') shortTypeName = 'PC';
+        else if (code === 'LAPTOP') shortTypeName = 'Laptop';
+        else if (code === 'SERVER') shortTypeName = 'Server';
 
         return (
             <Space direction="vertical" size={0}>
               <div className="font-bold text-blue-600 flex items-center gap-2 text-base">
                  {getDeviceIcon(record.type?.code)} {record.name}
               </div>
-              <div className="text-xs text-gray-600 font-semibold flex gap-2">
+              <div className="text-xs text-gray-600 font-semibold flex gap-2 items-center">
                  <Tag bordered={false} className="mr-0">{shortTypeName}</Tag>
-                 <span>{record.manufacturer} {record.modelName}</span>
+                 {/* Cắt bớt nếu tên Model quá dài */}
+                 <span className="truncate max-w-[140px]" title={`${record.manufacturer} ${record.modelName}`}>
+                    {record.manufacturer} {record.modelName}
+                 </span>
               </div>
               {record.serialNumber && <div className="text-xs text-gray-400 font-mono mt-1">SN: {record.serialNumber}</div>}
             </Space>
@@ -313,7 +317,15 @@ const AssetList = () => {
             {hasPermission('ITAM_ASSET_CREATE') && <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); setIsModalOpen(true); }}>Thêm</Button>}
          </Space>
       </div>
-      <Table columns={columns} dataSource={data} rowKey="id" loading={loading} scroll={{ x: 1300 }} pagination={{ defaultPageSize: 10 }} />
+      <Table 
+        columns={columns} 
+        dataSource={data} 
+        rowKey="id" 
+        loading={loading} 
+        scroll={{ x: 1300 }} 
+        pagination={{ defaultPageSize: 10 }}
+        size="small" // [UPDATE] Làm bảng gọn hơn
+      />
       <AssetForm open={isModalOpen} onCancel={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); fetchData(); }} initialValues={editingItem} />
       <AssetSoftwareDrawer open={softwareDrawerOpen} asset={selectedAsset} onClose={() => setSoftwareDrawerOpen(false)} />
       <AssetMaintenanceDrawer open={maintenanceDrawerOpen} asset={maintenanceAsset} onClose={() => setMaintenanceDrawerOpen(false)} />

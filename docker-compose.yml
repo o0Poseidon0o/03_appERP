@@ -26,7 +26,7 @@ services:
     # Load toàn bộ biến từ file .env của bạn (JWT, MAIL...)
     env_file:
       - ./backend/.env
-      
+
 
     # GHI ĐÈ các biến môi trường cần thiết cho Docker
     environment:
@@ -56,7 +56,6 @@ services:
       - backend
     networks:
       - towa-network
-
 volumes:
   postgres_data:
 

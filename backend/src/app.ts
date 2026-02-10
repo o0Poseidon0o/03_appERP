@@ -28,8 +28,11 @@ import ticketRoutes from './routes/ticket.routes';
 import assetRoutes from './routes/itam/asset.routes';
 import assetTypeRoutes from "./routes/itam/assetType.routes";
 import dashboardRoutes from './routes/itam/dashboard.routes';
+import softwareInventoryRoutes from "./routes/itam/softwareInventoryRoutes";
+
 
 import maintenanceRoutes from './routes/itam/maintenance.routes';
+import router from './routes/ticket.routes';
 
 
 const app = express();
@@ -92,6 +95,9 @@ app.use('/api/assets', assetRoutes);
 app.use('/api/asset-types', assetTypeRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
+app.use("/api/itam/software", softwareInventoryRoutes);
+
+
 
 // --- 4. ERROR HANDLING ---
 app.all('*', (req: Request, res: Response, next: NextFunction) => {

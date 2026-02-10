@@ -296,10 +296,11 @@ const MainLayout: React.FC = () => {
                 
                 // Danh sách máy tính
                 { key: '/itam', label: 'Máy tính & Server', icon: <DatabaseOutlined /> }, 
-                
+                { key: '/itam/software-inventory', label: 'Phần mềm cài đặt', icon: <DatabaseOutlined /> },
                 // Danh mục loại tài sản (Chỉ Admin/IT Manager)
                 ...(hasPermission('ITAM_ASSET_CREATE') ? [
-                    { key: 'itam/peripherals', label: 'Loại tài sản', icon: <TagsOutlined /> }
+                    { key: 'itam/peripherals', label: 'Loại tài sản', icon: <TagsOutlined /> },
+                    
                 ] : [])
             ]
         });
