@@ -5,11 +5,12 @@ FROM node:24-alpine
 # (OpenSSL và libc6-compat là bắt buộc để Prisma Engine chạy được trên Alpine)
 RUN apk add --no-cache openssl libc6-compat
 
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
+    openssl \
+    libc6-compat \
     python3 \
-    python3-pip \
-    nmap \
-    && rm -rf /var/lib/apt/lists/*
+    py3-pip \
+    nmap
 
 # 2. Cài thư viện python-nmap
 # Lưu ý: Thêm cờ --break-system-packages để tránh lỗi trên các bản Linux mới (như Ubuntu 24/Debian 12)
