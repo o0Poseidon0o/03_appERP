@@ -13,7 +13,7 @@ import {
 // import { io } from "socket.io-client";
 
 // [2] THÊM import từ Context
-import { useSocket } from '../../context/SocketContext';
+import { useSocket } from '../../contexts/SocketContext';
 
 import axiosClient from '../../api/axiosClient';
 

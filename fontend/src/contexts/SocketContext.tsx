@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { io, Socket } from 'socket.io-client';
+import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { io, type Socket } from 'socket.io-client';
 
 // 1. Định nghĩa kiểu dữ liệu cho Context
 interface SocketContextType {
