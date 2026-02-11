@@ -9,7 +9,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import axiosClient from '../../api/axiosClient'; 
 // [1] Import Socket Context
-import { useSocket } from '../../context/SocketContext';
+import { useSocket } from '../../contexts/SocketContext';
 
 interface NetworkDevice {
   ip: string;
