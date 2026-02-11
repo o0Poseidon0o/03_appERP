@@ -1,6 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
+// [MỚI] Import SocketProvider (Đảm bảo đường dẫn đúng với file bạn vừa tạo)
+import { SocketProvider } from "./contexts/SocketContext"; 
+
 import { Spin, ConfigProvider, theme, App as AntdApp } from "antd";
 import type { JSX } from "react";
 
@@ -34,11 +37,11 @@ import MonthlyReport from "./pages/warehouse/MonthlyReport";
 
 // 5. [NEW] IT Asset Management (ITAM)
 import AssetList from "./pages/itam/AssetList";
-// import AssetDetail from "./pages/itam/AssetDetail"; // (Bật lên khi đã tạo file này)
+// import AssetDetail from "./pages/itam/AssetDetail"; 
 import DashboardItam from "./pages/itam/Dashboard";
 import PeripheralList from "./pages/itam/PeripheralList";
 import SoftwareInventory from "./pages/itam/SoftwareInventory";
-// import AssetTypeManagement from "./pages/itam/AssetTypeManagement"; // (Bật lên khi đã tạo file này)
+// import AssetTypeManagement from "./pages/itam/AssetTypeManagement"; 
 
 // 6. Security Component
 import RoleRoute from "./components/RoleRoute";
@@ -223,7 +226,10 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ThemeProvider>
-          <AppContent />
+          {/* [QUAN TRỌNG] Bọc SocketProvider ở đây để toàn bộ App dùng được Socket */}
+          <SocketProvider>
+             <AppContent />
+          </SocketProvider>
         </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>

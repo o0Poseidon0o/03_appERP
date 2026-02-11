@@ -8,7 +8,13 @@ import {
   ThunderboltOutlined 
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { io } from "socket.io-client"; 
+
+// [1] XÓA import io trực tiếp
+// import { io } from "socket.io-client"; 
+
+// [2] THÊM import hook từ Context
+import { useSocket } from '../../contexts/SocketContext';
+
 import { assetService } from '../../services/assetService';
 import AssetForm from './AssetForm';
 import AssetSoftwareDrawer from './AssetSoftwareDrawer'; 
@@ -16,7 +22,8 @@ import AssetMaintenanceDrawer from './AssetMaintenanceDrawer';
 import type { IAsset } from '../../types/itam.types';
 import { useHasPermission } from '../../hooks/useHasPermission';
 
-const socket = io("http://localhost:3000"); 
+// [3] XÓA dòng khởi tạo socket global này
+// const socket = io("http://localhost:3000"); 
 
 // Định nghĩa interface customSpecs
 interface AssetSpecs {
@@ -43,6 +50,9 @@ const AssetList = () => {
   const [searchText, setSearchText] = useState('');
   const { hasPermission } = useHasPermission();
 
+  // [4] LẤY socket từ Context
+  const { socket, isConnected } = useSocket(); 
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IAsset | null>(null);
   
@@ -64,11 +74,24 @@ const AssetList = () => {
     finally { setLoading(false); }
   };
 
+  // [5] CẬP NHẬT useEffect để dùng socket từ Context
   useEffect(() => {
     fetchData(); 
-    socket.on("asset_updated", () => !searchText && fetchData());
-    return () => { socket.off("asset_updated"); };
-  }, [searchText]); 
+    
+    // Kiểm tra nếu socket tồn tại thì mới lắng nghe
+    if (socket && isConnected) {
+        const handleUpdate = () => {
+            if (!searchText) fetchData();
+        };
+
+        socket.on("asset_updated", handleUpdate);
+
+        // Cleanup function
+        return () => { 
+            socket.off("asset_updated", handleUpdate); 
+        };
+    }
+  }, [searchText, socket, isConnected]); // Thêm socket và isConnected vào dependency
 
   const handleDelete = async (id: string) => {
       try {
@@ -100,7 +123,6 @@ const AssetList = () => {
       key: 'info',
       width: 220,
       render: (_, record) => {
-        // [UPDATE] Rút gọn tên loại thiết bị cho đẹp
         let shortTypeName = record.type?.name || 'Unknown';
         const code = record.type?.code;
         if (code === 'PC') shortTypeName = 'PC';
@@ -114,7 +136,6 @@ const AssetList = () => {
               </div>
               <div className="text-xs text-gray-600 font-semibold flex gap-2 items-center">
                  <Tag bordered={false} className="mr-0">{shortTypeName}</Tag>
-                 {/* Cắt bớt nếu tên Model quá dài */}
                  <span className="truncate max-w-[140px]" title={`${record.manufacturer} ${record.modelName}`}>
                     {record.manufacturer} {record.modelName}
                  </span>
@@ -124,13 +145,12 @@ const AssetList = () => {
         );
       }
     },
-    // --- [CỘT HỆ THỐNG] ---
     {
         title: 'Hệ thống',
         key: 'system',
         width: 200,
         render: (_, record) => (
-           <div className="text-xs space-y-1">
+            <div className="text-xs space-y-1">
               {record.osName && (
                   <div className="flex items-center gap-1 text-gray-700">
                       <WindowsOutlined /> {record.osName} 
@@ -145,10 +165,9 @@ const AssetList = () => {
                       <Tag color="purple" className="m-0 mt-1"><AuditOutlined /> {record.domainUser}</Tag>
                   </Tooltip>
               )}
-           </div>
+            </div>
         )
     },
-    // --- [CỘT CẤU HÌNH] ---
     {
       title: 'Cấu hình (CPU/RAM/GPU)',
       key: 'specs',
@@ -204,7 +223,6 @@ const AssetList = () => {
           );
       }
     },
-    // --- [CỘT NGOẠI VI] ---
     {
       title: 'Ngoại vi & Màn hình',
       key: 'components',
@@ -252,7 +270,6 @@ const AssetList = () => {
           );
       }
     },
-    // --- [CÁC CỘT KHÁC] ---
     {
         title: 'Quản lý',
         key: 'management',
@@ -310,7 +327,12 @@ const AssetList = () => {
   return (
     <div className="p-4 bg-white shadow rounded-lg m-4 h-full flex flex-col">
       <div className="flex justify-between mb-4">
-         <div className="flex items-center gap-2"><h3 className="text-lg font-bold m-0">Máy tính & Server</h3><Badge count={data.length} style={{ backgroundColor: '#1890ff' }} /></div>
+         <div className="flex items-center gap-2">
+            <h3 className="text-lg font-bold m-0">Máy tính & Server</h3>
+            {/* Hiển thị thêm trạng thái Socket để biết có kết nối chưa */}
+            <Badge status={isConnected ? "success" : "default"} text={isConnected ? "Live" : "Offline"} />
+            <Badge count={data.length} style={{ backgroundColor: '#1890ff' }} />
+         </div>
          <Space>
             <Input.Search placeholder="Tìm kiếm..." onSearch={setSearchText} style={{ width: 250 }} allowClear />
             <Button icon={<ReloadOutlined />} onClick={() => fetchData()} />
@@ -324,7 +346,7 @@ const AssetList = () => {
         loading={loading} 
         scroll={{ x: 1300 }} 
         pagination={{ defaultPageSize: 10 }}
-        size="small" // [UPDATE] Làm bảng gọn hơn
+        size="small"
       />
       <AssetForm open={isModalOpen} onCancel={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); fetchData(); }} initialValues={editingItem} />
       <AssetSoftwareDrawer open={softwareDrawerOpen} asset={selectedAsset} onClose={() => setSoftwareDrawerOpen(false)} />

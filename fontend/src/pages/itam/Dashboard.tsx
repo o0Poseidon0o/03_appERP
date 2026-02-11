@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card, Statistic, Spin, List, Typography, Tag, Empty, message, Modal, Table, Button } from 'antd';
+import { Card, Statistic, Spin, List, Typography, Tag, Empty, message, Modal, Table, Button, Badge } from 'antd';
 import { 
   AppstoreOutlined, AlertOutlined, SafetyCertificateOutlined, 
   DisconnectOutlined, InfoCircleOutlined, ShopOutlined, EyeOutlined 
@@ -8,18 +8,27 @@ import {
   PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, 
   CartesianGrid, ResponsiveContainer, LabelList 
 } from 'recharts';
-import { io } from "socket.io-client";
+
+// [1] XÓA dòng import socket.io-client trực tiếp
+// import { io } from "socket.io-client";
+
+// [2] THÊM import từ Context
+import { useSocket } from '../../context/SocketContext';
+
 import axiosClient from '../../api/axiosClient';
 
 const { Title, Text } = Typography;
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
-// Kết nối Socket (đảm bảo URL đúng với backend)
-const socket = io("http://localhost:3000"); 
+// [3] XÓA dòng này
+// const socket = io("http://localhost:3000"); 
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
+
+  // [4] LẤY socket từ Context
+  const { socket, isConnected } = useSocket();
 
   // State quản lý Modal chi tiết
   const [modalConfig, setModalConfig] = useState<{ open: boolean, title: string, data: any[], type: 'BROKEN' | 'LOW_RAM' | null }>({
@@ -40,18 +49,25 @@ const Dashboard = () => {
   useEffect(() => {
     fetchStats();
     
-    // Lắng nghe sự kiện realtime từ Socket
-    socket.on("asset_updated", () => fetchStats());
-    socket.on("hardware_alert", (data: any) => {
-        message.warning(data.message);
-        fetchStats();
-    });
-    
-    return () => {
-        socket.off("asset_updated");
-        socket.off("hardware_alert");
-    };
-  }, []);
+    // [5] CHỈ LẮNG NGHE KHI CÓ SOCKET
+    if (socket && isConnected) {
+        const handleAssetUpdate = () => fetchStats();
+        
+        const handleHardwareAlert = (data: any) => {
+            message.warning(data.message);
+            fetchStats();
+        };
+
+        socket.on("asset_updated", handleAssetUpdate);
+        socket.on("hardware_alert", handleHardwareAlert);
+        
+        // Cleanup listener khi component unmount
+        return () => {
+            socket.off("asset_updated", handleAssetUpdate);
+            socket.off("hardware_alert", handleHardwareAlert);
+        };
+    }
+  }, [socket, isConnected]); // Thêm dependencies
 
   // Hàm mở Modal xem danh sách
   const showDetails = (type: 'BROKEN' | 'LOW_RAM') => {
@@ -118,7 +134,11 @@ const Dashboard = () => {
     <div className="p-6 bg-slate-50 min-h-screen">
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <Title level={3} className="!mb-1 !text-slate-800">Tổng quan tài sản CNTT</Title>
+          <div className="flex items-center gap-2">
+             <Title level={3} className="!mb-1 !text-slate-800">Tổng quan tài sản CNTT</Title>
+             {/* [MỚI] Hiển thị trạng thái kết nối Realtime */}
+             <Badge status={isConnected ? "processing" : "default"} text={isConnected ? <span className="text-green-600 text-xs font-bold">LIVE</span> : <span className="text-gray-400 text-xs">OFFLINE</span>} />
+          </div>
           <Text type="secondary">Cập nhật dữ liệu thời gian thực</Text>
         </div>
         <Tag color="blue" className="px-3 py-1 text-sm rounded-full">Hôm nay: {new Date().toLocaleDateString('vi-VN')}</Tag>
