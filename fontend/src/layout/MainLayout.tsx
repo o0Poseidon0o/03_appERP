@@ -18,7 +18,8 @@ import {
   AppstoreOutlined, 
   CloseOutlined,
   NodeIndexOutlined,
-  DesktopOutlined // [UPDATE] Icon cho Quản lý thiết bị
+  DesktopOutlined, // [UPDATE] Icon cho Quản lý thiết bị
+  RadarChartOutlined
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -296,7 +297,8 @@ const MainLayout: React.FC = () => {
                 
                 // Danh sách máy tính
                 { key: '/itam', label: 'Máy tính & Server', icon: <DatabaseOutlined /> }, 
-                { key: '/itam/software-inventory', label: 'Phần mềm cài đặt', icon: <DatabaseOutlined /> },
+                { key: '/itam/software-inventory', label: 'Phần mềm cài đặt', icon: <AppstoreOutlined /> },
+                { key: '/itam/network-scan', label: 'Quét mạng (Scan)', icon: <RadarChartOutlined /> },
                 // Danh mục loại tài sản (Chỉ Admin/IT Manager)
                 ...(hasPermission('ITAM_ASSET_CREATE') ? [
                     { key: 'itam/peripherals', label: 'Loại tài sản', icon: <TagsOutlined /> },

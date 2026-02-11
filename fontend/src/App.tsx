@@ -42,6 +42,7 @@ import SoftwareInventory from "./pages/itam/SoftwareInventory";
 
 // 6. Security Component
 import RoleRoute from "./components/RoleRoute";
+import NetworkScanner from "./pages/itam/NetworkScanner";
 
 // --- COMPONENTS BẢO VỆ ---
 
@@ -183,6 +184,7 @@ const AppContent = () => {
                  <Route path="itam/peripherals" element={<PeripheralList />} />
                  {/* <Route path="assets/:id" element={<AssetDetail />} /> */}
                  <Route path="itam/software-inventory" element={<SoftwareInventory />} />
+                 <Route path="itam/network-scan" element={<NetworkScanner />} />
             </Route>
 
             {/* 3. Nhóm Cấu hình Danh mục (Cần quyền ITAM_ASSET_CREATE) */}

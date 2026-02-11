@@ -77,3 +77,34 @@ export const scanNetwork = async (req: Request, res: Response) => {
     res.status(500).json({ status: "error", message: error.message });
   }
 };
+
+// API MỚI: Quét bảo mật cho 1 IP
+export const auditDeviceSecurity = async (req: Request, res: Response) => {
+  try {
+    const { ip } = req.body; // Chỉ nhận 1 IP
+    if (!ip) return res.status(400).json({ message: "Thiếu địa chỉ IP" });
+
+    const scriptPath = path.join(process.cwd(), "scripts", "security_audit.py");
+    const pythonCommand = os.platform() === "win32" ? "python" : "python3";
+
+    console.log(`[SecurityAudit] Checking IP: ${ip}`);
+
+    // Gọi Python
+    const pythonProcess = spawn(pythonCommand, [scriptPath, ip]);
+    
+    let dataString = "";
+    pythonProcess.stdout.on("data", (data) => { dataString += data.toString(); });
+    
+    pythonProcess.on("close", (code) => {
+        try {
+            const result = JSON.parse(dataString);
+            return res.status(200).json({ status: "success", data: result });
+        } catch (e) {
+            return res.status(500).json({ message: "Lỗi phân tích kết quả bảo mật", raw: dataString });
+        }
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
