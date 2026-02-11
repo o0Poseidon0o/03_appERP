@@ -1,25 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, Input, Button, Table, Tag, Space, message, Badge, Tooltip, Alert, Modal, Progress, List, Spin } from 'antd';
 import { 
-  RadarChartOutlined, 
-  SearchOutlined, 
-  SaveOutlined, 
-  CameraOutlined, 
-  PrinterOutlined, 
-  DesktopOutlined, 
-  GlobalOutlined, 
-  MobileOutlined,
-  QuestionCircleOutlined,
-  WifiOutlined,
-  ExperimentOutlined, 
-  ClockCircleOutlined,
-  SafetyCertificateOutlined,
-  BugOutlined,
-  WarningOutlined,
-  CheckCircleOutlined
+  RadarChartOutlined, SearchOutlined, SaveOutlined, CameraOutlined, PrinterOutlined, 
+  DesktopOutlined, GlobalOutlined, MobileOutlined, QuestionCircleOutlined, WifiOutlined, 
+  ExperimentOutlined, ClockCircleOutlined, SafetyCertificateOutlined, BugOutlined, 
+  WarningOutlined, CheckCircleOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import axiosClient from '../../api/axiosClient'; 
+// [1] Import Socket Context
+import { useSocket } from '../../context/SocketContext';
 
 interface NetworkDevice {
   ip: string;
@@ -32,37 +22,84 @@ interface NetworkDevice {
 }
 
 const NetworkScanner = () => {
-  // --- STATE QUÉT MẠNG ---
+  // --- SOCKET ---
+  const { socket } = useSocket();
+
+  // --- STATE ---
   const [subnets, setSubnets] = useState("192.168.1.0/24"); 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // Loading cho quét mạng
   const [devices, setDevices] = useState<NetworkDevice[]>([]);
   const [selectedRows, setSelectedRows] = useState<NetworkDevice[]>([]);
 
-  // --- STATE BẢO MẬT (SECURITY AUDIT) ---
+  // --- STATE BẢO MẬT ---
   const [auditModalOpen, setAuditModalOpen] = useState(false);
   const [auditResult, setAuditResult] = useState<any>(null);
-  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditLoading, setAuditLoading] = useState(false); // Loading cho Audit
 
-  // --- HÀM 1: QUÉT MẠNG ---
+  // --- [QUAN TRỌNG] LẮNG NGHE SOCKET ---
+  useEffect(() => {
+    if (!socket) return;
+
+    // 1. Nhận kết quả QUÉT MẠNG
+    const onScanComplete = (data: NetworkDevice[]) => {
+        console.log("📡 Nhận kết quả quét từ Server:", data);
+        setDevices(data);
+        setLoading(false);
+        message.success(`Quét hoàn tất! Tìm thấy ${data.length} thiết bị.`);
+    };
+
+    const onScanError = (err: any) => {
+        setLoading(false);
+        message.error(err.message || "Lỗi trong quá trình quét mạng");
+    };
+
+    // 2. Nhận kết quả AUDIT BẢO MẬT
+    const onAuditComplete = (data: any) => {
+        console.log("🛡️ Nhận kết quả Audit:", data);
+        setAuditResult(data);
+        setAuditLoading(false);
+        message.success(`Đã kiểm tra xong IP: ${data.ip}`);
+    };
+
+    const onAuditError = (err: any) => {
+        setAuditLoading(false);
+        message.error(err.message || "Lỗi khi kiểm tra bảo mật");
+    };
+
+    // Đăng ký sự kiện
+    socket.on("scan_complete", onScanComplete);
+    socket.on("scan_error", onScanError);
+    socket.on("audit_complete", onAuditComplete);
+    socket.on("audit_error", onAuditError);
+
+    // Hủy đăng ký khi thoát
+    return () => {
+        socket.off("scan_complete", onScanComplete);
+        socket.off("scan_error", onScanError);
+        socket.off("audit_complete", onAuditComplete);
+        socket.off("audit_error", onAuditError);
+    };
+  }, [socket]);
+
+  // --- HÀM 1: QUÉT MẠNG (Gửi lệnh async) ---
   const handleScan = async () => {
     if (!subnets) return message.warning("Vui lòng nhập dải mạng!");
     
-    // Tách subnet phòng trường hợp nhập nhiều dòng
     const subnetArray = subnets.split(/[\n,;]+/).map(s => s.trim()).filter(s => s);
 
     setLoading(true);
     setDevices([]); 
     try {
+      // Gọi API: Server sẽ trả về ngay lập tức "Đang xử lý..."
       const res = await axiosClient.post('/itam/network/scan', { subnets: subnetArray });
       
       if (res.data.status === 'success') {
-        setDevices(res.data.data);
-        message.success(`Đã tìm thấy ${res.data.data.length} thiết bị!`);
+        message.loading({ content: "Hệ thống đang quét ngầm, vui lòng đợi...", key: 'scanning_msg', duration: 2 });
+        // Lưu ý: Không setLoading(false) ở đây. Chờ Socket báo về mới tắt.
       }
     } catch (error: any) {
       console.error(error);
-      message.error("Lỗi khi quét mạng. Hãy kiểm tra lại Backend/Python.");
-    } finally {
+      message.error("Lỗi khi gửi lệnh quét.");
       setLoading(false);
     }
   };
@@ -80,19 +117,17 @@ const NetworkScanner = () => {
     }
   };
 
-  // --- HÀM 3: KIỂM TRA BẢO MẬT (AUDIT) ---
+  // --- HÀM 3: KIỂM TRA BẢO MẬT (Gửi lệnh async) ---
   const handleAudit = async (ip: string) => {
     setAuditResult(null);
     setAuditModalOpen(true);
     setAuditLoading(true);
     try {
-        // Gọi API Audit riêng cho 1 IP
-        const res = await axiosClient.post('/itam/network/audit', { ip });
-        setAuditResult(res.data.data);
+        // Gửi lệnh kiểm tra ngầm
+        await axiosClient.post('/itam/network/audit', { ip });
+        // Không chờ kết quả ở đây, chờ Socket
     } catch (e) {
         message.error("Không thể kết nối module bảo mật.");
-        setAuditModalOpen(false);
-    } finally {
         setAuditLoading(false);
     }
   };
@@ -138,7 +173,6 @@ const NetworkScanner = () => {
       sorter: (a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }),
       render: (ip) => <span className="font-bold text-gray-700">{ip}</span>
     },
-    // [UPDATE] Cột Hãng sản xuất (Vendor) hiển thị đẹp hơn
     {
         title: 'Hãng sản xuất',
         dataIndex: 'vendor',
@@ -172,7 +206,6 @@ const NetworkScanner = () => {
             </div>
         )
     },
-    // [NEW] Cột Hành động quét bảo mật
     {
         title: 'Bảo mật',
         key: 'action',
@@ -185,6 +218,7 @@ const NetworkScanner = () => {
                 danger
                 icon={<SafetyCertificateOutlined />}
                 onClick={() => handleAudit(record.ip)}
+                loading={auditLoading && auditModalOpen === false} // Hiệu ứng loading nhỏ nếu cần
             >
                 Kiểm tra
             </Button>
@@ -211,7 +245,7 @@ const NetworkScanner = () => {
             />
             <div className="text-xs text-gray-400 mt-1 flex gap-4">
                 <span><WifiOutlined /> Hỗ trợ quét nhiều VLAN.</span>
-                <span>⏳ Thời gian: 10-30s. Sử dụng Service Scan để tìm Vendor qua VPN.</span>
+                <span>⏳ Thời gian: 30s - 2 phút. Hệ thống xử lý ngầm và báo kết quả khi xong.</span>
             </div>
           </div>
           <Button 
@@ -265,19 +299,23 @@ const NetworkScanner = () => {
         title={
             <div className="flex items-center gap-2">
                 <BugOutlined className="text-red-500"/> 
-                <span>Báo cáo Bảo mật: {auditResult?.ip}</span>
+                <span>Báo cáo Bảo mật: {auditResult?.ip || 'Đang kiểm tra...'}</span>
             </div>
         }
         open={auditModalOpen}
-        onCancel={() => setAuditModalOpen(false)}
-        footer={null}
+        onCancel={() => { if(!auditLoading) setAuditModalOpen(false); }}
+        footer={!auditLoading ? null : <div className="text-center text-gray-400 text-xs">Vui lòng đợi...</div>}
         width={700}
         destroyOnClose
+        maskClosable={!auditLoading} // Không cho đóng khi đang quét
       >
         {auditLoading ? (
             <div className="flex flex-col items-center justify-center p-8 gap-4">
                 <Spin size="large" />
-                <span className="text-gray-500">Đang chạy script dò lỗ hổng (Nmap Vuln)...<br/>Quá trình này có thể mất 1-2 phút.</span>
+                <span className="text-gray-500 text-center">
+                    Đang chạy script dò lỗ hổng (Nmap Vuln)...<br/>
+                    Quá trình này có thể mất 1-2 phút. Kết quả sẽ tự động hiện ra.
+                </span>
             </div>
         ) : auditResult ? (
             <div className="space-y-6">

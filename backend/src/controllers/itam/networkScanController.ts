@@ -2,10 +2,12 @@ import { Request, Response } from "express";
 import { spawn } from "child_process";
 import path from "path";
 import os from "os";
+// [QUAN TRỌNG] Import hàm lấy Socket IO (Hãy kiểm tra đường dẫn file socket của bạn)
+import { getIO } from "../../socket"; 
 
 export const scanNetwork = async (req: Request, res: Response) => {
   try {
-    // 1. Nhận dữ liệu từ Frontend gửi lên (VD: ["192.168.1.0/24"])
+    // 1. Nhận dữ liệu
     const { subnets } = req.body;
 
     if (!subnets || !Array.isArray(subnets) || subnets.length === 0) {
@@ -15,73 +17,75 @@ export const scanNetwork = async (req: Request, res: Response) => {
       });
     }
 
-    // 2. Xác định đường dẫn file Python
-    // process.cwd() trỏ về thư mục gốc backend (nơi chứa package.json)
+    // 2. Setup đường dẫn Python
     const scriptPath = path.join(process.cwd(), "scripts", "network_classify.py");
-
-    // 3. Chọn lệnh chạy tùy theo hệ điều hành (Linux dùng python3, Windows dùng python)
     const pythonCommand = os.platform() === "win32" ? "python" : "python3";
 
-    console.log(`[NetworkScan] Đang chạy lệnh: ${pythonCommand} ${scriptPath} ${subnets.join(" ")}`);
+    console.log(`[NetworkScan] Bắt đầu tiến trình ngầm: ${subnets.join(" ")}`);
 
-    // 4. Tạo tiến trình con (Child Process)
+    // --- [THAY ĐỔI LỚN 1] ---
+    // TRẢ VỀ RESPONSE NGAY LẬP TỨC (Không đợi Python chạy xong)
+    // Để tránh lỗi 504 Gateway Timeout của Nginx
+    res.status(200).json({
+        status: "success",
+        message: "Hệ thống đang quét mạng ngầm. Kết quả sẽ được gửi qua Socket khi hoàn tất.",
+        processing: true
+    });
+
+    // 3. Chạy Python trong nền (Background)
     const pythonProcess = spawn(pythonCommand, [scriptPath, ...subnets]);
 
     let dataString = "";
     let errorString = "";
 
-    // Thu thập dữ liệu từ Python in ra (stdout)
     pythonProcess.stdout.on("data", (data) => {
       dataString += data.toString();
     });
 
-    // Thu thập lỗi hoặc log từ Python (stderr)
     pythonProcess.stderr.on("data", (data) => {
-      // Nmap hay in thông báo tiến độ vào stderr, nên ta chỉ log ra console server để debug
       console.log(`[Python Log]: ${data}`);
       errorString += data.toString();
     });
 
-    // Khi Python chạy xong
+    // 4. Khi Python chạy xong -> BẮN SOCKET
     pythonProcess.on("close", (code) => {
-      // Code 0 = Thành công, Khác 0 = Lỗi
+      const io = getIO(); // Lấy socket server
+
       if (code !== 0) {
-        console.error(`[Python Error Code ${code}]: ${errorString}`);
-        return res.status(500).json({ 
-          status: "error", 
-          message: "Lỗi khi thực thi quét mạng. Vui lòng kiểm tra Server log.",
-          debug: errorString 
-        });
+        console.error(`[Scan Error]: ${errorString}`);
+        // Bắn sự kiện lỗi về Frontend
+        io.emit("scan_error", { message: "Lỗi khi quét mạng (Python Error)", detail: errorString });
+        return;
       }
 
       try {
-        // Parse chuỗi JSON nhận được
         const results = JSON.parse(dataString);
+        console.log(`✅ Quét xong! Tìm thấy ${results.length} thiết bị.`);
+        
+        // --- [THAY ĐỔI LỚN 2] ---
+        // Thay vì res.json (đã gửi rồi), ta dùng socket emit
+        io.emit("scan_complete", results); 
 
-        return res.status(200).json({
-          status: "success",
-          message: `Đã tìm thấy ${results.length} thiết bị.`,
-          data: results
-        });
       } catch (e) {
         console.error("JSON Parse Error:", dataString);
-        return res.status(500).json({ 
-          status: "error", 
-          message: "Dữ liệu trả về từ Python không đúng định dạng JSON.",
-          raw: dataString // Trả về raw để debug nếu cần
-        });
+        io.emit("scan_error", { message: "Dữ liệu trả về không đúng định dạng", raw: dataString });
       }
     });
 
   } catch (error: any) {
-    res.status(500).json({ status: "error", message: error.message });
+    // Nếu lỗi xảy ra TRƯỚC khi gửi response thì mới dùng res
+    if (!res.headersSent) {
+        res.status(500).json({ status: "error", message: error.message });
+    } else {
+        console.error("Server Error:", error);
+    }
   }
 };
 
-// API MỚI: Quét bảo mật cho 1 IP
+// API Audit Bảo Mật (Cũng chuyển sang chạy ngầm cho an toàn)
 export const auditDeviceSecurity = async (req: Request, res: Response) => {
   try {
-    const { ip } = req.body; // Chỉ nhận 1 IP
+    const { ip } = req.body;
     if (!ip) return res.status(400).json({ message: "Thiếu địa chỉ IP" });
 
     const scriptPath = path.join(process.cwd(), "scripts", "security_audit.py");
@@ -89,22 +93,32 @@ export const auditDeviceSecurity = async (req: Request, res: Response) => {
 
     console.log(`[SecurityAudit] Checking IP: ${ip}`);
 
-    // Gọi Python
+    // Trả lời ngay lập tức
+    res.status(200).json({ 
+        status: "success", 
+        message: "Đang kiểm tra bảo mật ngầm...",
+        processing: true 
+    });
+
+    // Chạy ngầm
     const pythonProcess = spawn(pythonCommand, [scriptPath, ip]);
-    
     let dataString = "";
+    
     pythonProcess.stdout.on("data", (data) => { dataString += data.toString(); });
     
     pythonProcess.on("close", (code) => {
+        const io = getIO();
         try {
             const result = JSON.parse(dataString);
-            return res.status(200).json({ status: "success", data: result });
+            // Bắn sự kiện riêng cho Audit
+            io.emit("audit_complete", result);
         } catch (e) {
-            return res.status(500).json({ message: "Lỗi phân tích kết quả bảo mật", raw: dataString });
+            console.error("Audit Error Parse");
+            io.emit("audit_error", { ip, message: "Lỗi phân tích kết quả" });
         }
     });
 
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    if (!res.headersSent) res.status(500).json({ message: error.message });
   }
 };
