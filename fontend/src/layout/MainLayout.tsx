@@ -18,7 +18,7 @@ import {
   AppstoreOutlined, 
   CloseOutlined,
   NodeIndexOutlined,
-  DesktopOutlined, // [UPDATE] Icon cho Quản lý thiết bị
+  DesktopOutlined, 
   RadarChartOutlined
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -66,7 +66,7 @@ const SideMenu: React.FC<SideMenuProps> = ({ collapsed, isMobile, locationPath, 
 interface AppLauncherProps {
     isOpen: boolean;
     onClose: () => void;
-    menuItems: any[]; // Đây sẽ là danh sách đầy đủ các App
+    menuItems: any[];
     onNavigate: (path: string) => void;
     isDarkMode: boolean;
 }
@@ -74,20 +74,17 @@ interface AppLauncherProps {
 const AppLauncher: React.FC<AppLauncherProps> = ({ isOpen, onClose, menuItems, onNavigate, isDarkMode }) => {
     if (!isOpen) return null;
 
-    // Filter bỏ các item là divider hoặc group title để lấy danh sách App thực sự
     const flatApps: any[] = [];
     
     menuItems.forEach(item => {
         if (!item) return;
-        // Nếu là Item đơn (VD: Dashboard)
         if (!item.children && item.key && item.key !== 'divider') {
             flatApps.push(item);
         }
-        // Nếu là Group (VD: Kho vận, Hệ thống) -> Lấy đại diện hoặc lấy hết con
         else if (item.children) {
              flatApps.push({
                  ...item,
-                 link: item.children[0]?.key || item.key, // Link mặc định vào trang đầu của nhóm
+                 link: item.children[0]?.key || item.key,
                  isGroup: true
              });
         }
@@ -99,19 +96,17 @@ const AppLauncher: React.FC<AppLauncherProps> = ({ isOpen, onClose, menuItems, o
             label: item.label,
             icon: item.icon,
             link: item.link || item.key,
-            // [UPDATE] Thêm màu sắc cho Module Assets
             colorClass: item.key.includes('warehouse') ? 'bg-orange-500' : 
                         item.key.includes('system') ? 'bg-gray-600' : 
                         item.key.includes('posts') ? 'bg-purple-500' : 
                         item.key.includes('user') ? 'bg-blue-500' : 
-                        item.key.includes('assets') ? 'bg-teal-600' : // Màu cho Assets
+                        item.key.includes('itam') ? 'bg-teal-600' : 
                         'bg-indigo-600'
         };
     });
 
     return (
         <div className={`fixed inset-0 z-50 transition-all duration-300 flex flex-col ${isDarkMode ? 'bg-gray-900/95' : 'bg-slate-100/95'} backdrop-blur-md`}>
-            {/* Header Overlay */}
             <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200/10">
                 <span className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Ứng dụng</span>
                 <Button 
@@ -121,23 +116,17 @@ const AppLauncher: React.FC<AppLauncherProps> = ({ isOpen, onClose, menuItems, o
                     className={isDarkMode ? 'text-white hover:bg-white/10' : 'text-slate-800 hover:bg-slate-200'}
                 />
             </div>
-
-            {/* Grid Icon */}
             <div className="flex-1 overflow-y-auto p-8 md:p-12">
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 md:gap-8 max-w-7xl mx-auto">
                     {appModules.map((app: any) => (
                         <div 
                             key={app.key}
                             onClick={() => { onNavigate(app.link); onClose(); }}
-                            className={`
-                                group cursor-pointer flex flex-col items-center justify-center p-6 rounded-2xl transition-all duration-200
+                            className={`group cursor-pointer flex flex-col items-center justify-center p-6 rounded-2xl transition-all duration-200
                                 ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-white hover:shadow-xl'}
                             `}
                         >
-                            <div className={`
-                                w-16 h-16 md:w-20 md:h-20 rounded-2xl shadow-lg flex items-center justify-center text-white mb-4 text-3xl md:text-4xl transition-transform duration-200 group-hover:scale-110
-                                ${app.colorClass}
-                            `}>
+                            <div className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl shadow-lg flex items-center justify-center text-white mb-4 text-3xl md:text-4xl transition-transform duration-200 group-hover:scale-110 ${app.colorClass}`}>
                                 {app.icon}
                             </div>
                             <span className={`text-center font-semibold text-sm md:text-base ${isDarkMode ? 'text-gray-200' : 'text-slate-700'}`}>
@@ -171,7 +160,7 @@ const MainLayout: React.FC = () => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // --- LOGIC 1: BẮT TÍN HIỆU TỪ TRANG LOGIN ĐỂ MỞ APP LAUNCHER ---
+  // LOGIC 1: BẮT TÍN HIỆU TỪ TRANG LOGIN ĐỂ MỞ APP LAUNCHER
   useEffect(() => {
     if (location.state && location.state.openAppLauncher) {
         setAppLauncherOpen(true);
@@ -179,13 +168,14 @@ const MainLayout: React.FC = () => {
     }
   }, [location]);
 
-  // --- LOGIC 2: GIỮ TRẠNG THÁI MENU KHI LOAD TRANG ---
+  // LOGIC 2: GIỮ TRẠNG THÁI MENU KHI LOAD TRANG
   useEffect(() => {
     const pathname = location.pathname;
     const keys: string[] = []; 
     if (pathname.startsWith('/posts')) keys.push('grp-posts'); 
     if (pathname.startsWith('/warehouse')) keys.push('grp-warehouse'); 
     if (pathname.startsWith('/admin') && pathname !== '/admin/users') keys.push('grp-system'); 
+    if (pathname.startsWith('/itam')) keys.push('grp-itam');
     
     setOpenKeys(prev => {
         const uniqueKeys = new Set([...prev, ...keys]);
@@ -193,11 +183,9 @@ const MainLayout: React.FC = () => {
     });
   }, [location.pathname]);
 
-  const onOpenChange = (keys: string[]) => {
-    setOpenKeys(keys);
-  };
+  const onOpenChange = (keys: string[]) => setOpenKeys(keys);
 
-  // --- LOGIC 3: FETCH DATA ---
+  // LOGIC 3: FETCH DATA
   useEffect(() => {
     const fetchMenus = async () => {
         try {
@@ -232,16 +220,14 @@ const MainLayout: React.FC = () => {
       }
   };
 
-  // --- LOGIC 4: CẤU HÌNH MENU ITEMS (SIDEBAR) ---
+  // LOGIC 4: CẤU HÌNH MENU ITEMS (SIDEBAR)
   const menuItems = useMemo<MenuProps['items']>(() => {
     const items: MenuProps['items'] = [];
 
-    // Dashboard
     if (user?.roleId !== 'ROLE-USER') {
       items.push({ key: '/', icon: <DashboardOutlined />, label: 'Tổng quan' });
     }
 
-    // Tin tức
     items.push({ 
         key: 'grp-posts', icon: <ReadOutlined />, label: 'Bảng tin',
         children: [
@@ -250,12 +236,10 @@ const MainLayout: React.FC = () => {
         ]
     });
     
-    // Nhân sự
     if (hasPermission('USER_VIEW')) {
       items.push({ key: '/admin/users', icon: <TeamOutlined />, label: 'Nhân sự' });
     }
 
-    // Kho
     const canSeeWarehouse = hasPermission('WMS_VIEW') || hasPermission('WMS_APPROVE');
     if (canSeeWarehouse) {
       const warehouseChildren: MenuProps['items'] = [];
@@ -273,7 +257,6 @@ const MainLayout: React.FC = () => {
       if (hasPermission('WMS_APPROVE')) {
           warehouseChildren.push({ key: '/warehouse/approvals', icon: <SafetyCertificateOutlined />, label: 'Phê duyệt' });
       }
-
       if (warehouseChildren.length > 0) {
         items.push({
             key: 'grp-warehouse', label: 'Kho vận', icon: <DatabaseOutlined />, 
@@ -282,33 +265,22 @@ const MainLayout: React.FC = () => {
       }
     }
 
-    // 5. [UPDATE] QUẢN LÝ THIẾT BỊ (ITAM)
-    // Check quyền: Admin hoặc người có quyền xem tài sản (ITAM_ASSET_VIEW)
     const canSeeAssets = hasPermission('ITAM_ASSET_VIEW') || user?.roleId === 'ROLE-ADMIN' || user?.roleId === 'IT_MANAGER';
-    
     if (canSeeAssets) {
         items.push({
-            key: 'grp-itam', 
-            icon: <DesktopOutlined />, 
-            label: 'Quản lý thiết bị (IT)',
+            key: 'grp-itam', icon: <DesktopOutlined />, label: 'Quản lý thiết bị (IT)',
             children: [
-                // Dashboard ITAM
                 { key: '/itam/dashboard', label: 'Dashboard IT', icon: <BarChartOutlined /> }, 
-                
-                // Danh sách máy tính
                 { key: '/itam', label: 'Máy tính & Server', icon: <DatabaseOutlined /> }, 
                 { key: '/itam/software-inventory', label: 'Phần mềm cài đặt', icon: <AppstoreOutlined /> },
                 { key: '/itam/network-scan', label: 'Quét mạng (Scan)', icon: <RadarChartOutlined /> },
-                // Danh mục loại tài sản (Chỉ Admin/IT Manager)
                 ...(hasPermission('ITAM_ASSET_CREATE') ? [
-                    { key: 'itam/peripherals', label: 'Loại tài sản', icon: <TagsOutlined /> },
-                    
+                    { key: '/itam/peripherals', label: 'Loại tài sản', icon: <TagsOutlined /> },
                 ] : [])
             ]
         });
     }
 
-    // Hệ thống
     const canSeeSystem = hasPermission('DEPT_VIEW') || hasPermission('ROLE_VIEW') || hasPermission('MENU_VIEW') || hasPermission('WORKFLOW_VIEW') || user?.roleId === 'ROLE-ADMIN';
     if (canSeeSystem) {
       items.push({ 
@@ -408,21 +380,19 @@ const MainLayout: React.FC = () => {
             style={{ 
                 background: isDarkMode ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)', 
                 borderBottom: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb',
-                padding: '0 20px',
+                padding: '0 16px',
                 height: 64
             }} 
             className="flex justify-between items-center sticky top-0 z-10 backdrop-blur-sm"
         >
-            <div className="flex items-center gap-3">
+            {/* VÙNG BÊN TRÁI ĐÃ ĐƯỢC FIX LỖI CHE CHỮ */}
+            <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
                 <Tooltip title="Ứng dụng">
                     <Button 
                         type="text"
                         icon={<AppstoreOutlined style={{ fontSize: 22 }} />}
                         onClick={() => setAppLauncherOpen(true)}
-                        className={`
-                            flex items-center justify-center w-10 h-10 rounded-full transition-all
-                            ${isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100 hover:text-indigo-600'}
-                        `}
+                        className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full transition-all ${isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100 hover:text-indigo-600'}`}
                     />
                 </Tooltip>
 
@@ -431,26 +401,27 @@ const MainLayout: React.FC = () => {
                     icon={collapsed || isMobile ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} 
                     onClick={() => isMobile ? setMobileMenuOpen(true) : setCollapsed(!collapsed)} 
                     style={{ fontSize: '18px' }}
-                    className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}
+                    className={`flex-shrink-0 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
                 />
 
                 {!isMobile && (
-                    <div className="ml-2 flex flex-col justify-center h-full">
-                        <span className={`text-sm font-semibold leading-tight ${isDarkMode ? 'text-gray-200' : 'text-slate-700'}`}>
+                    <div className="flex flex-col justify-center h-full whitespace-nowrap">
+                        <span className={`text-sm md:text-base font-bold leading-tight ${isDarkMode ? 'text-gray-200' : 'text-slate-800'}`}>
                             HỆ THỐNG QUẢN TRỊ
                         </span>
-                        <span className="text-[10px] text-gray-400">Towa Vietnam ERP v1.0</span>
+                        <span className="text-[10px] md:text-xs text-gray-500 font-medium">Towa Vietnam ERP v1.0</span>
                     </div>
                 )}
             </div>
             
-            <div className="flex items-center gap-3 md:gap-5">
+            {/* VÙNG BÊN PHẢI */}
+            <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
                 <Switch 
                     checkedChildren={<MoonOutlined />} 
                     unCheckedChildren={<SunOutlined />} 
                     checked={isDarkMode} 
                     onChange={toggleTheme} 
-                    className="bg-gray-300" 
+                    className="bg-gray-300 hidden sm:block" 
                 />
                 
                 <Popover content={notiContent} title="Thông báo" trigger="click" onOpenChange={handleReadNoti} placement="bottomRight" overlayClassName="noti-popover">
@@ -462,8 +433,8 @@ const MainLayout: React.FC = () => {
                 </Popover>
 
                 <Dropdown menu={userDropdown} trigger={['click']} placement="bottomRight">
-                    <div className={`flex items-center gap-3 cursor-pointer p-1.5 pl-3 pr-2 rounded-full border transition-all ${isDarkMode ? 'border-gray-700 hover:bg-gray-800 bg-gray-800/50' : 'border-gray-200 hover:bg-white bg-white hover:shadow-sm'}`}>
-                        <div className="hidden md:flex flex-col items-end mr-1">
+                    <div className={`flex items-center gap-2 md:gap-3 cursor-pointer p-1 md:p-1.5 pl-2 md:pl-3 pr-1 md:pr-2 rounded-full border transition-all ${isDarkMode ? 'border-gray-700 hover:bg-gray-800 bg-gray-800/50' : 'border-gray-200 hover:bg-white bg-white hover:shadow-sm'}`}>
+                        <div className="hidden sm:flex flex-col items-end mr-1">
                              <span className={`text-xs font-bold leading-none ${isDarkMode ? 'text-gray-200' : 'text-slate-700'}`}>{user?.fullName?.split(' ').pop()}</span>
                              <span className="text-[10px] text-gray-400 leading-none mt-0.5">Admin</span>
                         </div>

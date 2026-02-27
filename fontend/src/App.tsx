@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 // [MỚI] Import SocketProvider (Đảm bảo đường dẫn đúng với file bạn vừa tạo)
@@ -67,11 +67,14 @@ const PrivateRoute = ({ children }: { children: JSX.Element }) => {
 // Component điều hướng Dashboard theo Role
 const DashboardGuard = () => {
   const { user } = useAuth();
+  const location = useLocation(); // Lấy thông tin location hiện tại (chứa state từ Login)
+  
   const roleId = user?.role?.id || user?.roleId;
 
   // Nếu là User thường -> Sang trang Tin tức
   if (roleId === "ROLE-USER") {
-    return <Navigate to="/posts" replace />;
+    // [SỬA QUAN TRỌNG]: Truyền lại state hiện tại sang trang mới
+    return <Navigate to="/posts" replace state={location.state} />; 
   }
   // Admin, Manager, Leader... vào Dashboard
   return <Dashboard />;

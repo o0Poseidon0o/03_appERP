@@ -349,12 +349,21 @@ export const getAllAssets = async (req: Request, res: Response) => {
     const whereClause: any = {};
 
     if (search) {
+      const searchString = String(search);
       whereClause.OR = [
-        { name: { contains: String(search), mode: "insensitive" } },
-        { serialNumber: { contains: String(search), mode: "insensitive" } },
-        { modelName: { contains: String(search), mode: "insensitive" } },
-        { domainUser: { contains: String(search), mode: "insensitive" } },
-        { ipAddress: { contains: String(search) } },
+        { name: { contains: searchString, mode: "insensitive" } },
+        { serialNumber: { contains: searchString, mode: "insensitive" } },
+        { modelName: { contains: searchString, mode: "insensitive" } },
+        { domainUser: { contains: searchString, mode: "insensitive" } },
+        { ipAddress: { contains: searchString } },
+        // [THÊM MỚI] Tìm kiếm theo Tên của người dùng được gán (quan hệ nhiều-nhiều)
+        {
+          users: {
+            some: {
+              fullName: { contains: searchString, mode: "insensitive" }
+            }
+          }
+        }
       ];
     }
 
@@ -383,7 +392,7 @@ export const getAllAssets = async (req: Request, res: Response) => {
           parent: { select: { id: true, name: true } },
           _count: { select: { children: true, softwares: true } },
           
-          // [MỚI] Lấy thêm component (Monitor, Keyboard, Mouse) để hiển thị
+          // Lấy thêm component (Monitor, Keyboard, Mouse) để hiển thị
           components: {
              where: { type: { in: ['MONITOR', 'KEYBOARD', 'MOUSE'] } },
              select: { id: true, name: true, serialNumber: true, type: true, specs: true }

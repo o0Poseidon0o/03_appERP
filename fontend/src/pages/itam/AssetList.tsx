@@ -5,15 +5,12 @@ import {
   DesktopOutlined, WindowsOutlined, AuditOutlined, 
   LaptopOutlined, CloudServerOutlined, ToolOutlined, UserOutlined,
   FundProjectionScreenOutlined, GlobalOutlined, 
-  ThunderboltOutlined 
+  ThunderboltOutlined, SearchOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 
-// [1] XÓA import io trực tiếp
-// import { io } from "socket.io-client"; 
-
-// [2] THÊM import hook từ Context
-import { useSocket } from '../../contexts/SocketContext';
+// Import hook từ Context
+import { useSocket } from '../../contexts/SocketContext'; // Lưu ý: Đảm bảo đường dẫn này đúng với dự án của bạn (context hay contexts)
 
 import { assetService } from '../../services/assetService';
 import AssetForm from './AssetForm';
@@ -21,9 +18,6 @@ import AssetSoftwareDrawer from './AssetSoftwareDrawer';
 import AssetMaintenanceDrawer from './AssetMaintenanceDrawer'; 
 import type { IAsset } from '../../types/itam.types';
 import { useHasPermission } from '../../hooks/useHasPermission';
-
-// [3] XÓA dòng khởi tạo socket global này
-// const socket = io("http://localhost:3000"); 
 
 // Định nghĩa interface customSpecs
 interface AssetSpecs {
@@ -50,7 +44,7 @@ const AssetList = () => {
   const [searchText, setSearchText] = useState('');
   const { hasPermission } = useHasPermission();
 
-  // [4] LẤY socket từ Context
+  // LẤY socket từ Context
   const { socket, isConnected } = useSocket(); 
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -64,41 +58,45 @@ const AssetList = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Gửi searchText lên Backend
       const res = await assetService.getAll({ page: 1, limit: 1000, search: searchText });
       const allAssets = res.data.data || [];
       const computingAssets = allAssets.filter((item: IAsset) => 
           ['PC', 'LAPTOP', 'SERVER'].includes(item.type?.code || '')
       );
       setData(computingAssets);
-    } catch (error) { console.error(error); } 
-    finally { setLoading(false); }
+    } catch (error) { 
+      console.error(error); 
+      message.error("Lỗi tải dữ liệu");
+    } finally { 
+      setLoading(false); 
+    }
   };
 
-  // [5] CẬP NHẬT useEffect để dùng socket từ Context
+  // Lắng nghe thay đổi Socket
   useEffect(() => {
     fetchData(); 
     
-    // Kiểm tra nếu socket tồn tại thì mới lắng nghe
     if (socket && isConnected) {
         const handleUpdate = () => {
             if (!searchText) fetchData();
         };
 
         socket.on("asset_updated", handleUpdate);
-
-        // Cleanup function
         return () => { 
             socket.off("asset_updated", handleUpdate); 
         };
     }
-  }, [searchText, socket, isConnected]); // Thêm socket và isConnected vào dependency
+  }, [socket, isConnected]); // Bỏ searchText khỏi dependency để tránh fetch liên tục khi gõ
 
   const handleDelete = async (id: string) => {
       try {
           await assetService.delete(id);
           message.success("Đã xóa thiết bị");
           fetchData();
-      } catch (err: any) { message.error(err.response?.data?.message || "Không thể xóa"); }
+      } catch (err: any) { 
+          message.error(err.response?.data?.message || "Không thể xóa"); 
+      }
   }
 
   const handleViewSoftware = (asset: IAsset) => {
@@ -112,16 +110,17 @@ const AssetList = () => {
   };
 
   const getDeviceIcon = (code?: string) => {
-      if (code === 'LAPTOP') return <LaptopOutlined />;
-      if (code === 'SERVER') return <CloudServerOutlined />;
-      return <DesktopOutlined />;
+      if (code === 'LAPTOP') return <LaptopOutlined className="text-lg" />;
+      if (code === 'SERVER') return <CloudServerOutlined className="text-lg" />;
+      return <DesktopOutlined className="text-lg" />;
   };
 
   const columns: ColumnsType<IAsset> = [
     {
       title: 'Thiết bị',
       key: 'info',
-      width: 220,
+      width: 260,
+      fixed: 'left', // Giữ cột này khi cuộn ngang trên điện thoại
       render: (_, record) => {
         let shortTypeName = record.type?.name || 'Unknown';
         const code = record.type?.code;
@@ -130,93 +129,103 @@ const AssetList = () => {
         else if (code === 'SERVER') shortTypeName = 'Server';
 
         return (
-            <Space direction="vertical" size={0}>
-              <div className="font-bold text-blue-600 flex items-center gap-2 text-base">
-                 {getDeviceIcon(record.type?.code)} {record.name}
+            <div className="flex flex-col gap-1.5">
+              <div className="font-bold text-blue-700 flex items-center gap-2 text-sm truncate">
+                 {getDeviceIcon(record.type?.code)} 
+                 <span className="truncate" title={record.name}>{record.name}</span>
               </div>
-              <div className="text-xs text-gray-600 font-semibold flex gap-2 items-center">
-                 <Tag bordered={false} className="mr-0">{shortTypeName}</Tag>
+              <div className="text-xs text-gray-500 flex items-center gap-2">
+                 <Tag color="cyan" bordered={false} className="m-0 leading-none py-0.5 px-1.5 text-[10px]">{shortTypeName}</Tag>
                  <span className="truncate max-w-[140px]" title={`${record.manufacturer} ${record.modelName}`}>
                     {record.manufacturer} {record.modelName}
                  </span>
               </div>
-              {record.serialNumber && <div className="text-xs text-gray-400 font-mono mt-1">SN: {record.serialNumber}</div>}
-            </Space>
+              {record.serialNumber && <div className="text-[11px] text-gray-400 font-mono">SN: {record.serialNumber}</div>}
+            </div>
         );
       }
     },
     {
-        title: 'Hệ thống',
+        title: 'Mạng & Hệ điều hành',
         key: 'system',
-        width: 200,
+        width: 220,
         render: (_, record) => (
-            <div className="text-xs space-y-1">
+            <div className="text-xs space-y-2">
               {record.osName && (
-                  <div className="flex items-center gap-1 text-gray-700">
-                      <WindowsOutlined /> {record.osName} 
+                  <div className="flex items-center gap-1.5 text-slate-700 font-medium truncate bg-slate-50 px-2 py-1 rounded" title={record.osName}>
+                      <WindowsOutlined className="text-blue-500" /> {record.osName} 
                   </div>
               )}
-              <div className="flex flex-col text-gray-500 font-mono">
-                  {record.ipAddress && <span><GlobalOutlined /> IP: {record.ipAddress}</span>}
-                  {record.macAddress && <span className="ml-4 text-xs">MAC: {record.macAddress}</span>}
+              <div className="flex flex-col text-slate-500 font-mono gap-1">
+                  {record.ipAddress && <span className="flex items-center gap-1.5"><GlobalOutlined className="text-green-500"/> {record.ipAddress}</span>}
+                  {record.macAddress && <span className="ml-5 text-[10px] text-gray-400">MAC: {record.macAddress}</span>}
               </div>
               {record.domainUser && (
                   <Tooltip title="User Domain đang đăng nhập">
-                      <Tag color="purple" className="m-0 mt-1"><AuditOutlined /> {record.domainUser}</Tag>
+                      <Tag color="purple" bordered={false} className="m-0 mt-1 w-max text-center truncate"><AuditOutlined /> {record.domainUser}</Tag>
                   </Tooltip>
               )}
             </div>
         )
     },
     {
-      title: 'Cấu hình (CPU/RAM/GPU)',
+      title: 'Cấu hình phần cứng',
       key: 'specs',
-      width: 220,
+      width: 250,
       render: (_, record) => {
-          if (!record.customSpecs) return <span className="text-gray-400">-</span>;
+          if (!record.customSpecs) return <span className="text-gray-300 italic text-xs">Chưa có thông tin</span>;
           
           const specs = record.customSpecs as AssetSpecs;
           const { cpu, ram, disk, ramDetails, gpus } = specs;
 
           const ramContent = (
-              <div className="text-xs">
-                  <div className="font-bold border-b mb-1 pb-1">Chi tiết RAM ({ram})</div>
+              <div className="text-xs min-w-[200px]">
+                  <div className="font-bold border-b mb-2 pb-1 text-blue-600">Chi tiết RAM ({ram})</div>
                   {Array.isArray(ramDetails) && ramDetails.length > 0 ? ramDetails.map((r: any, idx: number) => (
-                      <div key={idx} className="mb-1">Slot {r.Slot}: <b>{r.Capacity}</b> ({r.Speed}) - {r.Manufacturer}</div>
-                  )) : "Không có thông tin chi tiết"}
+                      <div key={idx} className="mb-1 text-slate-600 flex justify-between">
+                          <span>Slot {r.Slot}: <b>{r.Capacity}</b></span>
+                          <span className="text-gray-400">({r.Speed}) - {r.Manufacturer}</span>
+                      </div>
+                  )) : <div className="text-gray-400 italic">Không có thông tin chi tiết</div>}
               </div>
           );
 
           const gpuContent = (
-              <div className="text-xs">
-                  <div className="font-bold border-b mb-1 pb-1">Card Đồ họa (GPU)</div>
+              <div className="text-xs min-w-[200px]">
+                  <div className="font-bold border-b mb-2 pb-1 text-orange-600">Card Đồ họa (GPU)</div>
                   {Array.isArray(gpus) && gpus.length > 0 ? gpus.map((g: any, idx: number) => (
-                      <div key={idx} className="mb-1">- {g.Name} (VRAM: {g.VRAM})</div>
-                  )) : "Onboard / Không có thông tin"}
+                      <div key={idx} className="mb-1 text-slate-600">
+                          <div className="font-medium">{g.Name}</div>
+                          <div className="text-gray-400">VRAM: {g.VRAM} | Driver: {g.DriverVersion}</div>
+                      </div>
+                  )) : <div className="text-gray-400 italic">Onboard / Không xác định</div>}
               </div>
           );
 
           return (
-             <div className="text-xs space-y-1">
-                {cpu && <div className="truncate font-semibold" title={cpu}>CPU: {cpu}</div>}
+             <div className="text-xs space-y-2">
+                {cpu && <div className="truncate font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded" title={cpu}>CPU: {cpu}</div>}
                 
                 <div className="flex items-center gap-2">
-                    <Popover content={ramContent} title={null}>
-                        <Tag color="geekblue" className="cursor-help m-0">RAM: {ram}</Tag>
+                    <Popover content={ramContent} title={null} placement="right">
+                        <Tag color="blue" bordered={false} className="cursor-help m-0 hover:opacity-80 transition-opacity">RAM: {ram}</Tag>
                     </Popover>
                     {Array.isArray(gpus) && gpus.length > 0 && (
-                        <Popover content={gpuContent} title={null}>
-                            <Tag color="orange" className="cursor-help m-0">GPU</Tag>
+                        <Popover content={gpuContent} title={null} placement="right">
+                            <Tag color="volcano" bordered={false} className="cursor-help m-0 hover:opacity-80 transition-opacity">Có GPU rời</Tag>
                         </Popover>
                     )}
                 </div>
 
-                {disk && <div className="truncate text-gray-500" title={disk}>HDD: {disk}</div>}
+                {disk && <div className="truncate text-slate-500 flex items-center gap-1.5" title={disk}><span>💾</span> {disk}</div>}
                 
                 {record._count?.softwares ? (
-                    <div className="mt-1 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => handleViewSoftware(record)}>
-                        <Badge count={record._count.softwares} overflowCount={999} style={{ backgroundColor: '#52c41a' }} /> 
-                        <span className="ml-1 text-blue-600 underline">Xem apps đã cài</span>
+                    <div 
+                        className="inline-flex items-center gap-1.5 cursor-pointer bg-green-50 text-green-700 px-2 py-1 rounded hover:bg-green-100 transition-colors border border-green-200" 
+                        onClick={() => handleViewSoftware(record)}
+                    >
+                        <Badge count={record._count.softwares} overflowCount={999} color="#52c41a" size="small" /> 
+                        <span className="font-medium text-[11px]">Phần mềm đã cài</span>
                     </div>
                 ) : null}
              </div>
@@ -224,7 +233,7 @@ const AssetList = () => {
       }
     },
     {
-      title: 'Ngoại vi & Màn hình',
+      title: 'Màn hình & Ngoại vi',
       key: 'components',
       width: 250,
       render: (_, record) => {
@@ -232,35 +241,39 @@ const AssetList = () => {
           const monitors = comps.filter((c: any) => c.type === 'MONITOR');
           const peripherals = comps.filter((c: any) => ['MOUSE', 'KEYBOARD'].includes(c.type));
 
-          if (monitors.length === 0 && peripherals.length === 0) return <span className="text-gray-300 italic text-xs">-</span>;
+          if (monitors.length === 0 && peripherals.length === 0) return <span className="text-gray-300 italic text-xs">Không có thiết bị đi kèm</span>;
 
           return (
-              <div className="text-xs flex flex-col gap-2">
-                  {monitors.map((m: any) => {
-                      const specs: any = m.specs || {};
-                      return (
-                          <div key={m.id} className="flex items-center gap-2">
-                              <FundProjectionScreenOutlined className="text-blue-500" />
-                              <span className="truncate flex-1 font-medium" title={m.name}>{m.name}</span>
-                              {specs.size && specs.size !== 'N/A' && <Tag className="m-0 text-[10px]">{specs.size}</Tag>}
-                          </div>
-                      );
-                  })}
+              <div className="text-xs flex flex-col gap-1.5">
+                  {monitors.length > 0 && (
+                      <div className="bg-blue-50/60 p-2 rounded-md border border-blue-100 space-y-1">
+                          {monitors.map((m: any) => {
+                              const specs: any = m.specs || {};
+                              return (
+                                  <div key={m.id} className="flex items-center gap-2">
+                                      <FundProjectionScreenOutlined className="text-blue-500" />
+                                      <span className="truncate flex-1 font-medium text-slate-700" title={m.name}>{m.name}</span>
+                                      {specs.size && specs.size !== 'N/A' && <span className="text-[10px] bg-white text-gray-500 px-1 border rounded">{specs.size}</span>}
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  )}
 
                   {peripherals.length > 0 && (
-                      <div className="mt-1 pt-1 border-t border-dashed border-gray-200">
+                      <div className="pt-1 space-y-1">
                           {peripherals.map((p: any) => {
                               const isMouse = p.type === 'MOUSE';
                               const specs: any = p.specs || {};
                               const icon = isMouse ? <span title="Chuột">🖱️</span> : <span title="Bàn phím">⌨️</span>;
                               
                               return (
-                                  <div key={p.id} className="flex items-center gap-2 text-gray-600 mt-1">
+                                  <div key={p.id} className="flex items-center gap-2 text-slate-600 pl-1">
                                       {icon}
                                       <span className="truncate" title={p.name}>
-                                          {specs.brand && specs.brand !== 'Unknown' ? <b className="text-slate-700">{specs.brand}</b> : ''} {p.name.replace(specs.brand, '').replace('Device', '').trim()}
+                                          {specs.brand && specs.brand !== 'Unknown' ? <b className="text-slate-800">{specs.brand}</b> : ''} {p.name.replace(specs.brand, '').replace('Device', '').trim()}
                                       </span>
-                                      {specs.connection && specs.connection.includes('Bluetooth') && <ThunderboltOutlined className="text-blue-400" title="Bluetooth" />}
+                                      {specs.connection && specs.connection.includes('Bluetooth') && <ThunderboltOutlined className="text-blue-500" title="Bluetooth" />}
                                   </div>
                               );
                           })}
@@ -271,83 +284,164 @@ const AssetList = () => {
       }
     },
     {
-        title: 'Quản lý',
+        title: 'Người dùng & Vị trí',
         key: 'management',
-        width: 180,
+        width: 200,
         render: (_, record) => (
-            <div className="text-xs">
-            {(record.factory || record.department) && (
-                <div className="mb-2 text-gray-700">
-                    {record.factory && <div>🏭 {record.factory.name}</div>}
-                    {record.department && <div className="ml-4">↳ 🏢 {record.department.name}</div>}
-                </div>
-            )}
-            {record.users && record.users.length > 0 ? (
-                <div className="flex flex-wrap gap-1">
-                    {record.users.map((u) => (
-                        <Tooltip key={u.id} title={`Email: ${u.email}`}><Tag color="cyan" icon={<UserOutlined />}>{u.fullName}</Tag></Tooltip>
-                    ))}
-                </div>
-            ) : <span className="text-gray-400 italic">Chưa bàn giao</span>}
+            <div className="text-xs space-y-2">
+                {record.users && record.users.length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                        {record.users.map((u) => (
+                            <Tooltip key={u.id} title={`Email: ${u.email}`}>
+                                <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100">
+                                    <UserOutlined />
+                                    <span className="truncate font-medium">{u.fullName}</span>
+                                </div>
+                            </Tooltip>
+                        ))}
+                    </div>
+                ) : (
+                    <Tag color="default" className="m-0 border-dashed text-gray-400">Chưa cấp phát</Tag>
+                )}
+
+                {(record.factory || record.department) && (
+                    <div className="bg-amber-50/80 p-2 rounded-md border border-amber-100 text-amber-800">
+                        {record.factory && <div className="font-semibold truncate flex items-center gap-1.5"><span>🏭</span> {record.factory.name}</div>}
+                        {record.department && <div className="mt-1 truncate text-[11px] text-amber-700/80 flex items-center gap-1.5"><span>🏢</span> {record.department.name}</div>}
+                    </div>
+                )}
             </div>
         )
     },
     {
       title: 'Trạng thái',
       key: 'status',
-      width: 100,
+      width: 120,
       align: 'center',
       render: (_, record) => (
-         <div className="flex flex-col items-center gap-1">
+         <div className="flex flex-col items-center gap-2">
             {(() => {
-                const colors: Record<string, string> = { NEW: 'green', IN_USE: 'blue', BROKEN: 'red', REPAIR: 'orange', DISPOSED: 'default' };
-                return <Tag color={colors[record.status] || 'default'}>{record.status}</Tag>
+                const colors: Record<string, string> = { NEW: 'success', IN_USE: 'processing', BROKEN: 'error', REPAIR: 'warning', DISPOSED: 'default' };
+                const textMap: Record<string, string> = { NEW: 'Mới', IN_USE: 'Đang dùng', BROKEN: 'Hỏng', REPAIR: 'Sửa chữa', DISPOSED: 'Thanh lý' };
+                return <Badge status={colors[record.status] as any} text={<span className="font-semibold text-xs text-slate-700">{textMap[record.status] || record.status}</span>} />
             })()}
-            <div className="text-[10px] text-gray-400 mt-1">
-               {record.lastSeen ? <Tooltip title={new Date(record.lastSeen).toLocaleString()}><span>🕒 {new Date(record.lastSeen).toLocaleDateString()}</span></Tooltip> : 'Offline'}
+            <div className="text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full w-max">
+               {record.lastSeen ? <Tooltip title={new Date(record.lastSeen).toLocaleString()}><span>{new Date(record.lastSeen).toLocaleDateString('vi-VN')}</span></Tooltip> : 'Offline'}
             </div>
          </div>
       )
     },
     {
-      title: 'Action',
+      title: 'Thao tác',
       key: 'action',
       width: 100,
-      fixed: 'right',
+      fixed: 'right', // Cố định bên phải trên màn hình nhỏ
+      align: 'center',
       render: (_, record) => (
-        <Space size="small">
-          {hasPermission('ITAM_MAINTENANCE') && <Button size="small" icon={<ToolOutlined />} onClick={() => handleOpenMaintenance(record)} />}
-          {hasPermission('ITAM_ASSET_UPDATE') && <Button size="small" icon={<EditOutlined />} onClick={() => { setEditingItem(record); setIsModalOpen(true); }} />}
-          {hasPermission('ITAM_ASSET_DELETE') && <Popconfirm title="Xóa?" onConfirm={() => handleDelete(record.id)}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm>}
-        </Space>
+        <div className="flex flex-col gap-2 items-center">
+          {hasPermission('ITAM_MAINTENANCE') && (
+              <Tooltip title="Bảo trì / Sửa chữa">
+                  <Button size="small" type="dashed" className="w-full text-orange-500 border-orange-200 hover:bg-orange-50 flex justify-center items-center" icon={<ToolOutlined />} onClick={() => handleOpenMaintenance(record)} />
+              </Tooltip>
+          )}
+          <Space size="small">
+              {hasPermission('ITAM_ASSET_UPDATE') && (
+                  <Tooltip title="Chỉnh sửa">
+                      <Button size="small" type="text" className="text-blue-600 hover:bg-blue-50" icon={<EditOutlined />} onClick={() => { setEditingItem(record); setIsModalOpen(true); }} />
+                  </Tooltip>
+              )}
+              {hasPermission('ITAM_ASSET_DELETE') && (
+                  <Tooltip title="Xóa">
+                      <Popconfirm title="Xóa thiết bị này?" description="Hành động này không thể hoàn tác." onConfirm={() => handleDelete(record.id)}>
+                          <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                  </Tooltip>
+              )}
+          </Space>
+        </div>
       )
     }
   ];
 
   return (
-    <div className="p-4 bg-white shadow rounded-lg m-4 h-full flex flex-col">
-      <div className="flex justify-between mb-4">
-         <div className="flex items-center gap-2">
-            <h3 className="text-lg font-bold m-0">Máy tính & Server</h3>
-            {/* Hiển thị thêm trạng thái Socket để biết có kết nối chưa */}
-            <Badge status={isConnected ? "success" : "default"} text={isConnected ? "Live" : "Offline"} />
-            <Badge count={data.length} style={{ backgroundColor: '#1890ff' }} />
+    // Xóa p-4, m-4, shadow, bg-white ở thẻ ngoài cùng để nó vừa khít với MainLayout
+    <div className="h-full flex flex-col">
+      
+      {/* HEADER SECTION - Tối ưu cho Mobile & PC */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-4">
+         <div className="flex items-center gap-3">
+            <div className="bg-blue-50 p-2 rounded-lg border border-blue-100">
+                <DesktopOutlined className="text-blue-600 text-xl" />
+            </div>
+            <div>
+                <h2 className="text-lg font-bold text-slate-800 m-0 leading-none">Máy tính & Server</h2>
+                <div className="flex items-center gap-2 mt-1.5">
+                    <Badge status={isConnected ? "success" : "default"} />
+                    <span className="text-xs text-gray-500">{isConnected ? "Kết nối Realtime" : "Mất kết nối"}</span>
+                    <span className="text-gray-300 text-xs">|</span>
+                    <span className="text-xs text-slate-500 font-medium">Tổng: {data.length} thiết bị</span>
+                </div>
+            </div>
          </div>
-         <Space>
-            <Input.Search placeholder="Tìm kiếm..." onSearch={setSearchText} style={{ width: 250 }} allowClear />
-            <Button icon={<ReloadOutlined />} onClick={() => fetchData()} />
-            {hasPermission('ITAM_ASSET_CREATE') && <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); setIsModalOpen(true); }}>Thêm</Button>}
-         </Space>
+         
+         <div className="flex flex-col sm:flex-row w-full lg:w-auto gap-3">
+            {/* Thanh tìm kiếm */}
+            <Input
+                placeholder="Tìm tên máy, IP, người dùng..." 
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                onPressEnter={() => fetchData()} 
+                prefix={<SearchOutlined className="text-gray-400" />}
+                className="w-full sm:w-72"
+                allowClear
+            />
+            
+            <div className="flex gap-2 w-full sm:w-auto">
+                <Tooltip title="Tải lại dữ liệu">
+                    <Button 
+                        icon={<ReloadOutlined />} 
+                        onClick={() => fetchData()} 
+                        className="flex-shrink-0"
+                    />
+                </Tooltip>
+                
+                {hasPermission('ITAM_ASSET_CREATE') && (
+                    <Button 
+                        type="primary" 
+                        icon={<PlusOutlined />} 
+                        onClick={() => { setEditingItem(null); setIsModalOpen(true); }}
+                        className="flex-1 sm:flex-none"
+                    >
+                        Thêm thiết bị
+                    </Button>
+                )}
+            </div>
+         </div>
       </div>
-      <Table 
-        columns={columns} 
-        dataSource={data} 
-        rowKey="id" 
-        loading={loading} 
-        scroll={{ x: 1300 }} 
-        pagination={{ defaultPageSize: 10 }}
-        size="small"
-      />
+
+      {/* TABLE SECTION */}
+      <div className="flex-1 pb-4">
+          <Table 
+            columns={columns} 
+            dataSource={data} 
+            rowKey="id" 
+            loading={loading} 
+            // [SỬA 2]: Tăng số trừ đi (từ 280px lên 340px) để chừa chỗ cho Pagination và Header
+            scroll={{ x: 1300, y: 'calc(100vh - 340px)' }} 
+            pagination={{ 
+                defaultPageSize: 20, 
+                showSizeChanger: true, 
+                showTotal: (total) => <span className="font-medium text-blue-600">Tổng số {total} thiết bị</span>,
+                // [SỬA 3]: Thêm margin cho pagination để nó tách biệt rõ ràng
+                style: { marginTop: '16px', marginBottom: '0px' } 
+            }}
+            size="small"
+            className="ant-table-striped"
+            rowClassName={() => "hover:bg-slate-50/80 transition-colors"}
+          />
+      </div>
+
+      {/* MODALS & DRAWERS */}
       <AssetForm open={isModalOpen} onCancel={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); fetchData(); }} initialValues={editingItem} />
       <AssetSoftwareDrawer open={softwareDrawerOpen} asset={selectedAsset} onClose={() => setSoftwareDrawerOpen(false)} />
       <AssetMaintenanceDrawer open={maintenanceDrawerOpen} asset={maintenanceAsset} onClose={() => setMaintenanceDrawerOpen(false)} />
