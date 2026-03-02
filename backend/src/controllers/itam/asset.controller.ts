@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../../config/prisma";
+// [UPDATE] Import trực tiếp hàm lấy Socket ở trên cùng
+import { getIO } from "../../socket"; 
 
 // --- INTERFACE CHO PAYLOAD CỦA AGENT V3.13 ---
 interface AgentPayload {
@@ -194,8 +196,9 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
         },
       });
 
-      // B. Ghi Log Thay đổi
+      // B. Ghi Log Thay đổi và Thông báo (NẾU CÓ THAY ĐỔI)
       if (changeDetails.length > 0) {
+          // 1. Tạo Log bảo trì
           await tx.maintenanceLog.create({
               data: {
                   assetId: asset.id,
@@ -209,6 +212,29 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
                   status: 'DONE'
               }
           });
+
+          // ==========================================
+          // 2. [MỚI] TẠO THÔNG BÁO CHO ADMIN
+          // ==========================================
+          // Tìm tất cả các user có role là ROLE-ADMIN
+          const adminUsers = await tx.user.findMany({
+              where: { roleId: 'ROLE-ADMIN', isActive: true },
+              select: { id: true }
+          });
+
+          if (adminUsers.length > 0) {
+              const notificationData = adminUsers.map(admin => ({
+                  userId: admin.id,
+                  title: `⚠️ Cảnh báo phần cứng: ${uniqueHostname}`,
+                  message: `Phát hiện thay đổi: ${changeDetails.join('. ')}`,
+                  link: `/itam`,
+                  isRead: false
+              }));
+
+              await tx.notification.createMany({
+                  data: notificationData
+              });
+          }
       }
 
       // C. Xử lý Ổ cứng (Xóa cũ -> Thêm mới)
@@ -307,21 +333,26 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
 
     // --- SOCKET EMIT ---
     try {
-        const { getIO } = require("../socket"); 
         const io = getIO();
-        
-        io.emit("asset_updated", { 
-            message: `Máy ${uniqueHostname} vừa cập nhật!`, 
-            hostname: uniqueHostname 
-        });
+        if (io) {
+            // Bắn sự kiện cập nhật chung
+            io.emit("asset_updated", { 
+                message: `Máy ${uniqueHostname} vừa cập nhật!`, 
+                hostname: uniqueHostname 
+            });
 
-        if (changeDetails.length > 0) {
-             io.emit("hardware_alert", { 
-                 message: `CẢNH BÁO: ${uniqueHostname} thay đổi phần cứng!`, 
-                 details: changeDetails 
-             });
+            // NẾU CÓ THAY ĐỔI -> Bắn sự kiện phần cứng ra Frontend
+            if (changeDetails.length > 0) {
+                 console.log(`[CẢNH BÁO SOCKET] Phát hiện thay đổi trên ${uniqueHostname}`);
+                 io.emit("hardware_alert", { 
+                     message: `Cảnh báo: ${uniqueHostname} vừa thay đổi phần cứng!`, 
+                     details: changeDetails 
+                 });
+            }
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error("Lỗi gửi Socket:", e);
+    }
 
     res.status(200).json({
       status: "success",

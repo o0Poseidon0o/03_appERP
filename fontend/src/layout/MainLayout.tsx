@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Layout, Menu, Button, Dropdown, Avatar, Badge, List, Popover, 
-  theme as antTheme, Switch, Drawer, type MenuProps, Tooltip 
-} from 'antd';
+  theme as antTheme, Switch, Drawer, type MenuProps, Tooltip, notification 
+} from 'antd'; // [UPDATE] Import thêm notification
 import { 
   MenuFoldOutlined, MenuUnfoldOutlined, 
   UserOutlined, DashboardOutlined, 
@@ -19,11 +19,13 @@ import {
   CloseOutlined,
   NodeIndexOutlined,
   DesktopOutlined, 
-  RadarChartOutlined
+  RadarChartOutlined,
+  ExclamationCircleOutlined // [UPDATE] Import Icon cảnh báo
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSocket } from '../contexts/SocketContext'; // [UPDATE] Import Socket Context
 import { useHasPermission } from '../hooks/useHasPermission';
 import axiosClient from '../api/axiosClient';
 import useMediaQuery from '../hooks/useMediaQuery';
@@ -150,6 +152,7 @@ const MainLayout: React.FC = () => {
 
   const { user, logout } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
+  const { socket, isConnected } = useSocket(); // [UPDATE] Khởi tạo Socket
   const { hasPermission } = useHasPermission(); 
   const navigate = useNavigate();
   const location = useLocation();
@@ -185,7 +188,7 @@ const MainLayout: React.FC = () => {
 
   const onOpenChange = (keys: string[]) => setOpenKeys(keys);
 
-  // LOGIC 3: FETCH DATA
+  // LOGIC 3: FETCH DATA MENU
   useEffect(() => {
     const fetchMenus = async () => {
         try {
@@ -196,6 +199,7 @@ const MainLayout: React.FC = () => {
     fetchMenus();
   }, []);
 
+  // LOGIC 4: LẤY VÀ CẬP NHẬT THÔNG BÁO
   const fetchNoti = useCallback(async () => {
       try {
           const res = await axiosClient.get('/notifications');
@@ -205,10 +209,48 @@ const MainLayout: React.FC = () => {
   }, []);
 
   useEffect(() => {
-      fetchNoti();
-      const interval = setInterval(fetchNoti, 30000);
+      fetchNoti(); // Fetch lần đầu
+      // Giảm tần suất polling xuống (hoặc bỏ hẳn) vì giờ đã có Socket lo việc realtime
+      const interval = setInterval(fetchNoti, 60000); 
       return () => clearInterval(interval);
   }, [fetchNoti]);
+
+  // [MỚI] LOGIC 5: LẮNG NGHE SOCKET THÔNG BÁO TỪ BACKEND
+  useEffect(() => {
+    if (socket && isConnected) {
+        const handleHardwareAlert = (data: any) => {
+            // 1. Fetch lại danh sách thông báo để cập nhật Chuông
+            fetchNoti();
+
+            // 2. Hiển thị Popup góc phải màn hình
+            notification.warning({
+                message: <span className="font-bold text-orange-600">{data.message || 'Thay đổi phần cứng'}</span>,
+                description: (
+                    <div className="text-xs text-gray-600 mt-1">
+                        {Array.isArray(data.details) ? (
+                            <ul className="list-disc pl-4 m-0 space-y-1">
+                                {data.details.map((detail: string, i: number) => <li key={i}>{detail}</li>)}
+                            </ul>
+                        ) : (
+                            <span>{data.details}</span>
+                        )}
+                    </div>
+                ),
+                icon: <ExclamationCircleOutlined style={{ color: '#faad14' }} />,
+                duration: 8, 
+                placement: 'topRight'
+            });
+        };
+
+        // Lắng nghe sự kiện
+        socket.on("hardware_alert", handleHardwareAlert);
+
+        return () => {
+            // Cleanup khi component unmount
+            socket.off("hardware_alert", handleHardwareAlert);
+        };
+    }
+  }, [socket, isConnected, fetchNoti]);
 
   const handleReadNoti = async (open: boolean) => {
       if (open && unreadCount > 0) {
@@ -220,7 +262,7 @@ const MainLayout: React.FC = () => {
       }
   };
 
-  // LOGIC 4: CẤU HÌNH MENU ITEMS (SIDEBAR)
+  // LOGIC 6: CẤU HÌNH MENU ITEMS (SIDEBAR)
   const menuItems = useMemo<MenuProps['items']>(() => {
     const items: MenuProps['items'] = [];
 
@@ -306,9 +348,13 @@ const MainLayout: React.FC = () => {
   const notiContent = (
       <div className="w-80 max-h-96 overflow-y-auto">
           <List dataSource={notifications} renderItem={item => (
-              <List.Item className={`p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!item.isRead ? 'bg-blue-50/60' : ''}`} onClick={() => navigate('/posts')}>
+              <List.Item 
+                  className={`p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!item.isRead ? 'bg-blue-50/60' : ''}`} 
+                  // Sửa lại đoạn click: Nếu notification có link thì chuyển hướng đến link đó, không thì về /posts
+                  onClick={() => navigate(item.link || '/posts')}
+              >
                   <List.Item.Meta 
-                      avatar={<Avatar style={{ backgroundColor: '#1890ff' }} icon={<BellOutlined />} size="small" />}
+                      avatar={<Avatar style={{ backgroundColor: item.title.includes('Cảnh báo') ? '#faad14' : '#1890ff' }} icon={item.title.includes('Cảnh báo') ? <ExclamationCircleOutlined /> : <BellOutlined />} size="small" />}
                       title={<span className="text-sm font-semibold text-slate-700">{item.title}</span>}
                       description={
                         <div>
@@ -385,7 +431,6 @@ const MainLayout: React.FC = () => {
             }} 
             className="flex justify-between items-center sticky top-0 z-10 backdrop-blur-sm"
         >
-            {/* VÙNG BÊN TRÁI ĐÃ ĐƯỢC FIX LỖI CHE CHỮ */}
             <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
                 <Tooltip title="Ứng dụng">
                     <Button 
@@ -414,7 +459,6 @@ const MainLayout: React.FC = () => {
                 )}
             </div>
             
-            {/* VÙNG BÊN PHẢI */}
             <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
                 <Switch 
                     checkedChildren={<MoonOutlined />} 

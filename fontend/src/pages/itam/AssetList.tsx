@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Table, Button, Input, Tag, Space, Popconfirm, message, Tooltip, Badge, Popover } from 'antd';
+import { Table, Button, Input, Tag, Space, Popconfirm, message, Tooltip, Badge, Popover } from 'antd'; // [UPDATE] Đã bỏ notification
 import { 
   ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined, 
   DesktopOutlined, WindowsOutlined, AuditOutlined, 
@@ -10,7 +10,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 
 // Import hook từ Context
-import { useSocket } from '../../contexts/SocketContext'; // Lưu ý: Đảm bảo đường dẫn này đúng với dự án của bạn (context hay contexts)
+import { useSocket } from '../../contexts/SocketContext'; 
 
 import { assetService } from '../../services/assetService';
 import AssetForm from './AssetForm';
@@ -19,7 +19,6 @@ import AssetMaintenanceDrawer from './AssetMaintenanceDrawer';
 import type { IAsset } from '../../types/itam.types';
 import { useHasPermission } from '../../hooks/useHasPermission';
 
-// Định nghĩa interface customSpecs
 interface AssetSpecs {
   cpu?: string;
   ram?: string;
@@ -44,7 +43,6 @@ const AssetList = () => {
   const [searchText, setSearchText] = useState('');
   const { hasPermission } = useHasPermission();
 
-  // LẤY socket từ Context
   const { socket, isConnected } = useSocket(); 
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -58,7 +56,6 @@ const AssetList = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Gửi searchText lên Backend
       const res = await assetService.getAll({ page: 1, limit: 1000, search: searchText });
       const allAssets = res.data.data || [];
       const computingAssets = allAssets.filter((item: IAsset) => 
@@ -73,7 +70,7 @@ const AssetList = () => {
     }
   };
 
-  // Lắng nghe thay đổi Socket
+  // --- [SỬA LẠI] Chỉ lắng nghe cập nhật chung để reload bảng ---
   useEffect(() => {
     fetchData(); 
     
@@ -83,11 +80,14 @@ const AssetList = () => {
         };
 
         socket.on("asset_updated", handleUpdate);
+        // Phần thông báo notification.warning đã được dời sang MainLayout.tsx
+        // để tránh bị double notification
+
         return () => { 
             socket.off("asset_updated", handleUpdate); 
         };
     }
-  }, [socket, isConnected]); // Bỏ searchText khỏi dependency để tránh fetch liên tục khi gõ
+  }, [socket, isConnected]); // Bỏ searchText khỏi dependency
 
   const handleDelete = async (id: string) => {
       try {
@@ -364,10 +364,9 @@ const AssetList = () => {
   ];
 
   return (
-    // Xóa p-4, m-4, shadow, bg-white ở thẻ ngoài cùng để nó vừa khít với MainLayout
     <div className="h-full flex flex-col">
       
-      {/* HEADER SECTION - Tối ưu cho Mobile & PC */}
+      {/* HEADER SECTION */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-4">
          <div className="flex items-center gap-3">
             <div className="bg-blue-50 p-2 rounded-lg border border-blue-100">
@@ -426,13 +425,11 @@ const AssetList = () => {
             dataSource={data} 
             rowKey="id" 
             loading={loading} 
-            // [SỬA 2]: Tăng số trừ đi (từ 280px lên 340px) để chừa chỗ cho Pagination và Header
             scroll={{ x: 1300, y: 'calc(100vh - 340px)' }} 
             pagination={{ 
                 defaultPageSize: 20, 
                 showSizeChanger: true, 
                 showTotal: (total) => <span className="font-medium text-blue-600">Tổng số {total} thiết bị</span>,
-                // [SỬA 3]: Thêm margin cho pagination để nó tách biệt rõ ràng
                 style: { marginTop: '16px', marginBottom: '0px' } 
             }}
             size="small"
