@@ -8,7 +8,7 @@ const router = Router();
  * TẤT CẢ ROUTE BÊN DƯỚI ĐỀU YÊU CẦU ĐĂNG NHẬP
  */
 router.use(protect);
-
+router.patch('/profile/me', userController.updateMyProfile);
 /**
  * 1. LẤY TẤT CẢ DANH MỤC QUYỀN HỆ THỐNG
  * Mục đích: Hiển thị danh sách Checkbox trong Modal phân quyền ở Frontend

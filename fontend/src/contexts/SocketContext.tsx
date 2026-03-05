@@ -30,7 +30,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     // Nếu không có biến môi trường thì fallback về localhost (chỉ chạy dev)
     const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
 
-    console.log("🔌 Connecting Socket to:", SOCKET_URL);
+    // console.log("🔌 Connecting Socket to:", SOCKET_URL);
 
     // Khởi tạo kết nối
     const newSocket = io(SOCKET_URL, {
@@ -41,7 +41,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
     // Lắng nghe sự kiện kết nối
     newSocket.on("connect", () => {
-        console.log("✅ Socket connected:", newSocket.id);
+        // console.log("✅ Socket connected:", newSocket.id);
         setIsConnected(true);
     });
 

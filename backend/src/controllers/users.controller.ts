@@ -205,3 +205,25 @@ export const updateUserPermissions = async (req: Request, res: Response, next: N
       next(error);
     }
   };
+
+  /**
+ * @desc    Cập nhật thông tin cá nhân (Cho phép mọi user tự đổi tên)
+ * @route   PATCH /api/users/profile/me
+ */
+export const updateMyProfile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id; // Lấy ID an toàn từ Token
+    const { fullName } = req.body;
+
+    if (!userId) return next(new AppError("Vui lòng đăng nhập", 401));
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { fullName }
+    });
+
+    res.status(200).json({ status: "success", data: updatedUser });
+  } catch (error) {
+    next(new AppError("Lỗi hệ thống khi cập nhật profile", 500));
+  }
+};

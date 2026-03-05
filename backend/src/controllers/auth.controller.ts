@@ -25,10 +25,11 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
             }
           }
         },
-        userPermissions: { // Lấy các quyền gán riêng cho User
+        userPermissions: { 
           include: { permission: true }
         },
-        department: true 
+        department: true,
+        factory: true // <--- [QUAN TRỌNG] Thêm dòng này để lấy thông tin Nhà máy
       }
     });
 

@@ -22,7 +22,8 @@ export interface User {
     permissions?: PermissionItem[]; 
   };
   department: { id: string; name: string };
-  allPermissions?: string[]; // Mảng chuỗi quyền đã hợp nhất từ Backend
+  factory?: { id: string; name: string }; // [MỚI] Thêm factory vào interface
+  allPermissions?: string[]; 
   phone?: string;
   avatar?: string;
   mustChangePassword?: boolean;
@@ -33,6 +34,7 @@ interface AuthContextType {
   token: string | null;
   login: (token: string, user: User) => void;
   logout: () => void;
+  updateLocalUser: (updatedFields: Partial<User>) => void; // [MỚI] Hàm cập nhật UI không cần reload
   isLoading: boolean;
 }
 
@@ -54,7 +56,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
         
-        // Nếu thiếu permissions trong localStorage nhưng user có sẵn trong máy
         if (!storedPerms) {
            const perms = parsedUser.allPermissions || [];
            localStorage.setItem('permissions', JSON.stringify(perms));
@@ -71,12 +72,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setToken(newToken);
     setUser(newUser);
 
-    // 1. Lưu Token và User object
     localStorage.setItem('token', newToken);
     localStorage.setItem('user', JSON.stringify(newUser));
 
-    // 2. TRÍCH XUẤT VÀ LƯU QUYỀN HỢP NHẤT
-    // Ưu tiên lấy allPermissions (đã gộp ở Backend), nếu không có mới lấy từ Role
     const permissions = newUser.allPermissions || 
                        newUser.role?.permissions?.map((p: PermissionItem) => p.permissionId) || 
                        [];
@@ -84,15 +82,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem('permissions', JSON.stringify(permissions));
   };
 
+  // [MỚI] Hàm cập nhật nhanh thông tin User trên UI (dùng cho trang Profile)
+  const updateLocalUser = (updatedFields: Partial<User>) => {
+    if (!user) return;
+    const newUserObj = { ...user, ...updatedFields };
+    setUser(newUserObj); // Cập nhật state (Header sẽ đổi tên ngay lập tức)
+    localStorage.setItem('user', JSON.stringify(newUserObj)); // Cập nhật localStorage
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.clear(); // Xóa sạch dữ liệu để bảo mật
+    localStorage.clear(); 
     window.location.href = '/login';
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateLocalUser, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

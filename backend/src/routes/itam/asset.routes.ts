@@ -5,7 +5,8 @@ import {
     deleteAsset, 
     updateAsset, 
     getAssetById, 
-    createAsset 
+    createAsset,
+    getMyAssets
 } from '../../controllers/itam/asset.controller';
 import { protect, hasPermission } from '../../middlewares/authMiddleware';
 
@@ -25,6 +26,8 @@ router.post('/sync', syncAssetAgent);
 // Áp dụng middleware protect cho tất cả các route bên dưới
 router.use(protect);
 
+
+router.get('/my-assets', getMyAssets);
 // --- Xem danh sách & Chi tiết (Cần quyền VIEW) ---
 router.get('/', hasPermission('ITAM_ASSET_VIEW'), getAllAssets);
 router.get('/:id', hasPermission('ITAM_ASSET_VIEW'), getAssetById);

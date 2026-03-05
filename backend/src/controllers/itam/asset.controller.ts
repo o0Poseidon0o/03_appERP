@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../../config/prisma";
-// [UPDATE] Import trực tiếp hàm lấy Socket ở trên cùng
 import { getIO } from "../../socket"; 
 
 // --- INTERFACE CHO PAYLOAD CỦA AGENT V3.13 ---
@@ -20,7 +19,6 @@ interface AgentPayload {
 
   deviceType?: string; // PC, LAPTOP, SERVER...
 
-  // [MỚI] Dữ liệu từ V3.13 - RAM Chi tiết
   ramDetails?: Array<{
       Slot: string;
       Capacity: string;
@@ -28,14 +26,12 @@ interface AgentPayload {
       Manufacturer: string;
   }>;
 
-  // [MỚI] Dữ liệu từ V3.13 - GPU
   gpus?: Array<{
       Name: string;
       VRAM: string;
       DriverVersion: string;
   }>;
 
-  // [MỚI] Dữ liệu từ V3.13 - Ngoại vi (Chuột/Phím)
   peripherals?: Array<{
       Name: string;
       Type: string; // Keyboard / Mouse
@@ -68,7 +64,7 @@ interface AgentPayload {
   }>;
 }
 
-// [HELPER] Hàm hỗ trợ so sánh sự thay đổi
+// [HELPER] Hàm hỗ trợ so sánh sự thay đổi chuỗi cơ bản
 const generateChangeLog = (oldVal: string, newVal: string, label: string) => {
   if (!oldVal || !newVal) return null;
   const v1 = String(oldVal).trim();
@@ -124,37 +120,85 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
     const newRamString = `${data.ramGB} GB`;
     const newCpuString = data.cpuName;
 
-    // 5. [LOGIC] Lấy dữ liệu CŨ từ DB để so sánh
+    // 5. [LOGIC BẮT TRÁO ĐỔI] Lấy dữ liệu CŨ từ DB để so sánh
     const existingAsset = await prisma.asset.findUnique({
         where: { name: uniqueHostname }
     });
 
     const changeDetails: string[] = [];
 
-    // Nếu máy đã tồn tại thì so sánh
+    // NẾU MÁY ĐÃ TỒN TẠI (Tức là đang sync lần 2 trở đi)
     if (existingAsset) {
         const oldSpecs: any = existingAsset.customSpecs || {};
         
-        // A. So sánh RAM Tổng
-        const ramLog = generateChangeLog(oldSpecs.ram, newRamString, "RAM Tổng");
+        // --- A. SO SÁNH RAM ---
+        const ramLog = generateChangeLog(oldSpecs.ram, newRamString, "Tổng dung lượng RAM");
         if (ramLog) changeDetails.push(ramLog);
 
-        // B. So sánh CPU
+        const oldRamDetails = Array.isArray(oldSpecs.ramDetails) ? oldSpecs.ramDetails : [];
+        const newRamDetails = Array.isArray(data.ramDetails) ? data.ramDetails : [];
+
+        if (oldRamDetails.length !== newRamDetails.length) {
+            changeDetails.push(`Thay đổi số lượng thanh RAM cắm trên máy: [${oldRamDetails.length} thanh] -> [${newRamDetails.length} thanh]`);
+        } else {
+            // Check tráo đổi RAM khi số lượng không đổi
+            const sortedOld = [...oldRamDetails].sort((a, b) => (a.Slot || '').localeCompare(b.Slot || ''));
+            const sortedNew = [...newRamDetails].sort((a, b) => (a.Slot || '').localeCompare(b.Slot || ''));
+
+            let isRamSwapped = false;
+            for (let i = 0; i < sortedOld.length; i++) {
+                if (
+                    sortedOld[i].Capacity !== sortedNew[i].Capacity ||
+                    sortedOld[i].Manufacturer !== sortedNew[i].Manufacturer ||
+                    sortedOld[i].Speed !== sortedNew[i].Speed
+                ) {
+                    isRamSwapped = true;
+                    break; 
+                }
+            }
+            if (isRamSwapped) {
+                changeDetails.push(`Phát hiện bị tráo đổi thanh RAM (Khác hãng sản xuất, tốc độ hoặc dung lượng chi tiết)`);
+            }
+        }
+
+        // --- B. SO SÁNH CPU ---
         const cpuLog = generateChangeLog(oldSpecs.cpu, newCpuString, "CPU");
         if (cpuLog) changeDetails.push(cpuLog);
 
-        // C. So sánh Ổ cứng
-        const diskLog = generateChangeLog(oldSpecs.disk, newDiskSummary, "Ổ cứng");
+        // --- LẤY CHI TIẾT Ổ CỨNG & MÀN HÌNH TỪ BẢNG COMPONENTS ---
+        const oldComponents = await prisma.assetComponent.findMany({
+            where: { assetId: existingAsset.id, type: { in: ['MONITOR', 'HARD_DISK'] } }
+        });
+        const oldMonitors = oldComponents.filter(c => c.type === 'MONITOR');
+        const oldDisks = oldComponents.filter(c => c.type === 'HARD_DISK');
+
+        // --- C. SO SÁNH Ổ CỨNG ---
+        const diskLog = generateChangeLog(oldSpecs.disk, newDiskSummary, "Tổng dung lượng Ổ cứng");
         if (diskLog) changeDetails.push(diskLog);
 
-        // D. So sánh số lượng màn hình
-        const oldMonitorCount = await prisma.assetComponent.count({
-            where: { assetId: existingAsset.id, type: 'MONITOR' }
-        });
-        const newMonitorCount = Array.isArray(data.monitors) ? data.monitors.length : 0;
-        
-        if (oldMonitorCount !== newMonitorCount) {
-            changeDetails.push(`Thay đổi số lượng màn hình: [${oldMonitorCount}] -> [${newMonitorCount}]`);
+        const newDisks = Array.isArray(data.disks) ? data.disks : [];
+        if (oldDisks.length !== newDisks.length) {
+            changeDetails.push(`Thay đổi số lượng ổ cứng vật lý: [${oldDisks.length}] -> [${newDisks.length}]`);
+        } else if (oldDisks.length > 0) {
+            const oldDiskKeys = oldDisks.map(d => `${d.serialNumber || ''}-${d.name || ''}`).sort();
+            const newDiskKeys = newDisks.map(d => `${d.SerialNumber !== "N/A" ? d.SerialNumber : ''}-${d.Model || ''}`).sort();
+
+            if (JSON.stringify(oldDiskKeys) !== JSON.stringify(newDiskKeys)) {
+                changeDetails.push(`Phát hiện bị tráo đổi Ổ cứng (Sai khác Serial Number hoặc Model)`);
+            }
+        }
+
+        // --- D. SO SÁNH MÀN HÌNH ---
+        const newMonitors = Array.isArray(data.monitors) ? data.monitors : [];
+        if (oldMonitors.length !== newMonitors.length) {
+            changeDetails.push(`Thay đổi số lượng màn hình: [${oldMonitors.length}] -> [${newMonitors.length}]`);
+        } else if (oldMonitors.length > 0) {
+            const oldMonitorKeys = oldMonitors.map(m => `${m.serialNumber || ''}-${m.name || ''}`).sort();
+            const newMonitorKeys = newMonitors.map(m => `${m.SerialNumber !== "0" && m.SerialNumber !== "N/A" ? m.SerialNumber : ''}-${m.Model || ''}`).sort();
+
+            if (JSON.stringify(oldMonitorKeys) !== JSON.stringify(newMonitorKeys)) {
+                changeDetails.push(`Phát hiện bị tráo đổi Màn hình (Sai khác Serial Number hoặc Model)`);
+            }
         }
     }
 
@@ -175,11 +219,8 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
           cpu: newCpuString,
           ram: newRamString,
           disk: newDiskSummary,
-          
-          // [MỚI] Lưu chi tiết RAM & GPU vào JSON để Frontend hiển thị popup
           ramDetails: data.ramDetails || [],
           gpus: data.gpus || [],
-          
           lastAgentSync: data.timestamp,
         },
       };
@@ -203,7 +244,7 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
               data: {
                   assetId: asset.id,
                   type: 'UPGRADE', 
-                  description: `Agent phát hiện thay đổi: ${changeDetails.join('. ')}`,
+                  description: `Thay đổi: ${changeDetails.join('. ')}`,
                   providerType: 'INTERNAL',
                   providerName: 'System Agent (Auto)',
                   cost: 0,
@@ -213,10 +254,7 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
               }
           });
 
-          // ==========================================
-          // 2. [MỚI] TẠO THÔNG BÁO CHO ADMIN
-          // ==========================================
-          // Tìm tất cả các user có role là ROLE-ADMIN
+          // 2. Tạo Thông báo cho Admin
           const adminUsers = await tx.user.findMany({
               where: { roleId: 'ROLE-ADMIN', isActive: true },
               select: { id: true }
@@ -272,7 +310,7 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
                 assetId: asset.id,
                 type: "MONITOR",
                 name: m.Model || "Unknown Monitor",
-                serialNumber: m.SerialNumber !== "0" ? m.SerialNumber : null,
+                serialNumber: m.SerialNumber !== "0" && m.SerialNumber !== "N/A" ? m.SerialNumber : null,
                 status: "ACTIVE",
                 specs: {
                     manufacturer: m.Manufacturer,
@@ -285,9 +323,8 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
         }
       }
 
-      // E. [MỚI] Xử lý Ngoại vi (Chuột/Phím) -> Lưu vào AssetComponent
+      // E. Xử lý Ngoại vi (Chuột/Phím)
       if (Array.isArray(data.peripherals)) {
-        // Xóa hết component loại KEYBOARD và MOUSE cũ của máy này
         await tx.assetComponent.deleteMany({
             where: { 
                 assetId: asset.id, 
@@ -298,9 +335,9 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
         if (data.peripherals.length > 0) {
             const periphComponents = data.peripherals.map((p) => ({
                 assetId: asset.id,
-                type: p.Type.toUpperCase(), // KEYBOARD hoặc MOUSE
+                type: p.Type.toUpperCase(),
                 name: p.Name,
-                serialNumber: null, // Ngoại vi ít khi lấy được SN chuẩn
+                serialNumber: null,
                 status: "ACTIVE",
                 specs: {
                     brand: p.Brand,
@@ -335,13 +372,11 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
     try {
         const io = getIO();
         if (io) {
-            // Bắn sự kiện cập nhật chung
             io.emit("asset_updated", { 
                 message: `Máy ${uniqueHostname} vừa cập nhật!`, 
                 hostname: uniqueHostname 
             });
 
-            // NẾU CÓ THAY ĐỔI -> Bắn sự kiện phần cứng ra Frontend
             if (changeDetails.length > 0) {
                  console.log(`[CẢNH BÁO SOCKET] Phát hiện thay đổi trên ${uniqueHostname}`);
                  io.emit("hardware_alert", { 
@@ -387,7 +422,6 @@ export const getAllAssets = async (req: Request, res: Response) => {
         { modelName: { contains: searchString, mode: "insensitive" } },
         { domainUser: { contains: searchString, mode: "insensitive" } },
         { ipAddress: { contains: searchString } },
-        // [THÊM MỚI] Tìm kiếm theo Tên của người dùng được gán (quan hệ nhiều-nhiều)
         {
           users: {
             some: {
@@ -422,8 +456,6 @@ export const getAllAssets = async (req: Request, res: Response) => {
           users: { select: { id: true, fullName: true, email: true } },
           parent: { select: { id: true, name: true } },
           _count: { select: { children: true, softwares: true } },
-          
-          // Lấy thêm component (Monitor, Keyboard, Mouse) để hiển thị
           components: {
              where: { type: { in: ['MONITOR', 'KEYBOARD', 'MOUSE'] } },
              select: { id: true, name: true, serialNumber: true, type: true, specs: true }
@@ -569,6 +601,39 @@ export const deleteAsset = async (req: Request, res: Response) => {
     if (error.code === 'P2003') {
         return res.status(400).json({ status: "error", message: "Tài sản này đang có dữ liệu liên quan. Không thể xóa!" });
     }
+    res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+// ==========================================
+// 6. LẤY TÀI SẢN CỦA TÔI (MY ASSETS)
+// ==========================================
+export const getMyAssets = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({ status: "error", message: "Vui lòng đăng nhập" });
+    }
+
+    const assets = await prisma.asset.findMany({
+      where: {
+        users: { some: { id: userId } }
+      },
+      include: {
+        type: true,
+        department: true,
+        factory: true,
+        components: {
+          where: { type: { in: ['MONITOR', 'KEYBOARD', 'MOUSE'] } },
+          select: { id: true, name: true, serialNumber: true, type: true, specs: true }
+        }
+      },
+      orderBy: { updatedAt: "desc" }
+    });
+
+    res.status(200).json({ status: "success", data: assets });
+  } catch (error: any) {
     res.status(500).json({ status: "error", message: error.message });
   }
 };
