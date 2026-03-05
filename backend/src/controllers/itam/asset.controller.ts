@@ -75,6 +75,24 @@ const generateChangeLog = (oldVal: string, newVal: string, label: string) => {
   return null;
 };
 
+// [HELPER MỚI] Hàm so sánh chi tiết mảng để tìm đồ bị mất / đồ thêm vào
+const getDetailedDifference = (oldItems: any[], newItems: any[], keySelector: (item: any) => string, descGenerator: (item: any) => string) => {
+  const oldKeys = oldItems.map(keySelector);
+  const newKeys = newItems.map(keySelector);
+
+  const removed = oldItems.filter(item => !newKeys.includes(keySelector(item))).map(descGenerator);
+  const added = newItems.filter(item => !oldKeys.includes(keySelector(item))).map(descGenerator);
+
+  const changes: string[] = [];
+  if (removed.length > 0) {
+      changes.push(`Bị tháo/Mất: ${removed.join(', ')}`);
+  }
+  if (added.length > 0) {
+      changes.push(`Được gắn thêm: ${added.join(', ')}`);
+  }
+  return changes;
+};
+
 // ==========================================
 // 0. AGENT SYNC (POWERSHELL GỬI VỀ)
 // ==========================================
@@ -131,33 +149,25 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
     if (existingAsset) {
         const oldSpecs: any = existingAsset.customSpecs || {};
         
-        // --- A. SO SÁNH RAM ---
+        // --- A. SO SÁNH RAM CHI TIẾT ---
         const ramLog = generateChangeLog(oldSpecs.ram, newRamString, "Tổng dung lượng RAM");
         if (ramLog) changeDetails.push(ramLog);
 
         const oldRamDetails = Array.isArray(oldSpecs.ramDetails) ? oldSpecs.ramDetails : [];
         const newRamDetails = Array.isArray(data.ramDetails) ? data.ramDetails : [];
 
-        if (oldRamDetails.length !== newRamDetails.length) {
-            changeDetails.push(`Thay đổi số lượng thanh RAM cắm trên máy: [${oldRamDetails.length} thanh] -> [${newRamDetails.length} thanh]`);
-        } else {
-            // Check tráo đổi RAM khi số lượng không đổi
-            const sortedOld = [...oldRamDetails].sort((a, b) => (a.Slot || '').localeCompare(b.Slot || ''));
-            const sortedNew = [...newRamDetails].sort((a, b) => (a.Slot || '').localeCompare(b.Slot || ''));
+        if (oldRamDetails.length > 0 || newRamDetails.length > 0) {
+            const ramChanges = getDetailedDifference(
+                oldRamDetails, 
+                newRamDetails, 
+                // Khóa so sánh: Gộp Slot + Hãng + Dung lượng + Tốc độ
+                (item) => `${item.Slot || ''}-${item.Manufacturer || ''}-${item.Capacity || ''}-${item.Speed || ''}`,
+                // Mô tả hiển thị cho Admin
+                (item) => `[${item.Slot || 'Slot ẩn'}: ${item.Manufacturer || 'Unknown'} ${item.Capacity || ''} ${item.Speed ? `(${item.Speed})` : ''}]`
+            );
 
-            let isRamSwapped = false;
-            for (let i = 0; i < sortedOld.length; i++) {
-                if (
-                    sortedOld[i].Capacity !== sortedNew[i].Capacity ||
-                    sortedOld[i].Manufacturer !== sortedNew[i].Manufacturer ||
-                    sortedOld[i].Speed !== sortedNew[i].Speed
-                ) {
-                    isRamSwapped = true;
-                    break; 
-                }
-            }
-            if (isRamSwapped) {
-                changeDetails.push(`Phát hiện bị tráo đổi thanh RAM (Khác hãng sản xuất, tốc độ hoặc dung lượng chi tiết)`);
+            if (ramChanges.length > 0) {
+                changeDetails.push(`Thay đổi chi tiết RAM: ${ramChanges.join(' | ')}`);
             }
         }
 
@@ -172,32 +182,46 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
         const oldMonitors = oldComponents.filter(c => c.type === 'MONITOR');
         const oldDisks = oldComponents.filter(c => c.type === 'HARD_DISK');
 
-        // --- C. SO SÁNH Ổ CỨNG ---
+        // --- C. SO SÁNH Ổ CỨNG CHI TIẾT ---
         const diskLog = generateChangeLog(oldSpecs.disk, newDiskSummary, "Tổng dung lượng Ổ cứng");
         if (diskLog) changeDetails.push(diskLog);
 
         const newDisks = Array.isArray(data.disks) ? data.disks : [];
-        if (oldDisks.length !== newDisks.length) {
-            changeDetails.push(`Thay đổi số lượng ổ cứng vật lý: [${oldDisks.length}] -> [${newDisks.length}]`);
-        } else if (oldDisks.length > 0) {
-            const oldDiskKeys = oldDisks.map(d => `${d.serialNumber || ''}-${d.name || ''}`).sort();
-            const newDiskKeys = newDisks.map(d => `${d.SerialNumber !== "N/A" ? d.SerialNumber : ''}-${d.Model || ''}`).sort();
-
-            if (JSON.stringify(oldDiskKeys) !== JSON.stringify(newDiskKeys)) {
-                changeDetails.push(`Phát hiện bị tráo đổi Ổ cứng (Sai khác Serial Number hoặc Model)`);
+        if (oldDisks.length > 0 || newDisks.length > 0) {
+            const diskChanges = getDetailedDifference(
+                oldDisks, 
+                newDisks, 
+                // Khóa so sánh: Ưu tiên SN, nếu không có thì lấy tên model
+                (item) => (item.serialNumber || item.SerialNumber || "N/A") + "-" + (item.name || item.Model || ""),
+                // Mô tả hiển thị
+                (item) => `[${item.name || item.Model} - SN: ${item.serialNumber || item.SerialNumber || 'N/A'}]`
+            );
+            
+            if (diskChanges.length > 0) {
+                changeDetails.push(`Thay đổi Ổ cứng vật lý: ${diskChanges.join(' | ')}`);
             }
         }
 
-        // --- D. SO SÁNH MÀN HÌNH ---
+        // --- D. SO SÁNH MÀN HÌNH CHI TIẾT ---
         const newMonitors = Array.isArray(data.monitors) ? data.monitors : [];
-        if (oldMonitors.length !== newMonitors.length) {
-            changeDetails.push(`Thay đổi số lượng màn hình: [${oldMonitors.length}] -> [${newMonitors.length}]`);
-        } else if (oldMonitors.length > 0) {
-            const oldMonitorKeys = oldMonitors.map(m => `${m.serialNumber || ''}-${m.name || ''}`).sort();
-            const newMonitorKeys = newMonitors.map(m => `${m.SerialNumber !== "0" && m.SerialNumber !== "N/A" ? m.SerialNumber : ''}-${m.Model || ''}`).sort();
+        if (oldMonitors.length > 0 || newMonitors.length > 0) {
+            const monitorChanges = getDetailedDifference(
+                oldMonitors, 
+                newMonitors, 
+                (item) => {
+                    const sn = item.serialNumber || item.SerialNumber || "N/A";
+                    return sn !== "0" && sn !== "N/A" ? sn : (item.name || item.Model || "Unknown");
+                },
+                (item) => {
+                    const sn = item.serialNumber || item.SerialNumber || 'N/A';
+                    const name = item.name || item.Model || 'Unknown';
+                    const size = item.specs?.size || item.ScreenSize || '';
+                    return `[${name} ${size ? `(${size})` : ''} - SN: ${sn}]`;
+                }
+            );
 
-            if (JSON.stringify(oldMonitorKeys) !== JSON.stringify(newMonitorKeys)) {
-                changeDetails.push(`Phát hiện bị tráo đổi Màn hình (Sai khác Serial Number hoặc Model)`);
+            if (monitorChanges.length > 0) {
+                changeDetails.push(`Thay đổi Màn hình: ${monitorChanges.join(' | ')}`);
             }
         }
     }
@@ -244,7 +268,7 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
               data: {
                   assetId: asset.id,
                   type: 'UPGRADE', 
-                  description: `Thay đổi: ${changeDetails.join('. ')}`,
+                  description: `Hệ thống ghi nhận thay đổi phần cứng: ${changeDetails.join('. ')}`,
                   providerType: 'INTERNAL',
                   providerName: 'System Agent (Auto)',
                   cost: 0,
