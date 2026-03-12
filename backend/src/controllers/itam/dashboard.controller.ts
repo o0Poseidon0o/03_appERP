@@ -5,53 +5,71 @@ export const getDashboardStats = async (req: Request, res: Response) => {
   try {
     const [
       totalAssets, 
-      // [UPDATE] Lấy full danh sách máy hỏng thay vì chỉ count
+      totalComputingAssets, 
       brokenAssets, 
-      // [UPDATE] Lấy full danh sách máy tính để lọc RAM yếu
       allComputers, 
       offlineAssets, 
       statusGroups, 
       typeGroups,
       factoryGroups 
     ] = await Promise.all([
-      // 1. Tổng tài sản
       prisma.asset.count(),
       
-      // 2. [UPDATE] Lấy danh sách máy đang sửa/hỏng (Kèm thông tin vị trí, user)
+      prisma.asset.count({
+          where: { type: { code: { in: ['PC', 'LAPTOP', 'SERVER'] } } }
+      }),
+
+      // 2. Lấy danh sách máy đang sửa/hỏng
       prisma.asset.findMany({ 
           where: { status: { in: ['BROKEN', 'REPAIR'] } },
-          include: { factory: true, users: true },
+          include: { 
+              factory: true, 
+              department: true, 
+              // Lấy thông tin User và include luôn Department của User đó
+              users: {
+                  include: {
+                      department: true // Đảm bảo bảng User có quan hệ với Department
+                  }
+              } 
+          }, 
           orderBy: { updatedAt: 'desc' }
       }),
 
-      // 3. [UPDATE] Lấy danh sách PC/Laptop để lọc RAM yếu (Kèm thông tin hiển thị)
+      // 3. Lấy danh sách PC/Laptop để lọc RAM yếu
       prisma.asset.findMany({
         where: { type: { code: { in: ['PC', 'LAPTOP'] } } },
         select: { 
             id: true, name: true, modelName: true, status: true,
             customSpecs: true, domainUser: true, 
-            factory: { select: { name: true } } 
+            factory: { select: { name: true } },
+            department: { select: { name: true } }, // Phòng ban của thiết bị
+            
+            // Lấy thông tin User KÈM THEO phòng ban của User
+            users: { 
+                select: { 
+                    id: true, 
+                    fullName: true, 
+                    email: true,
+                    department: { select: { name: true } } // Lấy tên phòng ban của User
+                } 
+            } 
         }
       }),
 
-      // 4. Đếm máy offline > 30 ngày (Vẫn giữ count để hiển thị số)
       prisma.asset.count({
         where: { lastSeen: { lt: new Date(new Date().setDate(new Date().getDate() - 30)) } }
       }),
 
-      // 5. Group theo Trạng thái (Biểu đồ tròn)
       prisma.asset.groupBy({
         by: ['status'],
         _count: { status: true }
       }),
 
-      // 6. Group theo Loại (Biểu đồ cột)
       prisma.asset.groupBy({
         by: ['typeId'],
         _count: { typeId: true }
       }),
 
-      // 7. Thống kê PC/Laptop theo Nhà máy (Biểu đồ cột ngang)
       prisma.factory.findMany({
         select: {
             name: true,
@@ -74,7 +92,6 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     const lowRamList = allComputers.filter((a: any) => {
         if (a.customSpecs && a.customSpecs.ram) {
             const ramNum = parseInt(a.customSpecs.ram.replace(/\D/g, ''));
-            // Logic: Có số RAM, nhỏ hơn 8 và lớn hơn 0
             return !isNaN(ramNum) && ramNum < 8 && ramNum > 0;
         }
         return false;
@@ -103,11 +120,12 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       data: {
         cards: {
             total: totalAssets,
-            broken: brokenAssets.length, // Đếm số lượng từ mảng
-            lowRam: lowRamList.length,   // Đếm số lượng từ mảng
+            totalComputing: totalComputingAssets, 
+            totalComponents: totalAssets - totalComputingAssets, 
+            broken: brokenAssets.length, 
+            lowRam: lowRamList.length, 
             offline: offlineAssets
         },
-        // [MỚI] Trả về danh sách chi tiết để Frontend hiện Modal
         lists: {
             broken: brokenAssets,
             lowRam: lowRamList

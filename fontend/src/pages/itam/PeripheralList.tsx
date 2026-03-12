@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Table, Button, Input, Tag, Space, Popconfirm, message, Select, Tooltip } from 'antd';
+import { Table, Button, Input, Tag, Space, Popconfirm, message, Select, Tooltip, Badge } from 'antd';
 import { 
   ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined, 
-  LinkOutlined, QrcodeOutlined 
+  LinkOutlined, QrcodeOutlined, ToolOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { assetService } from '../../services/assetService';
 import type { IAsset } from '../../types/itam.types';
 import PeripheralForm from './PeripheralForm';
+// [MỚI] Import Drawer Bảo Trì
+import AssetMaintenanceDrawer from './AssetMaintenanceDrawer'; 
 
 // [1] Import hook check quyền
 import { useHasPermission } from '../../hooks/useHasPermission';
@@ -27,6 +29,10 @@ const PeripheralList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IAsset | null>(null);
 
+  // --- [MỚI] STATE QUẢN LÝ DRAWER BẢO TRÌ ---
+  const [maintenanceDrawerOpen, setMaintenanceDrawerOpen] = useState(false);
+  const [maintenanceAsset, setMaintenanceAsset] = useState<IAsset | null>(null);
+
   // 1. Load danh sách loại tài sản để lọc
   useEffect(() => {
     const fetchTypes = async () => {
@@ -41,7 +47,7 @@ const PeripheralList = () => {
     fetchTypes();
   }, []);
 
-  // 2. Load dữ liệu
+  // 2. Load dữ liệu (Đã thêm bộ lọc chặn cứng PC, LAPTOP, SERVER)
   const fetchData = async (page = 1) => {
     setLoading(true);
     try {
@@ -50,18 +56,25 @@ const PeripheralList = () => {
         limit: pagination.pageSize,
         search: searchText,
         typeId: selectedType, 
+        excludeComputers: true // Cố gắng yêu cầu Backend lọc (nếu backend có hỗ trợ)
       });
       
-      let fetchedData = res.data.data;
+      let fetchedData = res.data.data || [];
       
-      if (!selectedType) {
-          fetchedData = fetchedData.filter((item: IAsset) => 
-            !['PC', 'LAPTOP', 'SERVER'].includes(item.type?.code || '')
-          );
-      }
+      // Chặn cứng ở mức Frontend: Dù Backend có trả về PC thì Frontend cũng sẽ xóa đi
+      fetchedData = fetchedData.filter((item: IAsset) => {
+          const typeCode = item.type?.code?.toUpperCase() || '';
+          return !['PC', 'LAPTOP', 'SERVER'].includes(typeCode);
+      });
 
       setData(fetchedData);
-      setPagination({ ...pagination, current: page, total: res.data.total }); 
+      
+      // Tính lại tổng số để phân trang không bị sai
+      const removedCount = (res.data.data?.length || 0) - fetchedData.length;
+      const actualTotal = Math.max(0, (res.data.total || 0) - removedCount);
+      
+      setPagination({ ...pagination, current: page, total: actualTotal }); 
+      
     } catch (error) {
       console.error(error);
     } finally {
@@ -82,6 +95,12 @@ const PeripheralList = () => {
           message.error(err.response?.data?.message || "Không thể xóa");
       }
   }
+
+  // --- [MỚI] HÀM MỞ DRAWER BẢO TRÌ ---
+  const handleOpenMaintenance = (asset: IAsset) => {
+      setMaintenanceAsset(asset);
+      setMaintenanceDrawerOpen(true);
+  };
 
   const columns: ColumnsType<IAsset> = [
     {
@@ -140,10 +159,24 @@ const PeripheralList = () => {
     {
       title: 'Action',
       key: 'action',
-      width: 80,
+      width: 120, // Tăng width để chứa 3 nút
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
+          {/* [MỚI] Nút Bảo trì */}
+          {hasPermission('ITAM_MAINTENANCE') && (
+              <Tooltip title="Lịch sử Bảo trì / Thay thế">
+                  <Button 
+                      size="small" 
+                      type={record.status === 'REPAIR' ? 'primary' : 'dashed'} 
+                      danger={record.status === 'REPAIR'}
+                      className={record.status !== 'REPAIR' ? 'text-orange-500 border-orange-200 hover:bg-orange-50' : ''}
+                      icon={<ToolOutlined />} 
+                      onClick={() => handleOpenMaintenance(record)} 
+                  />
+              </Tooltip>
+          )}
+
           {/* [3] Check quyền Sửa */}
           {hasPermission('ITAM_ASSET_UPDATE') && (
               <Tooltip title="Chỉnh sửa">
@@ -211,6 +244,16 @@ const PeripheralList = () => {
          onCancel={() => setIsModalOpen(false)}
          onSuccess={() => { setIsModalOpen(false); fetchData(pagination.current); }}
          initialValues={editingItem}
+      />
+
+      {/* [MỚI] Render Drawer Bảo trì */}
+      <AssetMaintenanceDrawer 
+          open={maintenanceDrawerOpen} 
+          asset={maintenanceAsset} 
+          onClose={() => {
+              setMaintenanceDrawerOpen(false);
+              fetchData(pagination.current); // Tải lại data để cập nhật trạng thái nếu có
+          }} 
       />
     </div>
   );

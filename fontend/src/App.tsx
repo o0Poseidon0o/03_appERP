@@ -189,8 +189,7 @@ const AppContent = () => {
                  {/* Route cho Ngoại vi (Màn hình, Chuột, Phím...) */}
                  <Route path="itam/peripherals" element={<PeripheralList />} />
                  {/* <Route path="assets/:id" element={<AssetDetail />} /> */}
-                 <Route path="itam/software-inventory" element={<SoftwareInventory />} />
-                 <Route path="itam/network-scan" element={<NetworkScanner />} />
+                 
             </Route>
 
             {/* 3. Nhóm Cấu hình Danh mục (Cần quyền ITAM_ASSET_CREATE) */}
@@ -210,6 +209,8 @@ const AppContent = () => {
             <Route element={<RoleRoute allowedRoles={["ROLE-ADMIN"]} />}>
               <Route path="admin/menus" element={<MenuManagement />} />
               <Route path="admin/workflows" element={<WorkflowManagement />} />
+              <Route path="itam/software-inventory" element={<SoftwareInventory />} />
+                 <Route path="itam/network-scan" element={<NetworkScanner />} />
             </Route>
 
             {/* Route không tồn tại -> Quay về trang chủ */}
