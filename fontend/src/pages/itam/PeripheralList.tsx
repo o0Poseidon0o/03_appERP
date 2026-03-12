@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Table, Button, Input, Tag, Space, Popconfirm, message, Select, Tooltip, Badge } from 'antd';
+import { Table, Button, Input, Tag, Space, Popconfirm, message, Select, Tooltip } from 'antd';
 import { 
   ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined, 
-  LinkOutlined, QrcodeOutlined, ToolOutlined
+  LinkOutlined, QrcodeOutlined, ToolOutlined 
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { assetService } from '../../services/assetService';
@@ -47,17 +47,20 @@ const PeripheralList = () => {
     fetchTypes();
   }, []);
 
-  // 2. Load dữ liệu (Đã thêm bộ lọc chặn cứng PC, LAPTOP, SERVER)
+  // 2. Load dữ liệu (Đã thêm bộ lọc chặn cứng PC, LAPTOP, SERVER và Sửa lỗi TypeScript)
   const fetchData = async (page = 1) => {
     setLoading(true);
     try {
-      const res = await assetService.getAll({
+      // Ép kiểu as any để tránh lỗi TS2353: 'excludeComputers' does not exist
+      const queryParams: any = {
         page,
         limit: pagination.pageSize,
         search: searchText,
         typeId: selectedType, 
-        excludeComputers: true // Cố gắng yêu cầu Backend lọc (nếu backend có hỗ trợ)
-      });
+        excludeComputers: true 
+      };
+
+      const res = await assetService.getAll(queryParams);
       
       let fetchedData = res.data.data || [];
       
@@ -159,7 +162,7 @@ const PeripheralList = () => {
     {
       title: 'Action',
       key: 'action',
-      width: 120, // Tăng width để chứa 3 nút
+      width: 120, 
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
