@@ -3,6 +3,10 @@ import prisma from "../../config/prisma";
 
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
+    // [UPDATE] Đã đổi thành lấy mốc thời gian 60 ngày trước để test
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
     const [
       totalAssets, 
       totalComputingAssets, 
@@ -11,7 +15,9 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       offlineAssets, 
       statusGroups, 
       typeGroups,
-      factoryGroups 
+      factoryGroups,
+      // Chứa kết quả truy vấn lịch sử nâng cấp
+      upgradedAssetsLogs 
     ] = await Promise.all([
       prisma.asset.count(),
       
@@ -28,7 +34,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
               // Lấy thông tin User và include luôn Department của User đó
               users: {
                   include: {
-                      department: true // Đảm bảo bảng User có quan hệ với Department
+                      department: true 
                   }
               } 
           }, 
@@ -42,15 +48,14 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             id: true, name: true, modelName: true, status: true,
             customSpecs: true, domainUser: true, 
             factory: { select: { name: true } },
-            department: { select: { name: true } }, // Phòng ban của thiết bị
+            department: { select: { name: true } }, 
             
-            // Lấy thông tin User KÈM THEO phòng ban của User
             users: { 
                 select: { 
                     id: true, 
                     fullName: true, 
                     email: true,
-                    department: { select: { name: true } } // Lấy tên phòng ban của User
+                    department: { select: { name: true } } 
                 } 
             } 
         }
@@ -83,6 +88,26 @@ export const getDashboardStats = async (req: Request, res: Response) => {
                 }
             }
         }
+      }),
+
+      // [UPDATE] Truy vấn bảng MaintenanceLog lấy các máy thay đổi phần cứng trong 60 ngày
+      prisma.maintenanceLog.findMany({
+          where: {
+              type: 'UPGRADE', // Lọc đúng loại log là nâng cấp/thay đổi
+              startDate: { gte: sixtyDaysAgo } // Trong vòng 60 ngày qua
+          },
+          include: {
+              asset: { // Include thông tin máy tính để hiển thị lên bảng
+                  include: {
+                      factory: true,
+                      department: true,
+                      users: {
+                          include: { department: true }
+                      }
+                  }
+              }
+          },
+          orderBy: { startDate: 'desc' } // Sắp xếp mới nhất lên đầu
       })
     ]);
 
@@ -124,11 +149,13 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             totalComponents: totalAssets - totalComputingAssets, 
             broken: brokenAssets.length, 
             lowRam: lowRamList.length, 
-            offline: offlineAssets
+            offline: offlineAssets,
+            upgraded: upgradedAssetsLogs.length // Tổng số máy thay đổi
         },
         lists: {
             broken: brokenAssets,
-            lowRam: lowRamList
+            lowRam: lowRamList,
+            upgraded: upgradedAssetsLogs // Danh sách chi tiết
         },
         charts: {
             byStatus: statusStats,

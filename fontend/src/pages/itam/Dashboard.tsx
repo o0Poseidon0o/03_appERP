@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Card, Spin, List, Typography, Tag, Empty, message, Modal, Table, Button, Badge } from 'antd';
+import { Card, Spin, List, Typography, Tag, Empty, message, Modal, Table, Button, Badge, Input } from 'antd';
 import { 
   AppstoreOutlined, AlertOutlined, SafetyCertificateOutlined, 
-  DisconnectOutlined, InfoCircleOutlined, ShopOutlined, EyeOutlined,
-  LaptopOutlined, ApiOutlined, UserOutlined, DownloadOutlined
+  InfoCircleOutlined, ShopOutlined, EyeOutlined,
+  LaptopOutlined, ApiOutlined, UserOutlined, DownloadOutlined, ToolOutlined, SearchOutlined
 } from '@ant-design/icons';
 import { 
   PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, 
@@ -24,15 +24,17 @@ const Dashboard = () => {
 
   const { socket, isConnected } = useSocket();
 
-  const [modalConfig, setModalConfig] = useState<{ open: boolean, title: string, data: any[], type: 'BROKEN' | 'LOW_RAM' | null }>({
+  const [modalConfig, setModalConfig] = useState<{ open: boolean, title: string, data: any[], type: 'BROKEN' | 'LOW_RAM' | 'UPGRADE' | null }>({
       open: false, title: '', data: [], type: null
   });
+
+  const [modalSearchText, setModalSearchText] = useState('');
 
   const fetchStats = async () => {
     try {
       const res = await axiosClient.get('/dashboard/stats');
       setStats(res.data.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Lỗi tải dashboard:", error);
     } finally {
       setLoading(false);
@@ -60,7 +62,9 @@ const Dashboard = () => {
     }
   }, [socket, isConnected]);
 
-  const showDetails = (type: 'BROKEN' | 'LOW_RAM') => {
+  const showDetails = (type: 'BROKEN' | 'LOW_RAM' | 'UPGRADE') => {
+      setModalSearchText('');
+
       if (type === 'BROKEN') {
           setModalConfig({
               open: true,
@@ -68,53 +72,98 @@ const Dashboard = () => {
               data: stats?.lists?.broken || [],
               type: 'BROKEN'
           });
-      } else {
+      } else if (type === 'LOW_RAM') {
           setModalConfig({
               open: true,
               title: 'Danh sách thiết bị cấu hình yếu (RAM < 8GB)',
               data: stats?.lists?.lowRam || [],
               type: 'LOW_RAM'
           });
+      } else if (type === 'UPGRADE') {
+          const upgradeData = stats?.lists?.upgraded || [];
+          setModalConfig({
+              open: true,
+              title: 'Lịch sử thay đổi & Nâng cấp phần cứng',
+              data: upgradeData, 
+              type: 'UPGRADE'
+          });
       }
   };
 
-  // --- Hàm Xuất File Excel (CSV) ---
+  const getFilteredModalData = () => {
+      const rawData = modalConfig.data || [];
+      if (!modalSearchText) return rawData;
+
+      const lowerSearch = modalSearchText.toLowerCase();
+
+      return rawData.filter((item: any) => {
+          if (modalConfig.type === 'UPGRADE') {
+              const assetName = item.asset?.name?.toLowerCase() || '';
+              return assetName.includes(lowerSearch);
+          } else {
+              const assetName = item.name?.toLowerCase() || '';
+              return assetName.includes(lowerSearch);
+          }
+      });
+  };
+
   const exportToCSV = () => {
-      if (!modalConfig.data || modalConfig.data.length === 0) {
+      const filteredDataToExport = getFilteredModalData();
+
+      if (!filteredDataToExport || filteredDataToExport.length === 0) {
           message.warning("Không có dữ liệu để xuất");
           return;
       }
 
-      // Tạo tiêu đề cột (Tách Người dùng và Phòng ban thành 2 cột cho dễ nhìn trong Excel)
-      const headers = ["Tên máy", "Model", "Người dùng", "Phòng ban User", "Vị trí máy", "Nhà máy", "RAM", "Trạng thái"];
-      
-      // Tạo dữ liệu từng dòng
-      const rows = modalConfig.data.map((item: any) => {
-          // Lấy tên User
-          const users = item.users?.map((u: any) => u.fullName).join(" & ") || "Chưa cấp phát";
-          
-          // Lấy phòng ban của User (Nếu có nhiều user dùng chung 1 máy thì nối lại)
-          const userDepartments = item.users?.map((u: any) => u.department?.name || "Không rõ").join(" & ") || "-";
-          
-          // Thông tin thiết bị
-          const assetDepartment = item.department?.name || "Chưa gán";
-          const factory = item.factory?.name || "Chưa gán";
-          const ram = item.customSpecs?.ram || "N/A";
-          
-          const statusMap: any = { BROKEN: 'Hỏng', REPAIR: 'Đang sửa chữa', NEW: 'Mới', IN_USE: 'Đang dùng' };
-          const status = statusMap[item.status] || item.status;
+      let headers: string[] = [];
+      let rows: string[] = [];
 
-          return [
-              `"${item.name}"`,
-              `"${item.modelName || ''}"`,
-              `"${users}"`,
-              `"${userDepartments}"`, // Cột phòng ban của User
-              `"${assetDepartment}"`,
-              `"${factory}"`,
-              `"${ram}"`,
-              `"${status}"`
-          ].join(",");
-      });
+      if (modalConfig.type === 'UPGRADE') {
+          headers = ["Tên máy", "Người dùng", "Phòng ban", "Nhà máy", "Nội dung thay đổi", "Ngày thay đổi", "Người thực hiện"];
+          
+          rows = filteredDataToExport.map((item: any) => {
+              const asset = item.asset || {};
+              const users = asset.users?.map((u: any) => u.fullName).join(" & ") || "N/A";
+              const userDepartments = asset.users?.map((u: any) => u.department?.name || "Không rõ").join(" & ") || "-";
+              const assetDepartment = asset.department?.name || "N/A";
+              const factory = asset.factory?.name || "N/A";
+              
+              const updateDate = new Date(item.startDate).toLocaleDateString('vi-VN');
+
+              return [
+                  `"${asset.name || 'Unknown'}"`,
+                  `"${users}"`,
+                  `"${userDepartments !== '-' ? userDepartments : assetDepartment}"`,
+                  `"${factory}"`,
+                  `"${item.description || 'N/A'}"`,
+                  `"${updateDate}"`,
+                  `"${item.providerName || 'Auto System'}"`
+              ].join(",");
+          });
+      } else {
+          headers = ["Tên máy", "Model", "Người dùng", "Phòng ban User", "Vị trí máy", "Nhà máy", "RAM", "Trạng thái"];
+          rows = filteredDataToExport.map((item: any) => {
+              const users = item.users?.map((u: any) => u.fullName).join(" & ") || "Chưa cấp phát";
+              const userDepartments = item.users?.map((u: any) => u.department?.name || "Không rõ").join(" & ") || "-";
+              const assetDepartment = item.department?.name || "Chưa gán";
+              const factory = item.factory?.name || "Chưa gán";
+              const ram = item.customSpecs?.ram || "N/A";
+              
+              const statusMap: any = { BROKEN: 'Hỏng', REPAIR: 'Đang sửa chữa', NEW: 'Mới', IN_USE: 'Đang dùng' };
+              const status = statusMap[item.status] || item.status;
+
+              return [
+                  `"${item.name}"`,
+                  `"${item.modelName || ''}"`,
+                  `"${users}"`,
+                  `"${userDepartments}"`,
+                  `"${assetDepartment}"`,
+                  `"${factory}"`,
+                  `"${ram}"`,
+                  `"${status}"`
+              ].join(",");
+          });
+      }
 
       const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows].join("\n");
       
@@ -123,7 +172,11 @@ const Dashboard = () => {
       link.setAttribute("href", encodedUri);
       
       const dateStr = new Date().toISOString().slice(0,10);
-      const fileName = modalConfig.type === 'LOW_RAM' ? `DS_May_Tinh_RAM_Yeu_${dateStr}.csv` : `DS_May_Tinh_Hong_${dateStr}.csv`;
+      let fileName = `Export_${dateStr}.csv`;
+      if (modalConfig.type === 'LOW_RAM') fileName = `DS_May_Tinh_RAM_Yeu_${dateStr}.csv`;
+      else if (modalConfig.type === 'BROKEN') fileName = `DS_May_Tinh_Hong_${dateStr}.csv`;
+      else if (modalConfig.type === 'UPGRADE') fileName = `DS_Lich_Su_Thay_Doi_Phan_Cung_${dateStr}.csv`;
+
       link.setAttribute("download", fileName);
       
       document.body.appendChild(link);
@@ -134,6 +187,38 @@ const Dashboard = () => {
   };
 
   const getModalColumns = () => {
+      if (modalConfig.type === 'UPGRADE') {
+          return [
+              { 
+                  title: 'Ngày cập nhật', 
+                  dataIndex: 'startDate', 
+                  key: 'date', 
+                  width: 130, 
+                  render: (d: string) => <Tag color="blue">{new Date(d).toLocaleDateString('vi-VN')}</Tag> 
+              },
+              { 
+                  title: 'Tên máy', 
+                  dataIndex: ['asset', 'name'], 
+                  key: 'name', 
+                  width: 140, 
+                  render: (t: string) => <span className="font-semibold text-slate-700">{t || 'Unknown'}</span> 
+              },
+              { 
+                  title: 'Nội dung thay đổi', 
+                  dataIndex: 'description', 
+                  key: 'desc',
+                  render: (t: string) => <span className="text-gray-600 text-xs leading-relaxed">{t}</span> 
+              },
+              {
+                  title: 'Ghi nhận bởi',
+                  dataIndex: 'providerName',
+                  key: 'provider',
+                  width: 150,
+                  render: (t: string) => <span className="text-gray-400 text-[11px] font-mono">{t}</span>
+              }
+          ];
+      }
+
       const baseColumns: any = [
           { title: 'Tên máy', dataIndex: 'name', key: 'name', width: 140, render: (t: string) => <span className="font-semibold text-blue-700">{t}</span> },
           { title: 'Model', dataIndex: 'modelName', key: 'model', width: 160, render: (t: string) => <span className="text-gray-600 text-xs">{t || 'N/A'}</span> },
@@ -141,7 +226,6 @@ const Dashboard = () => {
               title: 'Người dùng & Phòng ban', 
               key: 'users',
               width: 250, 
-              // Sắp xếp theo tên phòng ban của User đầu tiên
               sorter: (a: any, b: any) => {
                   const deptA = a.users?.[0]?.department?.name || "";
                   const deptB = b.users?.[0]?.department?.name || "";
@@ -172,7 +256,6 @@ const Dashboard = () => {
           { 
               title: 'Vị trí máy', 
               key: 'location', 
-              // Sắp xếp theo tên phòng ban của Máy
               sorter: (a: any, b: any) => {
                   const deptA = a.department?.name || "";
                   const deptB = b.department?.name || "";
@@ -196,12 +279,6 @@ const Dashboard = () => {
                   key: 'ram',
                   align: 'center',
                   width: 90,
-                  // Hỗ trợ sắp xếp theo dung lượng RAM
-                  sorter: (a: any, b: any) => {
-                      const ramA = parseInt(a.customSpecs?.ram?.replace(/\D/g, '') || '0');
-                      const ramB = parseInt(b.customSpecs?.ram?.replace(/\D/g, '') || '0');
-                      return ramA - ramB;
-                  },
                   render: (t: string) => <Tag color="warning" className="font-bold border-none m-0">{t}</Tag>
               }
           ];
@@ -261,7 +338,7 @@ const Dashboard = () => {
       {/* --- HÀNG 1: CARDS THỐNG KÊ --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         
-        {/* Card Tổng tài sản (Chia chi tiết) */}
+        {/* Card Tổng tài sản */}
         <Card bordered={false} className="shadow-sm rounded-2xl border border-gray-100 overflow-hidden">
             <div className="flex items-center justify-between mb-4">
                 <span className="text-slate-500 font-semibold uppercase tracking-wider text-xs">Tổng tài sản</span>
@@ -300,6 +377,24 @@ const Dashboard = () => {
           </div>
         </Card>
 
+        {/* Card Thay đổi phần cứng */}
+        <Card 
+            bordered={false} 
+            className="shadow-sm rounded-2xl cursor-pointer hover:shadow-md hover:border-indigo-300 border border-gray-100 transition-all group flex flex-col justify-between"
+            onClick={() => showDetails('UPGRADE')}
+        >
+          <div>
+              <div className="flex justify-between items-start mb-4">
+                  <span className="text-slate-500 font-semibold uppercase tracking-wider text-xs">Phần cứng thay đổi</span>
+                  <div className="p-2 bg-indigo-50 rounded-xl group-hover:bg-indigo-100 transition-colors"><ToolOutlined className="text-indigo-500 text-xl" /></div>
+              </div>
+              <div className="text-3xl font-bold text-indigo-500 mb-2">{stats?.cards?.upgraded || 0}</div>
+          </div>
+          <div className="mt-auto pt-4 flex items-center text-xs text-gray-400 group-hover:text-indigo-500 transition-colors">
+              <EyeOutlined className="mr-1" /> Lịch sử nâng cấp / thay thế
+          </div>
+        </Card>
+
         {/* Card RAM Yếu */}
         <Card 
             bordered={false} 
@@ -318,19 +413,6 @@ const Dashboard = () => {
           </div>
         </Card>
 
-        {/* Card Offline */}
-        <Card bordered={false} className="shadow-sm rounded-2xl border border-gray-100 flex flex-col justify-between">
-          <div>
-              <div className="flex justify-between items-start mb-4">
-                  <span className="text-slate-500 font-semibold uppercase tracking-wider text-xs">Mất kết nối (&gt; 30 ngày)</span>
-                  <div className="p-2 bg-slate-100 rounded-xl"><DisconnectOutlined className="text-slate-500 text-xl" /></div>
-              </div>
-              <div className="text-3xl font-bold text-slate-600 mb-2">{stats?.cards?.offline || 0}</div>
-          </div>
-          <div className="mt-auto pt-4 flex items-center text-xs text-slate-400">
-              Thiết bị không gửi log về máy chủ
-          </div>
-        </Card>
       </div>
 
       {/* --- HÀNG 2: BIỂU ĐỒ --- */}
@@ -450,10 +532,10 @@ const Dashboard = () => {
                     action: 'Kiểm tra ngay'
                 },
                 { 
-                    title: 'Đề xuất nâng cấp RAM', 
-                    desc: `Hệ thống ghi nhận ${stats?.cards?.lowRam || 0} máy tính có dung lượng RAM dưới 8GB. Điều này có thể ảnh hưởng đến hiệu suất làm việc của nhân viên.`, 
+                    title: 'Giám sát thay đổi linh kiện', 
+                    desc: `Có ${stats?.cards?.upgraded || 0} máy tính vừa bị tháo lắp RAM, Ổ cứng hoặc Màn hình trong thời gian qua. Nhấn vào thẻ "Phần cứng thay đổi" để xem chi tiết.`, 
                     type: 'info',
-                    action: 'Lên kế hoạch'
+                    action: 'Kiểm tra'
                 }
             ]}
             renderItem={item => (
@@ -476,24 +558,41 @@ const Dashboard = () => {
         title={
             <div className="flex justify-between items-center w-full pr-8">
                 <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
-                    {modalConfig.type === 'BROKEN' ? <AlertOutlined className="text-red-500" /> : <SafetyCertificateOutlined className="text-amber-500" />}
+                    {modalConfig.type === 'BROKEN' ? <AlertOutlined className="text-red-500" /> : 
+                     modalConfig.type === 'UPGRADE' ? <ToolOutlined className="text-indigo-500" /> :
+                     <SafetyCertificateOutlined className="text-amber-500" />}
                     {modalConfig.title}
                 </div>
-                {/* NÚT XUẤT EXCEL GẮN TRÊN HEADER MODAL */}
-                <Button 
-                    type="dashed" 
-                    icon={<DownloadOutlined />} 
-                    onClick={exportToCSV}
-                    className="border-blue-200 text-blue-600 hover:bg-blue-50"
-                >
-                    Xuất CSV
-                </Button>
+                <div className="flex gap-2">
+                    <Input
+                        placeholder="Tìm tên máy..."
+                        prefix={<SearchOutlined className="text-gray-400" />}
+                        value={modalSearchText}
+                        onChange={(e) => setModalSearchText(e.target.value)}
+                        className="w-48"
+                        allowClear
+                    />
+                    <Button 
+                        type="dashed" 
+                        icon={<DownloadOutlined />} 
+                        onClick={exportToCSV}
+                        className="border-blue-200 text-blue-600 hover:bg-blue-50"
+                    >
+                        Xuất CSV
+                    </Button>
+                </div>
             </div>
         }
         open={modalConfig.open}
-        onCancel={() => setModalConfig({ ...modalConfig, open: false })}
+        onCancel={() => {
+            setModalConfig({ ...modalConfig, open: false });
+            setModalSearchText(''); 
+        }}
         footer={
-            <Button key="close" type="primary" onClick={() => setModalConfig({ ...modalConfig, open: false })} className="rounded-lg px-6">
+            <Button key="close" type="primary" onClick={() => {
+                setModalConfig({ ...modalConfig, open: false });
+                setModalSearchText('');
+            }} className="rounded-lg px-6">
                 Đóng
             </Button>
         }
@@ -503,14 +602,14 @@ const Dashboard = () => {
       >
         <div className="py-4 border-t border-gray-100">
             <Table 
-                dataSource={modalConfig.data}
+                dataSource={getFilteredModalData()}
                 columns={getModalColumns()}
                 rowKey="id"
                 pagination={{ pageSize: 6, position: ['bottomCenter'], showSizeChanger: false }}
                 size="middle"
                 className="border border-gray-100 rounded-lg overflow-hidden"
                 rowClassName="hover:bg-slate-50 transition-colors"
-                locale={{ emptyText: <Empty description="Không có thiết bị nào trong danh sách này" /> }}
+                locale={{ emptyText: <Empty description="Không tìm thấy thiết bị nào" /> }}
             />
         </div>
       </Modal>

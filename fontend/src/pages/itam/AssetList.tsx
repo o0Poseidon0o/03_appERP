@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Table, Button, Input, Tag, Space, Popconfirm, message, Tooltip, Badge, Popover } from 'antd'; // [UPDATE] Đã bỏ notification
+import { Table, Button, Input, Tag, Space, Popconfirm, message, Tooltip, Badge, Popover } from 'antd'; 
 import { 
   ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined, 
   DesktopOutlined, WindowsOutlined, AuditOutlined, 
   LaptopOutlined, CloudServerOutlined, ToolOutlined, UserOutlined,
   FundProjectionScreenOutlined, GlobalOutlined, 
-  ThunderboltOutlined, SearchOutlined
+  ThunderboltOutlined, SearchOutlined, DownloadOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -70,7 +70,6 @@ const AssetList = () => {
     }
   };
 
-  // --- [SỬA LẠI] Chỉ lắng nghe cập nhật chung để reload bảng ---
   useEffect(() => {
     fetchData(); 
     
@@ -80,14 +79,12 @@ const AssetList = () => {
         };
 
         socket.on("asset_updated", handleUpdate);
-        // Phần thông báo notification.warning đã được dời sang MainLayout.tsx
-        // để tránh bị double notification
 
         return () => { 
             socket.off("asset_updated", handleUpdate); 
         };
     }
-  }, [socket, isConnected]); // Bỏ searchText khỏi dependency
+  }, [socket, isConnected]); 
 
   const handleDelete = async (id: string) => {
       try {
@@ -115,12 +112,87 @@ const AssetList = () => {
       return <DesktopOutlined className="text-lg" />;
   };
 
+  // --- HÀM XUẤT EXCEL (CSV) ---
+  const exportToCSV = () => {
+    if (!data || data.length === 0) {
+        message.warning("Không có dữ liệu để xuất");
+        return;
+    }
+
+    const headers = [
+      "Tên thiết bị", "Loại", "Hãng/Model", "Serial Number", 
+      "Hệ điều hành", "IP Address", "MAC Address", "Domain User",
+      "CPU", "RAM", "Ổ cứng", "Người sử dụng", 
+      "Nhà máy", "Phòng ban", "Trạng thái", "Lần cuối Online"
+    ];
+    
+    const rows = data.map((item: any) => {
+        const typeName = item.type?.name || "N/A";
+        const os = item.osName || "N/A";
+        const specs = item.customSpecs || {};
+        
+        // Users
+        const users = item.users?.map((u: any) => u.fullName).join(" & ") || "Chưa cấp phát";
+        
+        // Vị trí
+        const factory = item.factory?.name || "Chưa gán";
+        const department = item.department?.name || "Chưa gán";
+        
+        // Trạng thái
+        const statusMap: any = { NEW: 'Mới', IN_USE: 'Đang dùng', BROKEN: 'Hỏng', REPAIR: 'Sửa chữa', DISPOSED: 'Thanh lý' };
+        const status = statusMap[item.status] || item.status;
+        
+        // Ngày online
+        const lastSeen = item.lastSeen ? new Date(item.lastSeen).toLocaleString('vi-VN') : "Offline";
+
+        return [
+            `"${item.name}"`,
+            `"${typeName}"`,
+            `"${item.manufacturer || ''} ${item.modelName || ''}"`.trim(),
+            `"${item.serialNumber || ''}"`,
+            `"${os}"`,
+            `"${item.ipAddress || ''}"`,
+            `"${item.macAddress || ''}"`,
+            `"${item.domainUser || ''}"`,
+            `"${specs.cpu || ''}"`,
+            `"${specs.ram || ''}"`,
+            `"${specs.disk || ''}"`,
+            `"${users}"`,
+            `"${factory}"`,
+            `"${department}"`,
+            `"${status}"`,
+            `"${lastSeen}"`
+        ].join(",");
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows].join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    
+    const dateStr = new Date().toISOString().slice(0,10);
+    link.setAttribute("download", `DS_MayTinh_Server_${dateStr}.csv`);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    message.success("Xuất file thành công!");
+  };
+
   const columns: ColumnsType<IAsset> = [
     {
       title: 'Thiết bị',
       key: 'info',
       width: 260,
-      fixed: 'left', // Giữ cột này khi cuộn ngang trên điện thoại
+      fixed: 'left',
+      // [UPDATE] Sắp xếp theo Tên Thiết bị
+      sorter: (a: any, b: any) => {
+          const nameA = a.name || "";
+          const nameB = b.name || "";
+          return nameA.localeCompare(nameB, 'vi');
+      },
       render: (_, record) => {
         let shortTypeName = record.type?.name || 'Unknown';
         const code = record.type?.code;
@@ -287,6 +359,12 @@ const AssetList = () => {
         title: 'Người dùng & Vị trí',
         key: 'management',
         width: 200,
+        // Sắp xếp theo Nhà máy
+        sorter: (a: any, b: any) => {
+            const factoryA = a.factory?.name || "";
+            const factoryB = b.factory?.name || "";
+            return factoryA.localeCompare(factoryB, 'vi');
+        },
         render: (_, record) => (
             <div className="text-xs space-y-2">
                 {record.users && record.users.length > 0 ? (
@@ -335,7 +413,7 @@ const AssetList = () => {
       title: 'Thao tác',
       key: 'action',
       width: 100,
-      fixed: 'right', // Cố định bên phải trên màn hình nhỏ
+      fixed: 'right',
       align: 'center',
       render: (_, record) => (
         <div className="flex flex-col gap-2 items-center">
@@ -391,11 +469,21 @@ const AssetList = () => {
                 onChange={(e) => setSearchText(e.target.value)}
                 onPressEnter={() => fetchData()} 
                 prefix={<SearchOutlined className="text-gray-400" />}
-                className="w-full sm:w-72"
+                className="w-full sm:w-64"
                 allowClear
             />
             
             <div className="flex gap-2 w-full sm:w-auto">
+                <Tooltip title="Xuất dữ liệu Excel">
+                    <Button 
+                        icon={<DownloadOutlined />} 
+                        onClick={exportToCSV}
+                        className="flex-shrink-0 text-green-600 border-green-200 hover:bg-green-50"
+                    >
+                        Xuất Excel
+                    </Button>
+                </Tooltip>
+
                 <Tooltip title="Tải lại dữ liệu">
                     <Button 
                         icon={<ReloadOutlined />} 
