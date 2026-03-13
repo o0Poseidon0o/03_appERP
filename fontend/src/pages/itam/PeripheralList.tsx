@@ -8,19 +8,16 @@ import type { ColumnsType } from 'antd/es/table';
 import { assetService } from '../../services/assetService';
 import type { IAsset } from '../../types/itam.types';
 import PeripheralForm from './PeripheralForm';
-// [MỚI] Import Drawer Bảo Trì
 import AssetMaintenanceDrawer from './AssetMaintenanceDrawer'; 
 
-// [1] Import hook check quyền
 import { useHasPermission } from '../../hooks/useHasPermission';
 
 const PeripheralList = () => {
   const [data, setData] = useState<IAsset[]>([]);
   const [loading, setLoading] = useState(false);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 15, total: 0 });
   const [searchText, setSearchText] = useState('');
   
-  // [2] Lấy hàm check quyền
   const { hasPermission } = useHasPermission();
 
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
@@ -29,7 +26,6 @@ const PeripheralList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IAsset | null>(null);
 
-  // --- [MỚI] STATE QUẢN LÝ DRAWER BẢO TRÌ ---
   const [maintenanceDrawerOpen, setMaintenanceDrawerOpen] = useState(false);
   const [maintenanceAsset, setMaintenanceAsset] = useState<IAsset | null>(null);
 
@@ -39,47 +35,35 @@ const PeripheralList = () => {
         try {
             const res = await assetService.getAssetTypes();
             const pTypes = res.data.data.filter((t: any) => 
-                !['PC', 'LAPTOP', 'SERVER'].includes(t.code)
+                !['PC', 'LAPTOP', 'SERVER'].includes(String(t.code).toUpperCase())
             );
             setPeripheralTypes(pTypes);
-        } catch(e) {}
+        } catch(e) {
+            console.error("Lỗi lấy loại tài sản:", e);
+        }
     }
     fetchTypes();
   }, []);
 
-  // 2. Load dữ liệu (Đã thêm bộ lọc chặn cứng PC, LAPTOP, SERVER và Sửa lỗi TypeScript)
-  const fetchData = async (page = 1) => {
+  // 2. Load dữ liệu SIÊU GỌN (Vì Backend đã gánh logic lọc)
+  const fetchData = async (page = 1, pageSize = pagination.pageSize) => {
     setLoading(true);
     try {
-      // Ép kiểu as any để tránh lỗi TS2353: 'excludeComputers' does not exist
-      const queryParams: any = {
+      const res = await assetService.getAll({
         page,
-        limit: pagination.pageSize,
+        limit: pageSize,
         search: searchText,
-        typeId: selectedType, 
-        excludeComputers: true 
-      };
-
-      const res = await assetService.getAll(queryParams);
+        typeId: selectedType,
+        excludeComputers: true // Báo cho Backend biết: "Đừng gửi PC/Laptop cho tôi!"
+      } as any);
       
-      let fetchedData = res.data.data || [];
-      
-      // Chặn cứng ở mức Frontend: Dù Backend có trả về PC thì Frontend cũng sẽ xóa đi
-      fetchedData = fetchedData.filter((item: IAsset) => {
-          const typeCode = item.type?.code?.toUpperCase() || '';
-          return !['PC', 'LAPTOP', 'SERVER'].includes(typeCode);
-      });
-
-      setData(fetchedData);
-      
-      // Tính lại tổng số để phân trang không bị sai
-      const removedCount = (res.data.data?.length || 0) - fetchedData.length;
-      const actualTotal = Math.max(0, (res.data.total || 0) - removedCount);
-      
-      setPagination({ ...pagination, current: page, total: actualTotal }); 
+      // Lấy data luôn, không cần filter rườm rà nữa
+      setData(res.data?.data || []);
+      setPagination({ current: page, pageSize: pageSize, total: res.data?.total || 0 }); 
       
     } catch (error) {
-      console.error(error);
+      console.error("Lỗi tải danh sách thiết bị:", error);
+      message.error("Lỗi khi tải dữ liệu thiết bị!");
     } finally {
       setLoading(false);
     }
@@ -87,6 +71,7 @@ const PeripheralList = () => {
 
   useEffect(() => {
     fetchData(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchText, selectedType]); 
 
   const handleDelete = async (id: string) => {
@@ -99,7 +84,6 @@ const PeripheralList = () => {
       }
   }
 
-  // --- [MỚI] HÀM MỞ DRAWER BẢO TRÌ ---
   const handleOpenMaintenance = (asset: IAsset) => {
       setMaintenanceAsset(asset);
       setMaintenanceDrawerOpen(true);
@@ -111,7 +95,7 @@ const PeripheralList = () => {
       dataIndex: ['type', 'name'],
       key: 'type',
       width: 150,
-      render: (text) => <Tag color="blue">{text}</Tag>
+      render: (text) => <Tag color="blue">{text || 'Khác'}</Tag>
     },
     {
       title: 'Tên thiết bị / Model',
@@ -127,7 +111,7 @@ const PeripheralList = () => {
         title: 'Serial Number',
         dataIndex: 'serialNumber',
         key: 'serial',
-        render: (text) => text ? <span className="font-mono text-gray-600"><QrcodeOutlined /> {text}</span> : '-'
+        render: (text) => text ? <span className="font-mono text-gray-600"><QrcodeOutlined className="mr-1"/>{text}</span> : '-'
     },
     {
       title: 'Gắn vào (Máy mẹ)',
@@ -135,7 +119,7 @@ const PeripheralList = () => {
       width: 200,
       render: (_, record) => record.parent ? (
           <div className="text-blue-600 font-semibold cursor-pointer">
-             <LinkOutlined /> {record.parent.name}
+             <LinkOutlined className="mr-1"/>{record.parent.name}
           </div>
       ) : <span className="text-gray-400 italic">Chưa gắn (Kho)</span>
     },
@@ -156,7 +140,9 @@ const PeripheralList = () => {
       align: 'center',
       render: (_, record) => {
          const colors: Record<string, string> = { NEW: 'green', IN_USE: 'blue', BROKEN: 'red', REPAIR: 'orange', DISPOSED: 'default' };
-         return <Tag color={colors[record.status] || 'default'}>{record.status}</Tag>
+         const textMap: Record<string, string> = { NEW: 'Mới', IN_USE: 'Đang dùng', BROKEN: 'Hỏng', REPAIR: 'Sửa chữa', DISPOSED: 'Thanh lý' };
+         const statusText = textMap[record.status] || record.status;
+         return <Tag color={colors[record.status] || 'default'}>{statusText}</Tag>
       }
     },
     {
@@ -164,9 +150,9 @@ const PeripheralList = () => {
       key: 'action',
       width: 120, 
       fixed: 'right',
+      align: 'center',
       render: (_, record) => (
         <Space size="small">
-          {/* [MỚI] Nút Bảo trì */}
           {hasPermission('ITAM_MAINTENANCE') && (
               <Tooltip title="Lịch sử Bảo trì / Thay thế">
                   <Button 
@@ -180,7 +166,6 @@ const PeripheralList = () => {
               </Tooltip>
           )}
 
-          {/* [3] Check quyền Sửa */}
           {hasPermission('ITAM_ASSET_UPDATE') && (
               <Tooltip title="Chỉnh sửa">
                   <Button 
@@ -190,7 +175,6 @@ const PeripheralList = () => {
               </Tooltip>
           )}
           
-          {/* [4] Check quyền Xóa */}
           {hasPermission('ITAM_ASSET_DELETE') && (
               <Popconfirm title="Xóa thiết bị này?" onConfirm={() => handleDelete(record.id)}>
                  <Button size="small" type="text" danger icon={<DeleteOutlined />} />
@@ -224,7 +208,6 @@ const PeripheralList = () => {
             <Button icon={<ReloadOutlined />} onClick={() => fetchData(pagination.current)} />
          </Space>
 
-         {/* [5] Check quyền Thêm mới */}
          {hasPermission('ITAM_ASSET_CREATE') && (
              <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); setIsModalOpen(true); }}>
                 Thêm ngoại vi
@@ -233,13 +216,18 @@ const PeripheralList = () => {
       </div>
 
       <Table 
-         columns={columns} dataSource={data} rowKey="id" loading={loading} 
+         columns={columns} 
+         dataSource={data} 
+         rowKey="id" 
+         loading={loading} 
+         onChange={(newPagination) => {
+             fetchData(newPagination.current || 1, newPagination.pageSize || 15);
+         }}
          pagination={{
              ...pagination,
-             showTotal: (total) => `Tổng ${total} thiết bị`,
-             onChange: (page, pageSize) => setPagination(prev => ({...prev, current: page, pageSize: pageSize || 10}))
+             showSizeChanger: true,
+             showTotal: (total) => `Tổng ${total} thiết bị`
          }}
-         onChange={(newPagination) => fetchData(newPagination.current)}
       />
 
       <PeripheralForm 
@@ -249,13 +237,12 @@ const PeripheralList = () => {
          initialValues={editingItem}
       />
 
-      {/* [MỚI] Render Drawer Bảo trì */}
       <AssetMaintenanceDrawer 
           open={maintenanceDrawerOpen} 
           asset={maintenanceAsset} 
           onClose={() => {
               setMaintenanceDrawerOpen(false);
-              fetchData(pagination.current); // Tải lại data để cập nhật trạng thái nếu có
+              fetchData(pagination.current); 
           }} 
       />
     </div>

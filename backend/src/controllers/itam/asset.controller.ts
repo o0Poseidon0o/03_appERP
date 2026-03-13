@@ -433,6 +433,8 @@ export const getAllAssets = async (req: Request, res: Response) => {
   try {
     const {
       page = 1, limit = 10, search, typeId, factoryId, departmentId, status, parentId,
+      // [UPDATE] Nhận thêm tham số excludeComputers từ Frontend
+      excludeComputers 
     } = req.query;
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -465,6 +467,15 @@ export const getAllAssets = async (req: Request, res: Response) => {
       whereClause.parentId = null;
     } else if (parentId) {
       whereClause.parentId = String(parentId);
+    }
+
+    // [UPDATE QUAN TRỌNG] Logic lọc PC, LAPTOP, SERVER ở Backend
+    if (excludeComputers === 'true') {
+        whereClause.type = {
+            code: {
+                notIn: ['PC', 'LAPTOP', 'SERVER']
+            }
+        };
     }
 
     const [assets, total] = await Promise.all([
