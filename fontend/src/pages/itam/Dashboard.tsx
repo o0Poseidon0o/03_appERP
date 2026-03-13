@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card, Statistic, Spin, List, Typography, Tag, Empty, message, Modal, Table, Button, Badge } from 'antd';
+import { Card, Spin, List, Typography, Tag, Empty, message, Modal, Table, Button, Badge } from 'antd';
 import { 
   AppstoreOutlined, AlertOutlined, SafetyCertificateOutlined, 
   DisconnectOutlined, InfoCircleOutlined, ShopOutlined, EyeOutlined,
@@ -78,14 +78,14 @@ const Dashboard = () => {
       }
   };
 
-  // --- Hàm Xuất File Excel (CSV) Tách Cột Chuẩn ---
+  // --- Hàm Xuất File Excel (CSV) ---
   const exportToCSV = () => {
       if (!modalConfig.data || modalConfig.data.length === 0) {
           message.warning("Không có dữ liệu để xuất");
           return;
       }
 
-      // Tạo tiêu đề cột (Tách Người dùng và Phòng ban thành 2 cột, Vị trí máy và Nhà máy thành 2 cột cho dễ nhìn trong Excel)
+      // Tạo tiêu đề cột (Tách Người dùng và Phòng ban thành 2 cột cho dễ nhìn trong Excel)
       const headers = ["Tên máy", "Model", "Người dùng", "Phòng ban User", "Vị trí máy", "Nhà máy", "RAM", "Trạng thái"];
       
       // Tạo dữ liệu từng dòng
@@ -109,8 +109,8 @@ const Dashboard = () => {
               `"${item.modelName || ''}"`,
               `"${users}"`,
               `"${userDepartments}"`, // Cột phòng ban của User
-              `"${assetDepartment}"`, // Cột phòng ban đặt máy
-              `"${factory}"`,         // Cột nhà máy
+              `"${assetDepartment}"`,
+              `"${factory}"`,
               `"${ram}"`,
               `"${status}"`
           ].join(",");
@@ -261,7 +261,7 @@ const Dashboard = () => {
       {/* --- HÀNG 1: CARDS THỐNG KÊ --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         
-        {/* Card Tổng tài sản */}
+        {/* Card Tổng tài sản (Chia chi tiết) */}
         <Card bordered={false} className="shadow-sm rounded-2xl border border-gray-100 overflow-hidden">
             <div className="flex items-center justify-between mb-4">
                 <span className="text-slate-500 font-semibold uppercase tracking-wider text-xs">Tổng tài sản</span>
@@ -479,6 +479,7 @@ const Dashboard = () => {
                     {modalConfig.type === 'BROKEN' ? <AlertOutlined className="text-red-500" /> : <SafetyCertificateOutlined className="text-amber-500" />}
                     {modalConfig.title}
                 </div>
+                {/* NÚT XUẤT EXCEL GẮN TRÊN HEADER MODAL */}
                 <Button 
                     type="dashed" 
                     icon={<DownloadOutlined />} 
