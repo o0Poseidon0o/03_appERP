@@ -290,8 +290,8 @@ If wmiOK Then
         If objMem.Capacity > 0 Then capGB = Int(CDbl(objMem.Capacity) / 1073741824 + 0.5)
         Dim spd
         spd = "Unknown"
-        If objMem.Speed > 0 Then spd = CStr(objMem.Speed)
-        ramDetailsArr(ramSlotCount) = "{""Slot"":""" & EscJson(CStr(objMem.BankLabel)) & """,""Capacity"":""" & capGB & "GB"",""Speed"":""" & spd & "MHz"",""Manufacturer"":""" & EscJson(CStr(objMem.Manufacturer)) & """}"
+        If objMem.Speed > 0 Then spd = S(objMem.Speed)
+        ramDetailsArr(ramSlotCount) = "{""Slot"":""" & EscJson(S(objMem.BankLabel)) & """,""Capacity"":""" & capGB & "GB"",""Speed"":""" & spd & "MHz"",""Manufacturer"":""" & EscJson(S(objMem.Manufacturer)) & """}"
         ramSlotCount = ramSlotCount + 1
     Next
     On Error GoTo 0
@@ -304,7 +304,7 @@ If ramSlotCount = 0 And ramGB > 0 Then
 End If
 
 If ramSlotCount > 0 Then
-    ramDetails = "[" & Join(ramDetailsArr, ",") & "]"
+    ramDetails = "[" & JoinJson(ramDetailsArr) & "]"
 Else
     ramDetails = "[]"
 End If
@@ -344,14 +344,14 @@ If wmiOK Then
         Dim vram
         vram = "N/A"
         If objGPU.AdapterRAM > 0 Then vram = CStr(Round(CDbl(objGPU.AdapterRAM) / 1073741824, 1)) & " GB"
-        gpuArr(gpuCount) = "{""Name"":""" & EscJson(CStr(objGPU.Name)) & """,""VRAM"":""" & vram & """,""DriverVersion"":""" & EscJson(CStr(objGPU.DriverVersion)) & """}"
+        gpuArr(gpuCount) = "{""Name"":""" & EscJson(S(objGPU.Name)) & """,""VRAM"":""" & vram & """,""DriverVersion"":""" & EscJson(S(objGPU.DriverVersion)) & """}"
         gpuCount = gpuCount + 1
     Next
     On Error GoTo 0
 End If
 
 If gpuCount > 0 Then
-    gpuInfo = "[" & Join(gpuArr, ",") & "]"
+    gpuInfo = "[" & JoinJson(gpuArr) & "]"
 Else
     gpuInfo = "[]"
 End If
@@ -374,13 +374,13 @@ If wmiOK Then
         dSizeGB = 0
         If objDisk.Size > 0 Then dSizeGB = Int(CDbl(objDisk.Size) / 1073741824)
         dMediaType = "HDD"
-        If InStr(LCase(CStr(objDisk.Model)), "ssd") > 0 Or InStr(LCase(CStr(objDisk.Model)), "nvme") > 0 Or InStr(LCase(CStr(objDisk.Model)), "solid") > 0 Then
+        If InStr(LCase(S(objDisk.Model)), "ssd") > 0 Or InStr(LCase(S(objDisk.Model)), "nvme") > 0 Or InStr(LCase(S(objDisk.Model)), "solid") > 0 Then
             dMediaType = "SSD"
         End If
         dHealth = "GOOD"
         dHealthText = "Tot (S.M.A.R.T OK)"
         Dim dStatus
-        dStatus = CStr(objDisk.Status)
+        dStatus = S(objDisk.Status)
         If InStr(LCase(dStatus), "fail") > 0 Or InStr(LCase(dStatus), "error") > 0 Or InStr(LCase(dStatus), "pred") > 0 Then
             dHealth = "CRITICAL"
             dHealthText = "NGUY HIEM: Sap hong (" & dStatus & ")"
@@ -391,16 +391,16 @@ If wmiOK Then
             anyDiskWarning = True
         End If
         Dim dSerial
-        dSerial = Trim(CStr(objDisk.SerialNumber))
+        dSerial = Trim(S(objDisk.SerialNumber))
         If Len(dSerial) = 0 Then dSerial = "N/A"
-        diskArr(diskCount) = "{""Index"":" & CInt(objDisk.Index) & ",""Model"":""" & EscJson(CStr(objDisk.Model)) & """,""MediaType"":""" & dMediaType & """,""SizeGB"":" & dSizeGB & ",""Interface"":""" & EscJson(CStr(objDisk.InterfaceType)) & """,""SerialNumber"":""" & EscJson(dSerial) & """,""HealthStatus"":""" & dHealth & """,""HealthText"":""" & EscJson(dHealthText) & """}"
+        diskArr(diskCount) = "{""Index"":" & CInt(objDisk.Index) & ",""Model"":""" & EscJson(S(objDisk.Model)) & """,""MediaType"":""" & dMediaType & """,""SizeGB"":" & dSizeGB & ",""Interface"":""" & EscJson(S(objDisk.InterfaceType)) & """,""SerialNumber"":""" & EscJson(dSerial) & """,""HealthStatus"":""" & dHealth & """,""HealthText"":""" & EscJson(dHealthText) & """}"
         diskCount = diskCount + 1
     Next
     On Error GoTo 0
 End If
 
 If diskCount > 0 Then
-    diskInfo = "[" & Join(diskArr, ",") & "]"
+    diskInfo = "[" & JoinJson(diskArr) & "]"
 Else
     diskInfo = "[]"
 End If
@@ -480,7 +480,7 @@ Err.Clear
 On Error GoTo 0
 
 If swCount > 0 Then
-    softwareInfo = "[" & Join(swArr, ",") & "]"
+    softwareInfo = "[" & JoinJson(swArr) & "]"
 Else
     softwareInfo = "[]"
 End If
@@ -497,12 +497,12 @@ If wmiOK Then
     For Each objMon In colMon
         If Len(objMon.Name) > 0 And objMon.Name <> "Default Monitor" Then
             ReDim Preserve monArr(monCount)
-            monArr(monCount) = "{""Manufacturer"":""" & EscJson(CStr(objMon.MonitorManufacturer)) & """,""Model"":""" & EscJson(CStr(objMon.Name)) & """,""SerialNumber"":""N/A"",""ScreenSize"":""N/A"",""Source"":""WMI""}"
+            monArr(monCount) = "{""Manufacturer"":""" & EscJson(S(objMon.MonitorManufacturer)) & """,""Model"":""" & EscJson(S(objMon.Name)) & """,""SerialNumber"":""N/A"",""ScreenSize"":""N/A"",""Source"":""WMI""}"
             monCount = monCount + 1
         End If
     Next
     If monCount > 0 Then
-        monitorInfo = "[" & Join(monArr, ",") & "]"
+        monitorInfo = "[" & JoinJson(monArr) & "]"
     End If
     On Error GoTo 0
 End If
@@ -549,7 +549,7 @@ If wmiOK Then
             If Len(objLic.PartialProductKey) > 0 Then licKey = Trim(objLic.PartialProductKey)
 
             ' Windows license
-            If InStr(objLic.Name, "Windows") > 0 Or CStr(objLic.ApplicationId) = "55c92734-d682-4d71-983e-d6ec3f16059f" Then
+            If InStr(objLic.Name, "Windows") > 0 Or S(objLic.ApplicationId) = "55c92734-d682-4d71-983e-d6ec3f16059f" Then
                 If osLicenseStatus <> "LICENSED" Or licStatus = "LICENSED" Then
                     osLicenseStatus = licStatus
                     osLicenseChannel = licChannel
@@ -560,7 +560,7 @@ If wmiOK Then
             ' Office license
             If InStr(objLic.Name, "Office") > 0 Or InStr(objLic.Name, "Visio") > 0 Or InStr(objLic.Name, "Project") > 0 Then
                 If Len(officeLicenseName) = 0 Or licStatus = "LICENSED" Then
-                    officeLicenseName = CStr(objLic.Name)
+                    officeLicenseName = S(objLic.Name)
                     officeLicenseStatus = licStatus
                     officeLicenseChannel = licChannel
                     If Len(licKey) > 0 Then officeLicenseKey = "*****-" & licKey
@@ -571,13 +571,13 @@ If wmiOK Then
             Dim pkDisplay
             pkDisplay = ""
             If Len(licKey) > 0 Then pkDisplay = "*****-" & licKey
-            licArr(licCount) = "{""softwareName"":""" & EscJson(CStr(objLic.Name)) & """,""status"":""" & licStatus & """,""statusText"":""" & licStatusText & """,""channel"":""" & licChannel & """,""partialKey"":""" & pkDisplay & """,""source"":""WMI_SPP""}"
+            licArr(licCount) = "{""softwareName"":""" & EscJson(S(objLic.Name)) & """,""status"":""" & licStatus & """,""statusText"":""" & licStatusText & """,""channel"":""" & licChannel & """,""partialKey"":""" & pkDisplay & """,""source"":""WMI_SPP""}"
             licCount = licCount + 1
         End If
     Next
 
     If licCount > 0 Then
-        softwareLicenses = "[" & Join(licArr, ",") & "]"
+        softwareLicenses = "[" & JoinJson(licArr) & "]"
     End If
 
     On Error GoTo 0
@@ -661,7 +661,7 @@ For retryCount = 1 To 3
                 WScript.Echo " SUCCESS: Dong bo thanh cong (" & hostname & " -> " & apiUrls(i) & ")!"
                 success = True
             Else
-                lastErr = "HTTP " & xmlHttp.Status & " - " & xmlHttp.statusText
+                lastErr = "HTTP " & xmlHttp.Status & " - " & xmlHttp.statusText & " | " & Left(xmlHttp.responseText, 200)
                 If Err.Number <> 0 Then lastErr = Err.Description
             End If
         Else
@@ -678,8 +678,18 @@ For retryCount = 1 To 3
 Next
 
 If Not success Then
+    ' Luu payload de chan doan (xem C:\ProgramData\TowaITAM\last_payload.json hoac %TEMP%)
+    On Error Resume Next
+    Dim dumpPath, dumpFile
+    dumpPath = objShell.ExpandEnvironmentStrings("%TEMP%") & "\towa_last_payload.json"
+    If objFSO.FolderExists("C:\ProgramData\TowaITAM") Then dumpPath = "C:\ProgramData\TowaITAM\last_payload.json"
+    Set dumpFile = objFSO.CreateTextFile(dumpPath, True)
+    dumpFile.Write jsonPayload
+    dumpFile.Close
+    On Error GoTo 0
     WScript.Echo ""
     WScript.Echo "LOI: Khong gui duoc du lieu sau 3 lan thu. Loi cuoi: " & lastErr
+    WScript.Echo "Da luu du lieu da gui tai: " & dumpPath
 End If
 
 WScript.Echo ""
@@ -689,6 +699,30 @@ WScript.Echo "HOAN TAT!"
 ' ===========================================================================
 ' HAM HO TRO
 ' ===========================================================================
+' Chuyen gia tri WMI (co the Null/Empty) thanh chuoi an toan - CStr(Null) gay loi
+Function S(v)
+    If IsNull(v) Or IsEmpty(v) Then
+        S = ""
+    Else
+        S = CStr(v)
+    End If
+End Function
+
+' Noi mang JSON, bo qua phan tu rong (tranh JSON sai dang [,{...}])
+Function JoinJson(arr)
+    Dim i, r
+    r = ""
+    On Error Resume Next
+    For i = LBound(arr) To UBound(arr)
+        If Len(arr(i)) > 0 Then
+            If Len(r) > 0 Then r = r & ","
+            r = r & arr(i)
+        End If
+    Next
+    On Error GoTo 0
+    JoinJson = r
+End Function
+
 ' Doi so thap phan sang dang JSON (dau cham) - tranh loi dau phay tren Windows tieng Viet
 Function Num(n)
     Num = Replace(CStr(n), ",", ".")
