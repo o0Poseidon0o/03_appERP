@@ -242,6 +242,7 @@ const WorkflowManagement: React.FC = () => {
           columns={columns} 
           rowKey="id" 
           loading={loading} 
+          scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 10, showSizeChanger: false }}
           rowClassName="hover:bg-slate-50 transition-colors cursor-pointer group"
         />
@@ -250,7 +251,7 @@ const WorkflowManagement: React.FC = () => {
       {/* --- MODAL BUILDER (SỬ DỤNG TAILWIND ĐỂ LAYOUT) --- */}
       <Modal
         title={
-            <div className="flex items-center gap-3 text-xl font-semibold text-slate-800 pb-4 border-b border-slate-100 mb-4">
+            <div className="flex items-center gap-3 text-lg sm:text-xl font-semibold text-slate-800 pb-4 border-b border-slate-100 mb-4">
                 <div className={`p-2 rounded-lg ${editingId ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
                     {editingId ? <EditOutlined /> : <PlusOutlined />}
                 </div>
@@ -260,37 +261,37 @@ const WorkflowManagement: React.FC = () => {
         open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
         footer={null}
-        width={900}
+        width="min(96vw, 900px)"
         maskClosable={false}
         className="top-5 !pb-0"
-        styles={{ body: { padding: '0 24px 24px' } }} // Thay bodyStyle (deprecated) bằng styles.body
+        styles={{ body: { padding: '0 16px 20px' } }}
       >
         <Form form={form} layout="vertical" onFinish={handleFinish} initialValues={{ isActive: true, targetType: 'STOCK', allowedInitiatorRoles: [] }}>
           
           {/* 1. THÔNG TIN CHUNG */}
-          <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mb-6">
+          <div className="bg-slate-50 p-4 sm:p-5 rounded-xl border border-slate-200 mb-6">
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <SettingOutlined /> Thông tin cơ bản
             </div>
             
-            <Row gutter={20}>
-              <Col span={12}>
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
                 <Form.Item name="name" label={<span className="font-medium text-slate-600">Tên quy trình</span>} rules={[{ required: true, message: 'Vui lòng nhập tên' }]}>
                   <Input size="large" placeholder="Vd: Xuất kho Nguyên vật liệu" className="rounded-lg" />
                 </Form.Item>
               </Col>
-              <Col span={8}>
+              <Col xs={16} md={8}>
                 <Form.Item name="code" label={<span className="font-medium text-slate-600">Mã quy trình (Unique)</span>} rules={[{ required: true, message: 'Vui lòng nhập mã' }]}>
                   <Input size="large" placeholder="Vd: WF_EXPORT_NVL" disabled={!!editingId} className="font-mono text-slate-600 bg-slate-100 rounded-lg" />
                 </Form.Item>
               </Col>
-              <Col span={4}>
+              <Col xs={8} md={4}>
                 <Form.Item name="isActive" label={<span className="font-medium text-slate-600">Kích hoạt</span>} valuePropName="checked">
                   <Switch checkedChildren="ON" unCheckedChildren="OFF" className="bg-slate-300" />
                 </Form.Item>
               </Col>
 
-              <Col span={12}>
+              <Col xs={24} md={12}>
                   <Form.Item name="targetType" label={<span className="font-medium text-slate-600">Loại nghiệp vụ áp dụng</span>} rules={[{ required: true }]}>
                       <Select size="large" placeholder="Chọn loại nghiệp vụ..." className="rounded-lg">
                           {WORKFLOW_TYPES.map(t => (
@@ -302,7 +303,7 @@ const WorkflowManagement: React.FC = () => {
                   </Form.Item>
               </Col>
 
-              <Col span={12}>
+              <Col xs={24} md={12}>
                   <Form.Item 
                     name="allowedInitiatorRoles" 
                     label={<Space><span className="font-medium text-slate-600">Phạm vi người tạo</span><Tooltip title="Ai được phép tạo phiếu này? Để trống = Tất cả"><LockOutlined className="text-slate-400 cursor-help" /></Tooltip></Space>}
@@ -336,7 +337,7 @@ const WorkflowManagement: React.FC = () => {
             {(fields, { add, remove }) => (
               <div className="flex flex-col gap-4 bg-white">
                 {fields.map(({ key, name, ...restField }, index) => (
-                  <div key={key} className="relative group border border-slate-200 rounded-xl p-5 hover:border-blue-400 hover:shadow-lg hover:shadow-blue-50 transition-all duration-300 bg-white">
+                  <div key={key} className="relative group border border-slate-200 rounded-xl p-4 sm:p-5 hover:border-blue-400 hover:shadow-lg hover:shadow-blue-50 transition-all duration-300 bg-white">
                     {/* Badge số thứ tự */}
                     <div className="absolute -left-3 top-5 w-7 h-7 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-md shadow-blue-200 z-10 border-2 border-white">
                         {index + 1}
@@ -346,18 +347,18 @@ const WorkflowManagement: React.FC = () => {
                     <Button 
                         type="text" danger 
                         icon={<DeleteOutlined />} 
-                        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-red-50 hover:bg-red-100 rounded-full"
+                        className="absolute top-3 right-3 sm:opacity-0 group-hover:opacity-100 transition-opacity bg-red-50 hover:bg-red-100 rounded-full"
                         onClick={() => remove(name)} 
                     />
 
-                    <Row gutter={16} align="middle">
-                      <Col span={10}>
+                    <Row gutter={[16, 12]} align="middle">
+                      <Col xs={24} md={10}>
                         <Form.Item {...restField} name={[name, 'name']} label="Tên bước" rules={[{ required: true, message: 'Nhập tên bước' }]} className="mb-0 font-medium">
                           <Input size="large" placeholder="Vd: Tổ trưởng xác nhận" prefix={<EditOutlined className="text-slate-300" />} className="rounded-lg" />
                         </Form.Item>
                       </Col>
                       
-                      <Col span={6}>
+                      <Col xs={24} sm={12} md={6}>
                         <Form.Item {...restField} name={[name, 'approverType']} label="Loại người duyệt" rules={[{ required: true }]} className="mb-0 font-medium">
                           <Select size="large" className="rounded-lg">
                             <Option value="ROLE">⚡ Theo Vai trò</Option>
@@ -367,7 +368,7 @@ const WorkflowManagement: React.FC = () => {
                         </Form.Item>
                       </Col>
 
-                      <Col span={8}>
+                      <Col xs={24} sm={12} md={8}>
                         {/* [FIX] Bỏ unused params và dùng shouldUpdate đúng cách */}
                         <Form.Item noStyle shouldUpdate>
                           {({ getFieldValue }) => {

@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const menu_controller_1 = require("../controllers/notification/menu.controller");
+const authMiddleware_1 = require("../middlewares/authMiddleware");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.protect);
+router.get('/', menu_controller_1.getMenus);
+router.post('/', (0, authMiddleware_1.restrictTo)('ROLE-ADMIN'), menu_controller_1.createMenu);
+router.delete('/:id', (0, authMiddleware_1.restrictTo)('ROLE-ADMIN'), menu_controller_1.deleteMenu);
+router.patch('/:id', (0, authMiddleware_1.restrictTo)('ROLE-ADMIN'), menu_controller_1.updateMenu);
+exports.default = router;

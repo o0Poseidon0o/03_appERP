@@ -7,9 +7,10 @@ import {
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, 
   DeleteOutlined, ReloadOutlined, KeyOutlined, SafetyCertificateOutlined, UserOutlined,
-  GlobalOutlined 
+  GlobalOutlined, FileExcelOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import * as XLSX from 'xlsx';
 import axiosClient from '../../api/axiosClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { useHasPermission } from '../../hooks/useHasPermission';
@@ -133,6 +134,41 @@ const UserManagement: React.FC = () => {
     return acc;
   }, {} as Record<string, PermissionItem[]>);
 
+  const handleExportExcel = () => {
+    const filtered = users.filter(
+      u => u.fullName.toLowerCase().includes(searchText.toLowerCase()) || u.id.toLowerCase().includes(searchText.toLowerCase())
+    );
+    if (!filtered.length) {
+      message.warning('Không có dữ liệu nhân sự để xuất!');
+      return;
+    }
+    const rows = filtered.map((u, idx) => ({
+      'STT': idx + 1,
+      'Mã NV': u.id,
+      'Họ và tên': u.fullName,
+      'Email': u.email,
+      'Nhà máy': u.factory?.name || 'Chưa gán',
+      'Phòng ban': u.department?.name || '',
+      'Vai trò': u.role?.name || u.roleId,
+      'Trạng thái': u.isActive ? 'Hoạt động' : 'Tạm khóa'
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },
+      { wch: 14 },
+      { wch: 24 },
+      { wch: 28 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 14 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Danh_Sach_Nhan_Su');
+    XLSX.writeFile(wb, `Danh_Sach_Nhan_Su_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    message.success(`Đã xuất ${filtered.length} nhân sự ra file Excel!`);
+  };
+
   const columns: ColumnsType<User> = [
     {
       title: 'Mã NV',
@@ -209,22 +245,32 @@ const UserManagement: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '20px', background: '#f8fafc', minHeight: '100vh' }}>
-      <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-slate-800">Quản lý Nhân sự</h2>
-          {canCreate && (
-              <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => { setEditingUser(null); form.resetFields(); setSelectedPermissions([]); setIsModalOpen(true); }}>
-                Thêm nhân sự
+    <div className="p-3 sm:p-5 bg-slate-50 min-h-screen">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
+          <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">Quản lý Nhân sự</h2>
+          <div className="flex flex-wrap items-center gap-2">
+              <Button 
+                icon={<FileExcelOutlined />} 
+                onClick={handleExportExcel}
+                className="bg-green-600 text-white hover:!bg-green-700 hover:!text-white border-none"
+              >
+                Xuất Excel
               </Button>
-          )}
+              {canCreate && (
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingUser(null); form.resetFields(); setSelectedPermissions([]); setIsModalOpen(true); }}>
+                    Thêm nhân sự
+                  </Button>
+              )}
+          </div>
       </div>
 
       <Card bordered={false} className="shadow-sm border-none rounded-xl">
-        <div className="flex justify-between items-center mb-5">
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mb-5">
              <Input 
                 placeholder="Tìm tên hoặc mã NV..." 
                 prefix={<SearchOutlined className="text-slate-400" />} 
-                style={{ width: 300 }}
+                className="w-full sm:w-72"
+                allowClear
                 onChange={e => setSearchText(e.target.value)}
              />
              <Button icon={<ReloadOutlined />} onClick={fetchInitialData}>Làm mới</Button>
@@ -235,6 +281,7 @@ const UserManagement: React.FC = () => {
           dataSource={users.filter(u => u.fullName.toLowerCase().includes(searchText.toLowerCase()) || u.id.toLowerCase().includes(searchText.toLowerCase()))} 
           rowKey="id" 
           loading={loading} 
+          scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 10 }}
         />
       </Card>
@@ -245,7 +292,7 @@ const UserManagement: React.FC = () => {
         onCancel={() => setIsModalOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={loading}
-        width={750}
+        width="min(96vw, 750px)"
         okText="Lưu dữ liệu"
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
@@ -256,11 +303,11 @@ const UserManagement: React.FC = () => {
               children: (
                 <div style={{ padding: '10px 0' }}>
                   <Row gutter={16}>
-                    <Col span={12}>
+                    <Col xs={24} sm={12}>
                         {/* MÃ NV GIỮ NGUYÊN DISABLED VÌ LÀ KEY */}
                         <Form.Item name="id" label="Mã NV" rules={[{ required: true }]}><Input disabled={!!editingUser} /></Form.Item>
                     </Col>
-                    <Col span={12}>
+                    <Col xs={24} sm={12}>
                         {/* [ĐÃ SỬA] BỎ disabled={!!editingUser} ĐỂ CHO PHÉP SỬA EMAIL */}
                         <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}><Input /></Form.Item>
                     </Col>
@@ -269,12 +316,12 @@ const UserManagement: React.FC = () => {
                   <Form.Item name="password" label="Mật khẩu"><Input.Password placeholder={editingUser ? "Để trống nếu không đổi" : "Nhập mật khẩu"} /></Form.Item>
                   
                   <Row gutter={16}>
-                    <Col span={12}>
+                    <Col xs={24} sm={12}>
                       <Form.Item name="departmentId" label="Phòng ban (Chấm công/Lương)" rules={[{ required: true }]}>
                         <Select options={deptList.map(d => ({ label: d.name, value: d.id }))} />
                       </Form.Item>
                     </Col>
-                    <Col span={12}>
+                    <Col xs={24} sm={12}>
                       <Form.Item name="roleId" label="Vai trò (Chức năng)" rules={[{ required: true }]}>
                         <Select options={rolesList.map(r => ({ label: r.name, value: r.id }))} />
                       </Form.Item>
@@ -325,7 +372,7 @@ const UserManagement: React.FC = () => {
                         </Divider>
                         <Row gutter={[16, 8]}>
                           {perms.map(p => (
-                            <Col span={12} key={p.id}>
+                            <Col xs={24} sm={12} key={p.id}>
                               <Checkbox value={p.id}>{p.name}</Checkbox>
                             </Col>
                           ))}

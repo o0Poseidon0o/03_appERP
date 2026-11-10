@@ -93,6 +93,7 @@ app.use('/api/workflows', workflowRoutes);
 app.use('/api/tickets', ticketRoutes);
 // ----Quản lý thiết bị ITAM ----
 app.use('/api/assets', assetRoutes);
+app.use('/api/itam/assets', assetRoutes);
 app.use('/api/asset-types', assetTypeRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/maintenance", maintenanceRoutes);

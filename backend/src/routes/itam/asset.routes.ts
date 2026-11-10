@@ -9,15 +9,16 @@ import {
     getMyAssets
 } from '../../controllers/itam/asset.controller';
 import { protect, hasPermission } from '../../middlewares/authMiddleware';
+import { verifyAgentSecret } from '../../middlewares/agentAuthMiddleware';
 
 const router = express.Router();
 
 // ==========================================
-// 1. PUBLIC ROUTE (Dùng API Key riêng)
+// 1. AGENT SYNC ROUTE (Bảo mật bằng X-Agent-Secret-Key middleware)
 // ==========================================
 // Route này dành cho PowerShell Agent gửi dữ liệu lên, không cần login User
-// Bảo mật bằng x-api-key trong header (đã check trong controller)
-router.post('/sync', syncAssetAgent);
+router.post('/sync', verifyAgentSecret, syncAssetAgent);
+router.post('/sync-agent', verifyAgentSecret, syncAssetAgent);
 
 
 // ==========================================

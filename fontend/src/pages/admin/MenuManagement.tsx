@@ -135,9 +135,9 @@ const MenuManagement: React.FC = () => {
   ];
 
   return (
-    <div className="bg-slate-50 min-h-screen p-2">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold flex items-center gap-2 m-0 text-slate-800">
+    <div className="bg-slate-50 min-h-screen p-2 sm:p-4">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
+        <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2 m-0 text-slate-800">
             <FolderOutlined className="text-indigo-600" /> Cấu trúc Chuyên mục
         </h2>
         <Button type="primary" size="large" icon={<PlusOutlined />} onClick={handleAddNew}>
@@ -154,6 +154,7 @@ const MenuManagement: React.FC = () => {
             columns={columns} 
             dataSource={menus} 
             loading={loading} 
+            scroll={{ x: 'max-content' }}
             pagination={false}
             className="rounded-lg overflow-hidden border border-slate-100"
             rowClassName={(record) => !record.isVisible ? 'bg-slate-50/50' : ''}
@@ -170,6 +171,7 @@ const MenuManagement: React.FC = () => {
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
         footer={null}
+        width="min(96vw, 520px)"
         centered
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-5">
@@ -189,7 +191,7 @@ const MenuManagement: React.FC = () => {
             <Input placeholder="VD: thong-bao-noi-bo" className="font-mono text-xs" />
           </Form.Item>
           
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
              <Form.Item name="order" label="Thứ tự ưu tiên">
                 <InputNumber className="w-full" min={0} placeholder="0" />
              </Form.Item>

@@ -158,10 +158,18 @@ const MainLayout: React.FC = () => {
   const location = useLocation();
   const { token } = antTheme.useToken();
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const isTablet = useMediaQuery('(max-width: 1024px)');
 
   const [dynamicMenus, setDynamicMenus] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Tự động thu gọn Sidebar trên màn hình máy tính bảng (768px - 1024px) để nhường diện tích hiển thị bảng
+  useEffect(() => {
+    if (isTablet && !isMobile) {
+      setCollapsed(true);
+    }
+  }, [isTablet, isMobile]);
 
   // LOGIC 1: BẮT TÍN HIỆU TỪ TRANG LOGIN ĐỂ MỞ APP LAUNCHER
   useEffect(() => {
@@ -346,7 +354,7 @@ const MainLayout: React.FC = () => {
 
   // --- RENDER HELPERS ---
   const notiContent = (
-      <div className="w-80 max-h-96 overflow-y-auto">
+      <div className="w-[calc(100vw-48px)] sm:w-80 max-h-96 overflow-y-auto">
           <List dataSource={notifications} renderItem={item => (
               <List.Item 
                   className={`p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!item.isRead ? 'bg-blue-50/60' : ''}`} 
@@ -465,7 +473,7 @@ const MainLayout: React.FC = () => {
                     unCheckedChildren={<SunOutlined />} 
                     checked={isDarkMode} 
                     onChange={toggleTheme} 
-                    className="bg-gray-300 hidden sm:block" 
+                    className="bg-gray-300" 
                 />
                 
                 <Popover content={notiContent} title="Thông báo" trigger="click" onOpenChange={handleReadNoti} placement="bottomRight" overlayClassName="noti-popover">
@@ -494,14 +502,14 @@ const MainLayout: React.FC = () => {
         
         <Content 
             style={{ 
-                margin: isMobile ? '12px' : '24px', 
+                margin: isMobile ? '8px' : '16px', 
                 padding: 0,
                 background: 'transparent',
                 overflowY: 'auto',
-                height: 'calc(100vh - 64px - 48px)'
+                height: isMobile ? 'calc(100vh - 64px - 16px)' : 'calc(100vh - 64px - 32px)'
             }}
         >
-            <div className={`h-full w-full rounded-xl overflow-hidden shadow-sm ${isDarkMode ? 'bg-[#1f2937]' : 'bg-white'} p-4 md:p-6 overflow-y-auto`}>
+            <div className={`h-full w-full rounded-xl overflow-hidden shadow-sm ${isDarkMode ? 'bg-[#1f2937]' : 'bg-white'} p-2 sm:p-4 md:p-6 overflow-y-auto`}>
                 <Outlet />
             </div>
         </Content>

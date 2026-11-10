@@ -100,7 +100,7 @@ const MonthlyReport = () => {
   const totalStock = reportData.reduce((acc, cur) => acc + (cur.finalQuantity || 0), 0);
 
   return (
-    <div className="p-6 bg-gray-100 min-h-screen flex justify-center">
+    <div className="p-3 sm:p-6 bg-gray-100 min-h-screen flex justify-center">
       <div className="w-full max-w-6xl flex flex-col gap-4">
         
         {/* --- HEADER --- */}
@@ -194,7 +194,7 @@ const MonthlyReport = () => {
                 loading={loading}
                 pagination={{ pageSize: 15, showSizeChanger: true, size: 'small' }}
                 size="small"
-                scroll={{ y: 'calc(100vh - 400px)' }}
+                scroll={{ x: 'max-content', y: 'calc(100vh - 400px)' }}
                 bordered={false} 
                 rowClassName="hover:bg-gray-50 transition-colors cursor-default"
                 locale={{ emptyText: <div className="py-10 text-gray-400 flex flex-col items-center"><FilterOutlined className="text-3xl mb-2 opacity-50"/><span>Chọn thời gian và bấm xem dữ liệu</span></div> }}

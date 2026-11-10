@@ -1,3 +1,4 @@
+import { Suspense, lazy, type JSX } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -5,47 +6,44 @@ import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { SocketProvider } from "./contexts/SocketContext"; 
 
 import { Spin, ConfigProvider, theme, App as AntdApp } from "antd";
-import type { JSX } from "react";
 
-// --- IMPORT PAGES ---
-// 1. Auth & Public
-import LoginPage from "./pages/auth/LoginPage";
-import ForgotPasswordPage from "./pages/ForgotPasswordPage";
-
-// 2. Layout & General
+// Layout & Security Component (Core shell)
 import MainLayout from "./layout/MainLayout";
-import Profile from "./pages/Profile";
-import Dashboard from "./pages/admin/Dashboard";
-import PostPage from "./pages/admin/PostPage";
+import RoleRoute from "./components/RoleRoute";
+
+// --- LAZY LOAD PAGES (Code Splitting tối ưu tốc độ tải Mobile / 4G) ---
+// 1. Auth & Public
+const LoginPage = lazy(() => import("./pages/auth/LoginPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
+
+// 2. General
+const Profile = lazy(() => import("./pages/Profile"));
+const Dashboard = lazy(() => import("./pages/admin/Dashboard"));
+const PostPage = lazy(() => import("./pages/admin/PostPage"));
 
 // 3. Admin System (Nhân sự & Phòng ban & Workflow)
-import UserManagement from "./pages/admin/UserManagement";
-import DepartmentManagement from "./pages/department/DepartmentManagement";
-import RoleManagement from "./pages/Role/RoleManagement";
-import MenuManagement from "./pages/admin/MenuManagement";
-import WorkflowManagement from "./pages/admin/WorkflowManagement";
+const UserManagement = lazy(() => import("./pages/admin/UserManagement"));
+const DepartmentManagement = lazy(() => import("./pages/department/DepartmentManagement"));
+const RoleManagement = lazy(() => import("./pages/Role/RoleManagement"));
+const MenuManagement = lazy(() => import("./pages/admin/MenuManagement"));
+const WorkflowManagement = lazy(() => import("./pages/admin/WorkflowManagement"));
 
 // 4. Warehouse System (Kho & Nhà máy & Vật tư)
-import ItemManagement from "./pages/warehouse/ItemManagement";
-import CategoryManagement from "./pages/warehouse/CategoryManagement";
-import SupplierPage from "./pages/warehouse/SupplierList";
-import WarehouseManagement from "./pages/warehouse/WarehouseManagement";
-import PendingApprovals from "./pages/warehouse/PendingApprovals";
-import StockTransaction from "./pages/warehouse/StockTransaction";
-import StockActual from "./pages/warehouse/StockActual";
-import MonthlyReport from "./pages/warehouse/MonthlyReport";
+const ItemManagement = lazy(() => import("./pages/warehouse/ItemManagement"));
+const CategoryManagement = lazy(() => import("./pages/warehouse/CategoryManagement"));
+const SupplierPage = lazy(() => import("./pages/warehouse/SupplierList"));
+const WarehouseManagement = lazy(() => import("./pages/warehouse/WarehouseManagement"));
+const PendingApprovals = lazy(() => import("./pages/warehouse/PendingApprovals"));
+const StockTransaction = lazy(() => import("./pages/warehouse/StockTransaction"));
+const StockActual = lazy(() => import("./pages/warehouse/StockActual"));
+const MonthlyReport = lazy(() => import("./pages/warehouse/MonthlyReport"));
 
-// 5. [NEW] IT Asset Management (ITAM)
-import AssetList from "./pages/itam/AssetList";
-// import AssetDetail from "./pages/itam/AssetDetail"; 
-import DashboardItam from "./pages/itam/Dashboard";
-import PeripheralList from "./pages/itam/PeripheralList";
-import SoftwareInventory from "./pages/itam/SoftwareInventory";
-// import AssetTypeManagement from "./pages/itam/AssetTypeManagement"; 
-
-// 6. Security Component
-import RoleRoute from "./components/RoleRoute";
-import NetworkScanner from "./pages/itam/NetworkScanner";
+// 5. IT Asset Management (ITAM)
+const AssetList = lazy(() => import("./pages/itam/AssetList"));
+const DashboardItam = lazy(() => import("./pages/itam/Dashboard"));
+const PeripheralList = lazy(() => import("./pages/itam/PeripheralList"));
+const SoftwareInventory = lazy(() => import("./pages/itam/SoftwareInventory"));
+const NetworkScanner = lazy(() => import("./pages/itam/NetworkScanner"));
 
 // --- COMPONENTS BẢO VỆ ---
 
@@ -103,6 +101,13 @@ const AppContent = () => {
       }}
     >
       <AntdApp>
+        <Suspense
+          fallback={
+            <div className="h-[60vh] flex justify-center items-center">
+              <Spin size="large" tip="Đang tải phân hệ..." />
+            </div>
+          }
+        >
         <Routes>
           {/* ========================================================= */}
           {/* 1. PUBLIC ROUTES (Không cần đăng nhập) */}
@@ -210,7 +215,8 @@ const AppContent = () => {
               <Route path="admin/menus" element={<MenuManagement />} />
               <Route path="admin/workflows" element={<WorkflowManagement />} />
               <Route path="itam/software-inventory" element={<SoftwareInventory />} />
-                 <Route path="itam/network-scan" element={<NetworkScanner />} />
+              <Route path="itam/software" element={<SoftwareInventory />} />
+              <Route path="itam/network-scan" element={<NetworkScanner />} />
             </Route>
 
             {/* Route không tồn tại -> Quay về trang chủ */}
@@ -220,6 +226,7 @@ const AppContent = () => {
           {/* Route rác -> Login */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
+        </Suspense>
       </AntdApp>
     </ConfigProvider>
   );

@@ -1,0 +1,23 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const softwareInventoryController_1 = require("../../controllers/itam/softwareInventoryController");
+const router = express_1.default.Router();
+router.get("/inventory", softwareInventoryController_1.getSoftwareInventory);
+router.get("/detail", softwareInventoryController_1.getSoftwareInstallations);
+router.get("/export-all", softwareInventoryController_1.exportAllSoftwareInstallations);
+router.post("/cleanup", softwareInventoryController_1.cleanupSoftwareInventory);
+router.get("/policies", softwareInventoryController_1.getSoftwarePolicies);
+router.post("/policies", softwareInventoryController_1.upsertSoftwarePolicy);
+router.patch("/policies/:id", softwareInventoryController_1.updateSoftwarePolicy);
+router.delete("/policies/:id", softwareInventoryController_1.deleteSoftwarePolicy);
+router.get("/keys", softwareInventoryController_1.getLicenseKeys);
+router.post("/keys", softwareInventoryController_1.createLicenseKey);
+router.patch("/keys/:id", softwareInventoryController_1.updateLicenseKey);
+router.delete("/keys/:id", softwareInventoryController_1.deleteLicenseKey);
+router.post("/keys/:id/assign", softwareInventoryController_1.assignLicenseKeyToAssets);
+router.delete("/keys/:id/assign/:assetId", softwareInventoryController_1.unassignLicenseKeyFromAsset);
+exports.default = router;

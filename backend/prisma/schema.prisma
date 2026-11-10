@@ -447,9 +447,10 @@ model Asset {
   users        User[]      
   
   // Details (Cascade Delete: Xóa máy là xóa luôn linh kiện/phần mềm đi kèm)
-  components   AssetComponent[]
-  maintenances MaintenanceLog[]
-  softwares    InstalledSoftware[]
+  components         AssetComponent[]
+  maintenances       MaintenanceLog[]
+  softwares          InstalledSoftware[]
+  licenseAssignments SoftwareKeyAssignment[]
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -497,4 +498,50 @@ model InstalledSoftware {
   // Đánh Index để tìm kiếm nhanh
   @@index([assetId])
   @@index([name])
+}
+
+// ==========================================
+// 8. QUẢN LÝ BẢN QUYỀN PHẦN MỀM, KEY & BLACKLIST
+// ==========================================
+
+model SoftwarePolicy {
+  id           String               @id @default(uuid())
+  name         String               @unique // VD: "Kaspersky Endpoint Security", "Microsoft Office", "uTorrent"
+  matchKeyword String               // Từ khóa khớp với tên phần mềm cài đặt (VD: "Kaspersky", "Microsoft Office|Microsoft 365")
+  category     String               @default("LICENSED") // LICENSED | BLACKLIST | FREE
+  totalSeats   Int                  @default(0) // Tổng số license đã mua
+  publisher    String?
+  note         String?
+  keys         SoftwareLicenseKey[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+}
+
+model SoftwareLicenseKey {
+  id          String                  @id @default(uuid())
+  policyId    String
+  policy      SoftwarePolicy          @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  licenseKey  String                  // Mã Key bản quyền (VD: Key Kaspersky, MAK Key Office, Serial AutoCAD...)
+  keyType     String                  @default("SUBSCRIPTION") // SUBSCRIPTION | VOLUME | MAK | RETAIL | OEM
+  maxSeats    Int                     @default(1) // Số lượng máy tối đa được phép kích hoạt trên Key này
+  expiredAt   DateTime?               // Ngày hết hạn (quan trọng cho Kaspersky, M365...)
+  supplier    String?                 // Nhà cung cấp
+  invoiceCode String?                 // Số hợp đồng / Hóa đơn
+  status      String                  @default("ACTIVE") // ACTIVE | EXPIRED | REVOKED
+  note        String?
+  assignments SoftwareKeyAssignment[]
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+}
+
+model SoftwareKeyAssignment {
+  id         String             @id @default(uuid())
+  keyId      String
+  licenseKey SoftwareLicenseKey @relation(fields: [keyId], references: [id], onDelete: Cascade)
+  assetId    String
+  asset      Asset              @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assignedAt DateTime           @default(now())
+  note       String?
+
+  @@unique([keyId, assetId])
 }

@@ -74,7 +74,7 @@ const SupplierList: React.FC = () => {
   ];
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6">
       <Card title="Danh mục Nhà cung cấp" extra={
         <Button type="primary" icon={<PlusOutlined />} onClick={() => {
           setEditingId(null);
@@ -85,10 +85,10 @@ const SupplierList: React.FC = () => {
         <Input.Search 
           placeholder="Tìm theo mã hoặc tên..." 
           onSearch={fetchSuppliers} 
-          style={{ marginBottom: 16, width: 300 }} 
+          className="mb-4 w-full sm:w-80"
           enterButton 
         />
-        <Table dataSource={data} columns={columns} rowKey="id" loading={loading} />
+        <Table dataSource={data} columns={columns} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} />
       </Card>
 
       <Modal

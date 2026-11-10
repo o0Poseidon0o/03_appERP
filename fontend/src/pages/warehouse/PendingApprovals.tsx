@@ -334,7 +334,7 @@ const PendingApprovals: React.FC = () => {
   ];
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen">
+    <div className="p-3 sm:p-6 bg-slate-50 min-h-screen">
       <div style={{ position: 'fixed', top: -10000, left: -10000 }}>
          <TicketPrintTemplate ref={printRef} ticket={selectedTicket} />
       </div>
@@ -354,6 +354,7 @@ const PendingApprovals: React.FC = () => {
             columns={columnsConfig(activeTab === 'history')} 
             rowKey="id" 
             loading={loading} 
+            scroll={{ x: 'max-content' }}
             pagination={{ pageSize: 10 }} 
             locale={{ emptyText: 'Không có dữ liệu.' }} 
         />
@@ -363,12 +364,12 @@ const PendingApprovals: React.FC = () => {
         title={<Space><span>Phiếu: {selectedTicket?.code}</span><Button size="small" icon={<PrinterOutlined />} onClick={handlePrint}>In phiếu</Button></Space>} 
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
-        width={900} 
+        width="min(96vw, 900px)" 
         footer={null}
       >
         {selectedTicket && (
             <div className="pt-2">
-                <Descriptions column={2} size="small" bordered className="mb-4">
+                <Descriptions column={{ xs: 1, sm: 2 }} size="small" bordered className="mb-4">
                     <Descriptions.Item label="Người lập">
                         {selectedTicket.creator?.fullName} <br/> 
                         <span className="text-gray-400 text-xs">(ID: {selectedTicket.creator?.id})</span>
@@ -385,6 +386,7 @@ const PendingApprovals: React.FC = () => {
                 <Table 
                     dataSource={selectedTicket.details} 
                     pagination={false} size="small" bordered rowKey="id" 
+                    scroll={{ x: 'max-content' }}
                     columns={[
                         { title: 'Vật tư', render: (_: any, r: any) => <div><b>{r.item?.itemName}</b><br/><span className="text-gray-500 text-xs">{r.item?.itemCode}</span></div> }, 
                         { title: 'Loại', align: 'center', render: (_: any, r: any) => <Tag icon={<BarcodeOutlined />}>{r.usageCategory?.code || '-'}</Tag> },

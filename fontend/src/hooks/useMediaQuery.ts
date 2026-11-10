@@ -25,4 +25,5 @@ const useMediaQuery = (query: string): boolean => {
   return matches;
 };
 
+export { useMediaQuery };
 export default useMediaQuery;

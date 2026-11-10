@@ -18,6 +18,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
   const [types, setTypes] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);       
   const [factories, setFactories] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   
   // [FIX] Đã xóa state 'parentDevices' vì không dùng đến
 
@@ -27,15 +28,17 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
         const fetchMasterData = async () => {
             try {
                 // [FIX] Xóa phần load PC cha để tránh dư thừa
-                const [typeRes, userRes, factoryRes] = await Promise.all([
+                const [typeRes, userRes, factoryRes, deptRes] = await Promise.all([
                     assetService.getAssetTypes(),
                     axiosClient.get('/users?limit=1000'), 
-                    axiosClient.get('/factories'),        
+                    axiosClient.get('/factories'),
+                    axiosClient.get('/departments').catch(() => ({ data: { data: [] } })),
                 ]);
 
                 setTypes(typeRes.data.data || []); 
                 setUsers(userRes.data.data?.users || userRes.data.data || []); 
                 setFactories(factoryRes.data.data || []); 
+                setDepartments(deptRes.data?.data || []);
             } catch (error) {
                 console.error("Lỗi tải dữ liệu nguồn:", error);
             }
@@ -53,6 +56,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
         ...initialValues,
         typeId: initialValues.typeId,
         factoryId: initialValues.factoryId,
+        departmentId: initialValues.departmentId,
         // parentId: initialValues.parentId, // [FIX] Đã xóa trường này
         status: initialValues.status,
         serialNumber: initialValues.serialNumber,
@@ -119,9 +123,9 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
       onCancel={onCancel}
       onOk={() => form.submit()}
       confirmLoading={loading}
-      width={900}
+      width="min(96vw, 900px)"
       maskClosable={false}
-      style={{ top: 20 }}
+      style={{ top: 16 }}
     >
       <Form form={form} layout="vertical" onFinish={onFinish} className="pt-2">
         
@@ -129,19 +133,19 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
         <SectionTitle title="Thông tin chung" />
         
         <Row gutter={16}>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={8}>
             <Form.Item name="name" label="Hostname (Tên máy)" rules={[{ required: true, message: 'Bắt buộc nhập' }]}>
               <Input placeholder="VD: PC-IT-01..." />
             </Form.Item>
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={8}>
             <Form.Item name="typeId" label="Loại thiết bị" rules={[{ required: true, message: 'Bắt buộc chọn' }]}>
               <Select placeholder="Chọn loại...">
                 {types.map(t => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
               </Select>
             </Form.Item>
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={24} md={8}>
              <Form.Item name="serialNumber" label="Serial Number">
               <Input placeholder="Số Serial..." />
             </Form.Item>
@@ -150,14 +154,14 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
 
         {/* --- PHẦN 2: CHI TIẾT PHẦN CỨNG (NHẬP TAY) --- */}
         <SectionTitle title="Chi tiết Phần cứng (Nhập tay)" />
-        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-4">
+        <div className="bg-slate-50 p-3 sm:p-4 rounded-lg border border-slate-200 mb-4">
             <Row gutter={16}>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                     <Form.Item name="manufacturer" label="Hãng sản xuất">
                         <Input placeholder="VD: Dell, HP, Lenovo..." />
                     </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                     <Form.Item name="modelName" label="Tên Model">
                         <Input placeholder="VD: OptiPlex 3050..." />
                     </Form.Item>
@@ -165,17 +169,17 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
             </Row>
             
             <Row gutter={16}>
-                <Col span={12}>
+                <Col xs={24} md={12}>
                     <Form.Item name="cpu" label="CPU (Vi xử lý)">
                         <Input placeholder="VD: Intel Core i5-8500 @ 3.00GHz" />
                     </Form.Item>
                 </Col>
-                <Col span={6}>
+                <Col xs={12} md={6}>
                     <Form.Item name="ram" label="RAM">
                         <Input placeholder="VD: 16 GB" />
                     </Form.Item>
                 </Col>
-                <Col span={6}>
+                <Col xs={12} md={6}>
                     <Form.Item name="disk" label="Ổ cứng">
                         <Input placeholder="VD: 256GB SSD + 1TB HDD" />
                     </Form.Item>
@@ -183,17 +187,17 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
             </Row>
 
             <Row gutter={16}>
-                <Col span={8}>
+                <Col xs={24} sm={12} md={8}>
                     <Form.Item name="osName" label="Hệ điều hành">
                         <Input placeholder="VD: Microsoft Windows 10 Pro" />
                     </Form.Item>
                 </Col>
-                <Col span={8}>
+                <Col xs={24} sm={12} md={8}>
                     <Form.Item name="ipAddress" label="Địa chỉ IP (LAN)">
                         <Input placeholder="VD: 192.168.1.105" />
                     </Form.Item>
                 </Col>
-                <Col span={8}>
+                <Col xs={24} sm={24} md={8}>
                     <Form.Item name="macAddress" label="Địa chỉ MAC">
                         <Input placeholder="VD: AA:BB:CC:11:22:33" />
                     </Form.Item>
@@ -205,7 +209,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
         <SectionTitle title="Quản lý & Vị trí" />
 
         <Row gutter={16}>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={6}>
              <Form.Item name="factoryId" label="Nhà máy / Chi nhánh">
                 <Select placeholder="Chọn nhà máy..." allowClear>
                     {factories.map((f: any) => (
@@ -214,7 +218,16 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
                 </Select>
              </Form.Item>
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={6}>
+             <Form.Item name="departmentId" label="Phòng ban">
+                <Select placeholder="Chọn phòng ban..." allowClear showSearch optionFilterProp="children">
+                    {departments.map((d: any) => (
+                        <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>
+                    ))}
+                </Select>
+             </Form.Item>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
             <Form.Item name="status" label="Trạng thái" initialValue="NEW">
               <Select>
                 <Select.Option value="NEW">Mới nhập</Select.Option>
@@ -225,7 +238,7 @@ const AssetForm: React.FC<AssetFormProps> = ({ open, onCancel, onSuccess, initia
               </Select>
             </Form.Item>
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={6}>
             <Form.Item name="domainUser" label="User Domain (Đang Login)">
               <Input placeholder="VD: TOWA\Admin..." />
             </Form.Item>

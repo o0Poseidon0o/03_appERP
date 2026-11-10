@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../../config/prisma";
 import { getIO } from "../../socket"; 
+import { normalizeAndDedupeSoftwareList } from "../../utils/softwareNormalizer";
 
 // --- INTERFACE CHO PAYLOAD CỦA AGENT V3.13 ---
 interface AgentPayload {
@@ -98,12 +99,17 @@ const getDetailedDifference = (oldItems: any[], newItems: any[], keySelector: (i
 // ==========================================
 export const syncAssetAgent = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // 1. [BẢO MẬT] Check API Key
-    const SECRET_KEY = process.env.AGENT_API_KEY || "@Towa2026!#Secure_Agent_998811_AbCdEf";
-    const apiKey = req.headers["x-api-key"];
+    // 1. [BẢO MẬT] Check API Key / Secret Key (kết hợp cùng middleware verifyAgentSecret)
+    const SECRET_KEY =
+      process.env.AGENT_SECRET_KEY ||
+      process.env.AGENT_API_KEY ||
+      "@Towa2026!#Secure_Agent_998811_AbCdEf";
+    const apiKey =
+      (req.headers["x-agent-secret-key"] as string) ||
+      (req.headers["x-api-key"] as string);
 
     if (apiKey !== SECRET_KEY) {
-      return res.status(401).json({ status: "fail", message: "Sai mã bảo mật Agent!" });
+      return res.status(403).json({ status: "fail", message: "Sai mã bảo mật Agent (X-Agent-Secret-Key)!" });
     }
 
     const data = req.body as AgentPayload;
@@ -225,6 +231,8 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
             }
         }
     }
+
+    const blacklistedFound: string[] = [];
 
     // 6. TRANSACTION: Cập nhật Máy + Log + Linh kiện
     const result = await prisma.$transaction(async (tx) => {
@@ -373,20 +381,76 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
         }
       }
 
-      // F. Xử lý Phần mềm
+      // F. Xử lý Phần mềm (Đã chuẩn hóa & lọc bỏ gói phụ trợ đi kèm)
       if (Array.isArray(data.software) && data.software.length > 0) {
         await tx.installedSoftware.deleteMany({
           where: { assetId: asset.id },
         });
 
-        const swList = data.software.slice(0, 500).map((s) => ({
+        const cleanedSoftware = normalizeAndDedupeSoftwareList(data.software);
+        const swList = cleanedSoftware.slice(0, 500).map((s) => ({
           assetId: asset.id,
-          name: s.Name || "Unknown App",
-          version: s.Version || "",
-          publisher: s.Publisher || "",
+          name: s.name || "Unknown App",
+          version: s.version || "",
+          publisher: s.publisher || "",
         }));
 
-        await tx.installedSoftware.createMany({ data: swList });
+        if (swList.length > 0) {
+          await tx.installedSoftware.createMany({ data: swList });
+        }
+
+        // G. Kiểm tra Phần mềm cấm (Blacklist) từ bảng SoftwarePolicy + danh sách mặc định
+        const blacklistPolicies = await tx.softwarePolicy.findMany({
+          where: { category: "BLACKLIST" },
+        });
+
+        const defaultBlacklistPatterns = [
+          /uTorrent/i,
+          /BitTorrent/i,
+          /qBittorrent/i,
+          /KMSPico/i,
+          /KMSAuto/i,
+          /Cheat\s*Engine/i,
+          /Psiphon/i,
+          /SoftEther\s*VPN/i,
+          /Radmin\s*VPN/i,
+          /Hamachi/i,
+        ];
+
+        for (const sw of cleanedSoftware) {
+          const matchedPolicy = blacklistPolicies.find((pol) => {
+            try {
+              return new RegExp(pol.matchKeyword, "i").test(sw.name);
+            } catch {
+              return sw.name.toLowerCase().includes(pol.matchKeyword.toLowerCase());
+            }
+          });
+
+          const matchedDefault = defaultBlacklistPatterns.some((rx) => rx.test(sw.name));
+
+          if (matchedPolicy || matchedDefault) {
+            blacklistedFound.push(sw.name);
+          }
+        }
+
+        if (blacklistedFound.length > 0) {
+          const adminUsers = await tx.user.findMany({
+            where: { roleId: "ROLE-ADMIN", isActive: true },
+            select: { id: true },
+          });
+
+          if (adminUsers.length > 0) {
+            await tx.notification.createMany({
+              data: adminUsers.map((admin) => ({
+                userId: admin.id,
+                title: `🚨 Cảnh báo phần mềm cấm: ${uniqueHostname}`,
+                message: `Phát hiện phần mềm nằm trong danh sách cấm trên máy ${uniqueHostname} (${data.username || "N/A"}): ${blacklistedFound.join(", ")}`,
+                link: `/itam/software`,
+                isRead: false,
+              })),
+            });
+          }
+        }
       }
 
       return asset;
@@ -406,6 +470,20 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
                  io.emit("hardware_alert", { 
                      message: `Cảnh báo: ${uniqueHostname} vừa thay đổi phần cứng!`, 
                      details: changeDetails 
+                 });
+            }
+
+            if (blacklistedFound.length > 0) {
+                 console.log(`[CẢNH BÁO BLACKLIST] Phát hiện phần mềm cấm trên ${uniqueHostname}: ${blacklistedFound.join(", ")}`);
+                 io.emit("software_blacklist_alert", {
+                     hostname: uniqueHostname,
+                     domainUser: data.username,
+                     softwares: blacklistedFound,
+                     message: `🚨 Máy ${uniqueHostname} cài đặt phần mềm cấm: ${blacklistedFound.join(", ")}`,
+                 });
+                 io.emit("hardware_alert", {
+                     message: `🚨 Cảnh báo bảo mật: Máy ${uniqueHostname} cài phần mềm cấm!`,
+                     details: blacklistedFound.map((s) => `Phần mềm cấm: ${s}`),
                  });
             }
         }

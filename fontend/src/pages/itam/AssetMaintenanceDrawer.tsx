@@ -171,13 +171,13 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
                     </div>
                 </div>
             }
-            width={850}
+            width="min(100vw, 850px)"
             open={open}
             onClose={onClose}
-            styles={{ body: { padding: '20px', background: '#f8fafc' }, header: { padding: '16px 20px' } }}
+            styles={{ body: { padding: '16px', background: '#f8fafc' }, header: { padding: '16px 20px' } }}
         >
             {isAdding ? (
-                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm animate-fade-in">
+                <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200 shadow-sm animate-fade-in">
                     <div className="flex items-center mb-6 pb-4 border-b border-gray-100">
                         <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setIsAdding(false)} className="mr-2 hover:bg-gray-100"/>
                         <h3 className="m-0 font-bold text-lg text-slate-700">Tạo phiếu yêu cầu mới</h3>
@@ -248,7 +248,7 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
                             </Form.Item>
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                        <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-gray-100">
                             <Button size="large" onClick={() => setIsAdding(false)} className="rounded-lg px-6">Hủy bỏ</Button>
                             <Button type="primary" size="large" htmlType="submit" icon={<PlusOutlined />} className="rounded-lg px-6 bg-orange-500 hover:bg-orange-600 border-none shadow-sm">
                                 Tạo phiếu & Cập nhật trạng thái máy
@@ -257,8 +257,8 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
                     </Form>
                 </div>
             ) : (
-                <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm animate-fade-in h-full flex flex-col">
-                    <div className="flex justify-between items-center mb-5">
+                <div className="bg-white p-3 sm:p-5 rounded-xl border border-gray-200 shadow-sm animate-fade-in h-full flex flex-col">
+                    <div className="flex flex-wrap justify-between items-center gap-2 mb-5">
                         <div className="flex items-center gap-2">
                             <div className="text-slate-500 font-medium">Tổng số lần sửa chữa:</div>
                             <Tag color="orange" className="font-bold text-sm m-0 border-none px-3 py-0.5 rounded-full">{history.length}</Tag>
@@ -274,7 +274,7 @@ const AssetMaintenanceDrawer = ({ open, asset, onClose }: Props) => {
                         rowKey="id" 
                         loading={loading}
                         pagination={false}
-                        scroll={{ y: 'calc(100vh - 280px)' }}
+                        scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
                         locale={{ 
                             emptyText: (
                                 <div className="py-10 flex flex-col items-center">

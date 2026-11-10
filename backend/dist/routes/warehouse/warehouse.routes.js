@@ -1,0 +1,18 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const warehouse_controller_1 = require("../../controllers/warehouse/warehouse.controller");
+const report_controller_1 = require("../../controllers/warehouse/report.controller");
+const authMiddleware_1 = require("../../middlewares/authMiddleware");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.protect);
+router.get('/reports/monthly-stock', (0, authMiddleware_1.hasPermission)('WMS_VIEW'), report_controller_1.getStockHistoryReport);
+router.get('/', (0, authMiddleware_1.hasPermission)('WMS_VIEW'), warehouse_controller_1.getAllWarehouses);
+router.get('/locations/all', (0, authMiddleware_1.hasPermission)('WMS_VIEW'), warehouse_controller_1.getAllLocations);
+router.post('/', (0, authMiddleware_1.hasPermission)('WMS_CREATE'), warehouse_controller_1.createWarehouse);
+router.post('/location', (0, authMiddleware_1.hasPermission)('WMS_CREATE'), warehouse_controller_1.addLocation);
+router.patch('/location/:id', (0, authMiddleware_1.hasPermission)('WMS_UPDATE'), warehouse_controller_1.updateLocation);
+router.delete('/location/:id', (0, authMiddleware_1.hasPermission)('WMS_DELETE'), warehouse_controller_1.deleteLocation);
+router.patch('/:id', (0, authMiddleware_1.hasPermission)('WMS_UPDATE'), warehouse_controller_1.updateWarehouse);
+router.delete('/:id', (0, authMiddleware_1.hasPermission)('WMS_DELETE'), warehouse_controller_1.deleteWarehouse);
+exports.default = router;

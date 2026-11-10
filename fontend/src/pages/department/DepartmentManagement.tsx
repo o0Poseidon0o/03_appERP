@@ -11,6 +11,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import axiosClient from "../../api/axiosClient";
 import dayjs from "dayjs"; 
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 // --- INTERFACES ---
 // Vẫn cần Interface Factory để hiển thị trong dropdown chọn nhà máy
@@ -35,6 +36,7 @@ interface Department {
 
 const DepartmentManagement: React.FC = () => {
   const { message, modal } = AntdApp.useApp();
+  const isCompactScreen = useMediaQuery("(max-width: 1024px)");
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
 
@@ -117,7 +119,7 @@ const DepartmentManagement: React.FC = () => {
       dataIndex: "id", 
       key: "id",
       width: 100,
-      fixed: 'left',
+      fixed: isCompactScreen ? undefined : 'left',
       render: (id) => <Tag color="blue" className="font-mono font-bold">{id}</Tag>
     },
     { 
@@ -172,7 +174,7 @@ const DepartmentManagement: React.FC = () => {
     {
       title: "Thao tác",
       key: "action",
-      fixed: 'right',
+      fixed: isCompactScreen ? undefined : 'right',
       width: 110,
       align: "center",
       render: (_, record) => (
@@ -189,11 +191,11 @@ const DepartmentManagement: React.FC = () => {
   ];
 
   return (
-    <div className="bg-slate-50 min-h-screen p-6">
+    <div className="bg-slate-50 min-h-screen p-3 sm:p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <div>
-            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2 m-0">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2 m-0">
             <ApartmentOutlined className="text-indigo-600" /> Quản lý Cơ cấu Tổ chức
             </h2>
             <span className="text-slate-500 text-sm">Quản lý danh sách các phòng ban và chức năng nhiệm vụ</span>
@@ -214,14 +216,13 @@ const DepartmentManagement: React.FC = () => {
 
       {/* Main Content - Không còn Tab nữa, chỉ hiển thị Table */}
       <Card bordered={false} className="shadow-sm rounded-xl">
-        <div className="flex justify-between mb-5">
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mb-5">
             <Input 
                 placeholder="Tìm kiếm phòng ban..." 
                 prefix={<SearchOutlined className="text-slate-400"/>} 
-                style={{ width: 350 }} 
                 onChange={(e) => setSearchText(e.target.value)} 
                 allowClear 
-                className="rounded-lg" 
+                className="rounded-lg w-full sm:w-80" 
             />
             <Button icon={<ReloadOutlined />} onClick={fetchData}>Làm mới</Button>
         </div>
@@ -231,7 +232,7 @@ const DepartmentManagement: React.FC = () => {
             dataSource={depts.filter(d => d.name.toLowerCase().includes(searchText.toLowerCase()) || d.id.includes(searchText))} 
             rowKey="id" 
             loading={loading}
-            scroll={{ x: 1300 }} 
+            scroll={{ x: 'max-content' }} 
             pagination={{ pageSize: 10, showSizeChanger: true }}
             className="border border-slate-100 rounded-lg"
         />
@@ -243,11 +244,11 @@ const DepartmentManagement: React.FC = () => {
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
         onOk={() => form.submit()} 
-        width={600} 
+        width="min(96vw, 600px)" 
         centered
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-6">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Form.Item 
                 name="id" 
                 label="Mã ID (Duy nhất)" 

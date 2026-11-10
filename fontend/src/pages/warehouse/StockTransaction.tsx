@@ -567,7 +567,7 @@ const StockTransactionCreate: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: "24px", background: "#f5f7fa", minHeight: "100vh" }}>
+    <div className="p-2 sm:p-6 bg-[#f5f7fa] min-h-screen">
         <QRScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleScanSuccess} />
         
         <Card bordered={false} style={{ borderRadius: "12px", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
@@ -578,8 +578,8 @@ const StockTransactionCreate: React.FC = () => {
             </div>
 
             <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ type: "IMPORT", isEmergency: false }}>
-                <Row gutter={24}>
-                    <Col xs={24} md={6}>
+                <Row gutter={16}>
+                    <Col xs={24} sm={12} md={6}>
                         <Form.Item name="type" label="Loại giao dịch" rules={[{ required: true }]}>
                             <Select size="large" onChange={handleTypeChange}>
                                 <Select.Option value="IMPORT">🟢 NHẬP KHO</Select.Option>
@@ -590,7 +590,7 @@ const StockTransactionCreate: React.FC = () => {
                     </Col>
                     
                     {/* [FIXED] LUÔN HIỂN THỊ Ô CHỌN QUY TRÌNH CHO CẢ NHẬP VÀ XUẤT */}
-                    <Col xs={24} md={6}>
+                    <Col xs={24} sm={12} md={6}>
                         <Form.Item 
                             name="workflowId" 
                             label={<Space><NodeIndexOutlined className="text-blue-500" /> Quy trình xử lý</Space>} 
@@ -606,14 +606,14 @@ const StockTransactionCreate: React.FC = () => {
                     </Col>
                     
                     {transactionType !== "EXPORT" && (
-                      <Col xs={24} md={6}>
+                      <Col xs={24} sm={12} md={6}>
                         <Form.Item name="supplierId" label={transactionType === "IMPORT" ? "Nhà cung cấp" : "Đối tác (Tùy chọn)"} rules={[{ required: transactionType === "IMPORT", message: "Vui lòng chọn NCC!" }]}>
                           <Select size="large" allowClear placeholder="Chọn..." options={suppliers.map((s) => ({ value: s.id, label: s.name }))} suffixIcon={<ShopOutlined />} />
                         </Form.Item>
                       </Col>
                     )}
 
-                    <Col xs={24} md={8}>
+                    <Col xs={24} sm={12} md={transactionType === "EXPORT" ? 12 : 6}>
                         <Form.Item name="description" label="Diễn giải / Lý do" rules={[{ required: true, message: "Vui lòng nhập lý do" }]}>
                             <Input size="large" placeholder="Vd: Nhập hàng mới / Xuất thay thế..." />
                         </Form.Item>
@@ -631,25 +631,28 @@ const StockTransactionCreate: React.FC = () => {
                 <Divider orientation={"left" as any}>Chi tiết vật tư</Divider>
 
                 <Table dataSource={selectedItems} columns={columns} pagination={false} rowKey="key" bordered 
+                    scroll={{ x: 850 }}
                     footer={() => (
-                        <div className="flex gap-4">
+                        <div className="flex flex-wrap gap-3">
                             <Button type="dashed" onClick={addRow} icon={<PlusOutlined />}>Thêm dòng</Button>
                             <Button type="primary" onClick={() => setIsScannerOpen(true)} icon={<QrcodeOutlined />}>Quét QR</Button>
                         </div>
                     )}
                 />
                 
-                <div style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-                    <div style={{ flex: 1 }}>
+                <div className="mt-6 flex flex-col sm:flex-row justify-end items-stretch sm:items-center gap-3">
+                    <div className="flex-1">
                         <div style={{ background: "#e6f7ff", border: "1px solid #91d5ff", padding: "8px 12px", borderRadius: "6px", display: "flex", alignItems: "center", gap: "8px" }}>
                             <InfoCircleOutlined style={{ color: "#1890ff" }} />
                             <Text>{getProcessDescription()}</Text>
                         </div>
                     </div>
-                    <Button size="large" onClick={() => navigate(-1)}>Hủy bỏ</Button>
-                    <Button type="primary" htmlType="submit" size="large" icon={<SendOutlined />} loading={loading}>
-                        {transactionType === "IMPORT" ? "Nhập kho ngay" : "Gửi Yêu Cầu"}
-                    </Button>
+                    <div className="flex gap-2 justify-end">
+                        <Button size="large" onClick={() => navigate(-1)}>Hủy bỏ</Button>
+                        <Button type="primary" htmlType="submit" size="large" icon={<SendOutlined />} loading={loading}>
+                            {transactionType === "IMPORT" ? "Nhập kho ngay" : "Gửi Yêu Cầu"}
+                        </Button>
+                    </div>
                 </div>
             </Form>
         </Card>

@@ -109,22 +109,22 @@ const PostPage: React.FC = () => {
     // Đảm bảo path bắt đầu bằng dấu / (ví dụ: /uploads/abc.jpg)
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
 
-    // 1. Khi đang Code ở máy cá nhân (VS Code)
+    // 1. Khi đang Code ở máy cá nhân (VS Code) - dùng hostname động để Mobile/Tablet qua LAN vẫn xem được ảnh/PDF
     if (import.meta.env.DEV) {
-      return `http://localhost:3000${cleanPath}`;
+      const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+      return `http://${host}:3000${cleanPath}`;
     }
 
     // 2. Khi chạy Public trên Server Linux
-    // window.location.origin sẽ lấy http://thongbao.towa.com.vn:90
     const origin = window.location.origin;
     return `${origin}${cleanPath}`;
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 bg-[#f0f2f5] min-h-screen">
+    <div className="max-w-7xl mx-auto px-2 sm:px-4 py-4 sm:py-8 bg-[#f0f2f5] min-h-screen">
       {/* HEADER TRANG TIN TỨC */}
-      <div className="mb-10 text-center">
-          <Title level={1} style={{ fontSize: '2.5rem', color: '#001529', fontWeight: 800 }}>PORTAL TIN TỨC</Title>
+      <div className="mb-6 sm:mb-10 text-center">
+          <Title level={1} className="!text-2xl sm:!text-4xl" style={{ color: '#001529', fontWeight: 800 }}>PORTAL TIN TỨC</Title>
           <Paragraph style={{ fontSize: '1.1rem', color: '#595959' }}>
             Không gian cập nhật thông tin và hoạt động nội bộ dành cho nhân viên
           </Paragraph>

@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const factoryController_1 = require("../controllers/factoryController");
+const authMiddleware_1 = require("../middlewares/authMiddleware");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.protect);
+router.get('/', factoryController_1.getAllFactories);
+router.get('/:id', (0, authMiddleware_1.hasPermission)('FACTORY_VIEW'), factoryController_1.getFactoryById);
+router.post('/', (0, authMiddleware_1.hasPermission)('FACTORY_CREATE'), factoryController_1.createFactory);
+router.patch('/:id', (0, authMiddleware_1.hasPermission)('FACTORY_UPDATE'), factoryController_1.updateFactory);
+router.delete('/:id', (0, authMiddleware_1.hasPermission)('FACTORY_DELETE'), factoryController_1.deleteFactory);
+exports.default = router;

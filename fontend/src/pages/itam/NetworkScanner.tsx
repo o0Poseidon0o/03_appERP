@@ -227,14 +227,14 @@ const NetworkScanner = () => {
   ];
 
   return (
-    <div className="p-4 bg-gray-50 h-full">
+    <div className="p-2 sm:p-4 bg-gray-50 h-full">
       <Card 
         bordered={false}
         title={<span><RadarChartOutlined className="text-blue-600 mr-2" />Quét Mạng (Network Discovery)</span>}
         className="shadow-sm rounded-lg"
       >
         {/* Input Area */}
-        <div className="flex gap-4 mb-6 items-start">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 items-stretch sm:items-start">
           <div className="flex-1">
             <Input.TextArea 
               rows={1} 
@@ -243,7 +243,7 @@ const NetworkScanner = () => {
               onChange={e => setSubnets(e.target.value)}
               className="resize-none"
             />
-            <div className="text-xs text-gray-400 mt-1 flex gap-4">
+            <div className="text-xs text-gray-400 mt-1 flex flex-wrap gap-2 sm:gap-4">
                 <span><WifiOutlined /> Hỗ trợ quét nhiều VLAN.</span>
                 <span>⏳ Thời gian: 30s - 2 phút. Hệ thống xử lý ngầm và báo kết quả khi xong.</span>
             </div>
@@ -254,6 +254,7 @@ const NetworkScanner = () => {
             onClick={handleScan} 
             loading={loading}
             size="large"
+            className="w-full sm:w-auto"
           >
             {loading ? 'Đang quét...' : 'Bắt đầu quét'}
           </Button>
@@ -263,7 +264,7 @@ const NetworkScanner = () => {
         {devices.length > 0 && (
             <Alert 
                 message={
-                    <div className="flex justify-between items-center w-full">
+                    <div className="flex flex-wrap justify-between items-center gap-2 w-full">
                         <span>Đã tìm thấy <b>{devices.length}</b> thiết bị.</span>
                         <Space>
                             <Button type="primary" size="small" icon={<SaveOutlined />} onClick={handleImportAssets}>
@@ -288,6 +289,7 @@ const NetworkScanner = () => {
             dataSource={devices} 
             rowKey="ip" 
             loading={loading}
+            scroll={{ x: 'max-content' }}
             pagination={{ pageSize: 20 }}
             size="middle"
             bordered
@@ -305,7 +307,7 @@ const NetworkScanner = () => {
         open={auditModalOpen}
         onCancel={() => { if(!auditLoading) setAuditModalOpen(false); }}
         footer={!auditLoading ? null : <div className="text-center text-gray-400 text-xs">Vui lòng đợi...</div>}
-        width={700}
+        width="min(96vw, 700px)"
         destroyOnClose
         maskClosable={!auditLoading} // Không cho đóng khi đang quét
       >

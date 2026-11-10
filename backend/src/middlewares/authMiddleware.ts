@@ -64,7 +64,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
     const mergedPermissions = Array.from(new Set([...rolePerms, ...individualPerms]));
 
     // Gán thông tin vào Request để Controller dùng
-    req.user = {
+    (req as any).user = {
       ...currentUser,
       allPermissions: mergedPermissions 
     };

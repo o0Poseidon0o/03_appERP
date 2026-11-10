@@ -266,6 +266,7 @@ const Dashboard: React.FC = () => {
             columns={columns} 
             dataSource={posts} 
             loading={loading}
+            scroll={{ x: 'max-content' }}
             pagination={{ pageSize: 8 }}
             className="custom-table"
           />
@@ -276,21 +277,21 @@ const Dashboard: React.FC = () => {
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
         footer={null} 
-        width={1000} 
+        width="min(96vw, 1000px)" 
         centered
         maskClosable={false}
       >
          <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-6">
             <Form.Item name="title" label={<span className="font-bold">Tiêu đề thông báo</span>} rules={[{ required: true, message: 'Vui lòng nhập tiêu đề' }]}><Input size="large" className="rounded-lg" placeholder="Ví dụ: Thông báo nghỉ lễ 2/9..." /></Form.Item>
             <Row gutter={24}>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                     <Form.Item name="menuId" label={<span className="font-bold">Chuyên mục</span>} rules={[{ required: true }]}>
                         <Select placeholder="Chọn mục" size="large" className="rounded-lg">
                             {menus.map(m => <Select.Option key={m.id} value={m.id}>{m.title}</Select.Option>)}
                         </Select>
                     </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col xs={24} sm={12}>
                     <Form.Item name="sendType" label={<span className="font-bold">Đối tượng nhận tin</span>}>
                         <Radio.Group size="large" className="w-full" onChange={(e) => setSendToAll(e.target.value === 'ALL')}>
                             <Radio.Button value="ALL" className="w-1/2 text-center"><GlobalOutlined /> Công khai</Radio.Button>
@@ -326,20 +327,20 @@ const Dashboard: React.FC = () => {
                 />
             </Form.Item>
 
-            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 mb-8 mt-12">
+            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-100 mb-8 mt-12">
                 <p className="font-bold mb-4 text-slate-600 uppercase text-xs tracking-widest"><PaperClipOutlined /> Tệp đính kèm & Tài liệu</p>
-                <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                     {attachments.map((item, index) => (
                       <div key={index} className="flex items-center justify-between bg-white p-3 rounded-xl shadow-xs border border-white">
                         <Space>
                            {item.type === 'image' ? <FileImageOutlined className="text-orange-500" /> : item.type === 'link' ? <LinkOutlined className="text-blue-500" /> : <FilePdfOutlined className="text-red-500" />}
-                           <span className="text-xs font-medium truncate max-w-[200px]">{item.name}</span>
+                           <span className="text-xs font-medium truncate max-w-[160px] sm:max-w-[200px]">{item.name}</span>
                         </Space>
                         <Button danger type="text" size="small" icon={<DeleteOutlined />} onClick={() => setAttachments(prev => prev.filter((_, i) => i !== index))} />
                       </div>
                     ))}
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                     <Upload 
                         name="files" 
                         action={`${API_URL}/upload`} 
@@ -347,7 +348,7 @@ const Dashboard: React.FC = () => {
                         showUploadList={false} 
                         onChange={handleUpload}
                     >
-                        <Button size="large" className="rounded-lg" icon={<UploadOutlined />}>Tải File</Button>
+                        <Button size="large" className="rounded-lg w-full sm:w-auto" icon={<UploadOutlined />}>Tải File</Button>
                     </Upload>
                     <div className="flex flex-1 gap-2">
                         <Input placeholder="Dán link tài liệu bổ sung..." size="large" className="rounded-lg" value={linkInput} onChange={e => setLinkInput(e.target.value)} />

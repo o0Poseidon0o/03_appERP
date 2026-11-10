@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 // 1. Hàm ký (tạo) Token
 export const signToken = (id: string): string => {
   return jwt.sign({ id }, process.env.JWT_SECRET as string, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '1d',
+    expiresIn: (process.env.JWT_EXPIRES_IN || '1d') as any,
   });
 };
 

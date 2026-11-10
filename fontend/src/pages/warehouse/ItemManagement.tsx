@@ -216,6 +216,41 @@ const ItemManagement: React.FC = () => {
   };
 
   // --- CRUD HANDLERS ---
+  const handleExportExcel = () => {
+    if (!items.length) {
+      message.warning('Không có dữ liệu vật tư để xuất!');
+      return;
+    }
+    const rows = items.map((item, idx) => {
+      const totalStock = item.stocks?.reduce((acc, s) => acc + s.quantity, 0) || 0;
+      return {
+        'STT': idx + 1,
+        'Mã Vật Tư': item.itemCode,
+        'Tên Vật Tư': item.itemName,
+        'Danh Mục': item.category?.name || 'Chưa phân loại',
+        'ĐVT Cơ Sở': item.baseUnit,
+        'Quy Đổi': item.conversions?.map(c => `1 ${c.unitName} = ${c.factor} ${item.baseUnit}`).join('; ') || '',
+        'Tồn Tối Thiểu': item.minStock,
+        'Tổng Tồn Kho': totalStock,
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },
+      { wch: 16 },
+      { wch: 36 },
+      { wch: 20 },
+      { wch: 12 },
+      { wch: 26 },
+      { wch: 14 },
+      { wch: 14 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Danh_Muc_Vat_Tu');
+    XLSX.writeFile(wb, `Danh_Muc_Vat_Tu_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    message.success(`Đã xuất ${items.length} vật tư ra file Excel!`);
+  };
+
   const handleSubmit = async (values: any) => {
     setLoading(true);
     try {
@@ -329,20 +364,27 @@ const ItemManagement: React.FC = () => {
   ];
 
   return (
-    <div className="p-6 bg-[#f8fafc] min-h-screen">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-3 sm:p-6 bg-[#f8fafc] min-h-screen">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <Space>
           <div className="bg-indigo-600 p-2 rounded-lg"><BoxPlotOutlined className="text-white text-xl" /></div>
           <div>
-            <h2 className="text-xl font-bold text-slate-800 m-0">Quản Lý Vật Tư</h2>
-            <Text type="secondary">Quản lý danh mục, import Excel và in mã vạch</Text>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">Quản Lý Vật Tư</h2>
+            <Text type="secondary">Quản lý danh mục, import/export Excel và in mã vạch</Text>
           </div>
         </Space>
         
-        <Space>
+        <div className="flex flex-wrap items-center gap-2">
+            <Button 
+                icon={<FileExcelOutlined />} 
+                className="bg-green-600 text-white hover:!bg-green-700 hover:!text-white border-none"
+                onClick={handleExportExcel}
+            >
+                Xuất Excel
+            </Button>
             {canCreate && (
                 <Button 
-                    icon={<FileExcelOutlined />} 
+                    icon={<UploadOutlined />} 
                     className="border-green-600 text-green-600 hover:!bg-green-50"
                     onClick={() => setIsImportModalOpen(true)}
                 >
@@ -350,16 +392,16 @@ const ItemManagement: React.FC = () => {
                 </Button>
             )}
             {canCreate && (
-            <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setIsModalOpen(true); }} className="shadow-md bg-indigo-600">
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingItem(null); form.resetFields(); setIsModalOpen(true); }} className="shadow-md bg-indigo-600">
                 Thêm Vật Tư
             </Button>
             )}
-        </Space>
+        </div>
       </div>
 
       <Card bordered={false} className="shadow-sm rounded-xl">
-        <div className="flex justify-between items-center mb-5">
-          <Space.Compact style={{ width: 400 }}>
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mb-5">
+          <Space.Compact className="w-full sm:w-96">
             <Input 
               placeholder="Mã, tên hoặc quét mã vạch..." 
               prefix={<SearchOutlined className="text-slate-400" />} 
@@ -377,6 +419,7 @@ const ItemManagement: React.FC = () => {
           dataSource={items} 
           rowKey="id" 
           loading={loading} 
+          scroll={{ x: 'max-content' }}
           expandable={{ expandedRowRender, rowExpandable: record => (record.stocks?.length || 0) > 0 }}
           pagination={{ pageSize: 10, showSizeChanger: true }}
         />
@@ -391,13 +434,13 @@ const ItemManagement: React.FC = () => {
         onCancel={() => setIsModalOpen(false)} 
         onOk={() => form.submit()} 
         confirmLoading={loading} 
-        width={700} 
+        width="min(96vw, 700px)" 
         centered
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-4">
           <Row gutter={16}>
-            <Col span={12}><Form.Item name="itemCode" label="Mã Vật Tư" rules={[{ required: true }]}><Input placeholder="Ví dụ: 2-02-001..." disabled={!!editingItem} /></Form.Item></Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}><Form.Item name="itemCode" label="Mã Vật Tư" rules={[{ required: true }]}><Input placeholder="Ví dụ: 2-02-001..." disabled={!!editingItem} /></Form.Item></Col>
+            <Col xs={24} sm={12}>
               {/* [UPDATE] HIỂN THỊ MÃ NHÓM ĐỂ DỄ CHỌN */}
               <Form.Item name="categoryId" label="Danh Mục" rules={[{ required: true }]}>
                 <Select 
@@ -416,12 +459,12 @@ const ItemManagement: React.FC = () => {
           <Form.Item name="itemName" label="Tên / Quy cách vật tư" rules={[{ required: true }]}><Input.TextArea rows={2} placeholder="Nhập tên chi tiết..." /></Form.Item>
           
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
                 <Form.Item name="baseUnit" label="Đơn Vị Cơ Sở (Nhỏ nhất)" rules={[{ required: true }]} tooltip="Đơn vị dùng để tính tồn kho (VD: Cái, Kg)">
                     <Input placeholder="VD: Cái" />
                 </Form.Item>
             </Col>
-            <Col span={12}><Form.Item name="minStock" label="Ngưỡng tồn tối thiểu" initialValue={5}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="minStock" label="Ngưỡng tồn tối thiểu" initialValue={5}><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
           </Row>
 
           <Divider plain><span className="text-xs text-gray-500">Đơn vị quy đổi (Tùy chọn)</span></Divider>

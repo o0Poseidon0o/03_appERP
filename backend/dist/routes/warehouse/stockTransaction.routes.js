@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const stockTransaction_controller_1 = require("../../controllers/warehouse/stockTransaction.controller");
+const authMiddleware_1 = require("../../middlewares/authMiddleware");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.protect);
+router.get('/check-stock', (0, authMiddleware_1.hasPermission)('WMS_VIEW'), stockTransaction_controller_1.checkStock);
+router.get('/actual', (0, authMiddleware_1.hasPermission)('WMS_VIEW'), stockTransaction_controller_1.getStockActual);
+router.get('/history', (0, authMiddleware_1.hasPermission)('WMS_VIEW'), stockTransaction_controller_1.getTransactionHistory);
+exports.default = router;

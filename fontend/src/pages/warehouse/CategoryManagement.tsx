@@ -113,7 +113,7 @@ const CategoryTab: React.FC = () => {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
         <Space>
           <Input 
             placeholder="Tìm theo mã hoặc tên..." 
@@ -133,6 +133,7 @@ const CategoryTab: React.FC = () => {
         )} 
         rowKey="id" 
         loading={loading} 
+        scroll={{ x: 'max-content' }}
         pagination={{ pageSize: 8 }} 
         size="middle" 
       />
@@ -267,13 +268,13 @@ const UsageCategoryTab: React.FC = () => {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
         <Space>
           <Input placeholder="Tìm mã hoặc tên..." prefix={<SearchOutlined />} onChange={e => setSearchText(e.target.value)} />
           <Button icon={<ReloadOutlined />} onClick={fetchData} />
         </Space>
         {canManage && (
-          <Space>
+          <Space wrap>
             <Tooltip title="Chấp nhận file CSV có cột: product_category_code, product_name">
               <Upload {...uploadProps}>
                 <Button icon={<UploadOutlined />}>Import CSV</Button>
@@ -285,7 +286,7 @@ const UsageCategoryTab: React.FC = () => {
           </Space>
         )}
       </div>
-      <Table columns={columns} dataSource={data.filter(t => t.name.toLowerCase().includes(searchText.toLowerCase()) || t.code?.toLowerCase().includes(searchText.toLowerCase()))} rowKey="id" loading={loading} pagination={{ pageSize: 8 }} size="middle" />
+      <Table columns={columns} dataSource={data.filter(t => t.name.toLowerCase().includes(searchText.toLowerCase()) || t.code?.toLowerCase().includes(searchText.toLowerCase()))} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} pagination={{ pageSize: 8 }} size="middle" />
       <Modal title={editingItem ? "Sửa loại sử dụng" : "Thêm loại sử dụng"} open={isModalOpen} onCancel={() => setIsModalOpen(false)} onOk={() => form.submit()} confirmLoading={loading}>
         <Form form={form} layout="vertical" onFinish={handleSubmit} className="mt-4">
           <Form.Item name="code" label="Mã (VD: 11020)" rules={[{ required: true, message: 'Nhập mã!' }]}> <Input style={{ textTransform: 'uppercase'}} /> </Form.Item>

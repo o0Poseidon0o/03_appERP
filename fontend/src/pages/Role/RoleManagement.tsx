@@ -167,9 +167,9 @@ const RoleManagement: React.FC = () => {
   };
 
   return (
-    <div style={{ height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column', background: '#f8fafc', padding: '20px' }}>
-      <div className="mb-4 flex justify-between items-center">
-        <h2 className="text-xl font-bold flex items-center gap-2 m-0 text-slate-800">
+    <div className="min-h-[calc(100vh-100px)] flex flex-col bg-slate-50 p-3 sm:p-5 rounded-xl">
+      <div className="mb-4 flex flex-wrap justify-between items-center gap-2">
+        <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2 m-0 text-slate-800">
           <SafetyCertificateOutlined className="text-indigo-600" /> 
           Thiết lập Phân quyền Role
         </h2>
@@ -180,11 +180,11 @@ const RoleManagement: React.FC = () => {
         )}
       </div>
 
-      <div className="flex gap-6 flex-1 min-h-0">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 flex-1 min-h-0">
         {/* CỘT DANH SÁCH ROLE */}
         <Card 
           title="Vai trò hiện có" 
-          className="w-1/4 shadow-sm border-none rounded-xl"
+          className="w-full lg:w-1/4 shadow-sm border-none rounded-xl max-h-64 lg:max-h-none flex flex-col"
           extra={<Button type="link" onClick={() => setIsModalOpen(true)} icon={<PlusOutlined />}>Thêm</Button>}
           styles={{ body: { padding: 0, overflowY: 'auto' } }}
         >
@@ -194,7 +194,7 @@ const RoleManagement: React.FC = () => {
             renderItem={(item) => (
               <div 
                 onClick={() => setSelectedRole(item)}
-                className={`p-4 cursor-pointer border-b border-slate-50 transition-all hover:bg-slate-50 ${selectedRole?.id === item.id ? 'bg-indigo-50 border-r-4 border-r-indigo-500' : ''}`}
+                className={`p-3 sm:p-4 cursor-pointer border-b border-slate-50 transition-all hover:bg-slate-50 ${selectedRole?.id === item.id ? 'bg-indigo-50 border-r-4 border-r-indigo-500' : ''}`}
               >
                 <div className="font-bold text-slate-700">{item.name}</div>
                 <div className="text-xs text-slate-400 flex justify-between mt-1 italic">
@@ -233,8 +233,8 @@ const RoleManagement: React.FC = () => {
                 const isAllSelected = moduleIds.every(id => selectedRole.permissionIds.includes(id));
 
                 return (
-                  <div key={mod} className="mb-6 p-5 border border-slate-100 rounded-xl bg-white shadow-sm">
-                    <div className="flex justify-between items-center mb-4">
+                  <div key={mod} className="mb-4 sm:mb-6 p-3 sm:p-5 border border-slate-100 rounded-xl bg-white shadow-sm">
+                    <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
                       <Tag color="blue" className="font-bold border-none px-3 uppercase text-[10px] tracking-wider">{mod}</Tag>
                       <Button 
                         size="small" 
@@ -254,9 +254,9 @@ const RoleManagement: React.FC = () => {
                       onChange={(checked) => handlePermissionChange(checked as string[], moduleIds)}
                       disabled={selectedRole.id === 'ROLE-ADMIN'}
                     >
-                      <Row gutter={[16, 16]}>
+                      <Row gutter={[16, 12]}>
                         {perms.map((p: Permission) => (
-                          <Col span={8} key={p.id}>
+                          <Col xs={24} sm={12} xl={8} key={p.id}>
                             <Checkbox value={p.id} className="text-slate-600 text-sm">
                               {p.name}
                             </Checkbox>

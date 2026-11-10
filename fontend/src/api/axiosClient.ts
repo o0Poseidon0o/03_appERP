@@ -1,14 +1,17 @@
 import axios from 'axios';
 
 const getBaseURL = () => {
-  // 1. Khi bạn đang Code trên VS Code (npm run dev)
-  // Nó sẽ gọi trực tiếp vào Backend đang chạy cổng 3000 ở máy bạn
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+
+  // 1. Khi đang chạy DEV (npm run dev): dùng hostname hiện tại để Mobile/Tablet truy cập qua IP LAN vẫn gọi đúng Backend
   if (import.meta.env.DEV) {
-    return 'http://localhost:3000/api';
+    const host = window.location.hostname || 'localhost';
+    return `http://${host}:3000/api`;
   }
   
-  // 2. Khi bạn đã build và up lên Server Linux
-  // Nó sẽ lấy: http://14.161.29.75:90/api hoặc http://thongbao.towa.com.vn:90/api
+  // 2. Khi chạy Production qua Nginx reverse proxy
   const origin = window.location.origin;
   return `${origin.endsWith('/') ? origin.slice(0, -1) : origin}/api`;
 };

@@ -36,6 +36,8 @@ export interface IAsset {
   ipAddress?: string;
   macAddress?: string;
   lastSeen?: string;
+  createdAt?: string;
+  updatedAt?: string;
 
   // [NEW] User Domain thực tế đang ngồi máy (VD: "TOWA\NguyenVanA")
   domainUser?: string;

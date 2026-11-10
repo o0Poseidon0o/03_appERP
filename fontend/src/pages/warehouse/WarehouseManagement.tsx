@@ -436,8 +436,8 @@ const WarehouseManagement: React.FC = () => {
   }, [searchText, warehouses]);
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-3 sm:p-6 bg-slate-50 min-h-screen">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <div>
           <Title level={3} className="m-0 text-indigo-700"><DatabaseOutlined className="mr-2" />Hạ tầng Kho bãi</Title>
           <Text type="secondary">Quản lý Nhà máy, Kho và Vị trí lưu trữ vật tư</Text>
@@ -447,7 +447,7 @@ const WarehouseManagement: React.FC = () => {
         </Space>
       </div>
 
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+      <div className="bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-slate-200">
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
@@ -466,7 +466,7 @@ const WarehouseManagement: React.FC = () => {
                         <Input 
                             prefix={<SearchOutlined />} 
                             placeholder="Nhập tên/mã kho hoặc quét QR..." 
-                            className="mb-4 max-w-md" 
+                            className="mb-4 max-w-md w-full" 
                             value={searchText} 
                             onChange={e => setSearchText(e.target.value)} 
                             allowClear 
@@ -487,6 +487,7 @@ const WarehouseManagement: React.FC = () => {
                             dataSource={filteredWarehouses} 
                             rowKey="id" 
                             loading={loading} 
+                            scroll={{ x: 'max-content' }}
                             expandable={{ 
                                 expandedRowRender, 
                                 expandedRowKeys: expandedRowKeys, 
@@ -501,7 +502,7 @@ const WarehouseManagement: React.FC = () => {
             {
                 key: 'factories',
                 label: <span className="text-base"><BankOutlined /> Danh sách Nhà máy</span>,
-                children: <Table columns={factoryColumns} dataSource={factories} rowKey="id" loading={loading} pagination={false} />
+                children: <Table columns={factoryColumns} dataSource={factories} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} pagination={false} />
             }
         ]}
       />

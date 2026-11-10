@@ -1,0 +1,20 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const asset_controller_1 = require("../../controllers/itam/asset.controller");
+const authMiddleware_1 = require("../../middlewares/authMiddleware");
+const agentAuthMiddleware_1 = require("../../middlewares/agentAuthMiddleware");
+const router = express_1.default.Router();
+router.post('/sync', agentAuthMiddleware_1.verifyAgentSecret, asset_controller_1.syncAssetAgent);
+router.post('/sync-agent', agentAuthMiddleware_1.verifyAgentSecret, asset_controller_1.syncAssetAgent);
+router.use(authMiddleware_1.protect);
+router.get('/my-assets', asset_controller_1.getMyAssets);
+router.get('/', (0, authMiddleware_1.hasPermission)('ITAM_ASSET_VIEW'), asset_controller_1.getAllAssets);
+router.get('/:id', (0, authMiddleware_1.hasPermission)('ITAM_ASSET_VIEW'), asset_controller_1.getAssetById);
+router.post('/', (0, authMiddleware_1.hasPermission)('ITAM_ASSET_CREATE'), asset_controller_1.createAsset);
+router.patch('/:id', (0, authMiddleware_1.hasPermission)('ITAM_ASSET_UPDATE'), asset_controller_1.updateAsset);
+router.delete('/:id', (0, authMiddleware_1.hasPermission)('ITAM_ASSET_DELETE'), asset_controller_1.deleteAsset);
+exports.default = router;

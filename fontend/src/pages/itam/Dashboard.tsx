@@ -3,8 +3,9 @@ import { Card, Spin, List, Typography, Tag, Empty, message, Modal, Table, Button
 import { 
   AppstoreOutlined, AlertOutlined, SafetyCertificateOutlined, 
   InfoCircleOutlined, ShopOutlined, EyeOutlined,
-  LaptopOutlined, ApiOutlined, UserOutlined, DownloadOutlined, ToolOutlined, SearchOutlined
+  LaptopOutlined, ApiOutlined, UserOutlined, FileExcelOutlined, ToolOutlined, SearchOutlined
 } from '@ant-design/icons';
+import * as XLSX from 'xlsx';
 import { 
   PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, 
   CartesianGrid, ResponsiveContainer, LabelList 
@@ -107,7 +108,7 @@ const Dashboard = () => {
       });
   };
 
-  const exportToCSV = () => {
+  const exportToExcel = () => {
       const filteredDataToExport = getFilteredModalData();
 
       if (!filteredDataToExport || filteredDataToExport.length === 0) {
@@ -115,75 +116,68 @@ const Dashboard = () => {
           return;
       }
 
-      let headers: string[] = [];
-      let rows: string[] = [];
+      const dateStr = new Date().toISOString().slice(0, 10);
+      let fileName = `Export_${dateStr}.xlsx`;
+      let sheetName = 'Danh_Sach';
+      let rows: Record<string, any>[] = [];
 
       if (modalConfig.type === 'UPGRADE') {
-          headers = ["Tên máy", "Người dùng", "Phòng ban", "Nhà máy", "Nội dung thay đổi", "Ngày thay đổi", "Người thực hiện"];
-          
-          rows = filteredDataToExport.map((item: any) => {
+          fileName = `DS_Lich_Su_Thay_Doi_Phan_Cung_${dateStr}.xlsx`;
+          sheetName = 'Lich_Su_Phan_Cung';
+          rows = filteredDataToExport.map((item: any, idx: number) => {
               const asset = item.asset || {};
               const users = asset.users?.map((u: any) => u.fullName).join(" & ") || "N/A";
               const userDepartments = asset.users?.map((u: any) => u.department?.name || "Không rõ").join(" & ") || "-";
               const assetDepartment = asset.department?.name || "N/A";
               const factory = asset.factory?.name || "N/A";
-              
-              const updateDate = new Date(item.startDate).toLocaleDateString('vi-VN');
+              const updateDate = item.startDate ? new Date(item.startDate).toLocaleDateString('vi-VN') : '';
 
-              return [
-                  `"${asset.name || 'Unknown'}"`,
-                  `"${users}"`,
-                  `"${userDepartments !== '-' ? userDepartments : assetDepartment}"`,
-                  `"${factory}"`,
-                  `"${item.description || 'N/A'}"`,
-                  `"${updateDate}"`,
-                  `"${item.providerName || 'Auto System'}"`
-              ].join(",");
+              return {
+                  'STT': idx + 1,
+                  'Tên máy': asset.name || 'Unknown',
+                  'Người dùng': users,
+                  'Phòng ban': userDepartments !== '-' ? userDepartments : assetDepartment,
+                  'Nhà máy': factory,
+                  'Nội dung thay đổi': item.description || 'N/A',
+                  'Ngày thay đổi': updateDate,
+                  'Người thực hiện': item.providerName || 'Auto System'
+              };
           });
       } else {
-          headers = ["Tên máy", "Model", "Người dùng", "Phòng ban User", "Vị trí máy", "Nhà máy", "RAM", "Trạng thái"];
-          rows = filteredDataToExport.map((item: any) => {
+          if (modalConfig.type === 'LOW_RAM') {
+              fileName = `DS_May_Tinh_RAM_Yeu_${dateStr}.xlsx`;
+              sheetName = 'May_RAM_Yeu';
+          } else if (modalConfig.type === 'BROKEN') {
+              fileName = `DS_May_Tinh_Hong_${dateStr}.xlsx`;
+              sheetName = 'May_Hong_Sua_Chua';
+          }
+          const statusMap: any = { BROKEN: 'Hỏng', REPAIR: 'Đang sửa chữa', NEW: 'Mới', IN_USE: 'Đang dùng' };
+          rows = filteredDataToExport.map((item: any, idx: number) => {
               const users = item.users?.map((u: any) => u.fullName).join(" & ") || "Chưa cấp phát";
               const userDepartments = item.users?.map((u: any) => u.department?.name || "Không rõ").join(" & ") || "-";
               const assetDepartment = item.department?.name || "Chưa gán";
               const factory = item.factory?.name || "Chưa gán";
               const ram = item.customSpecs?.ram || "N/A";
-              
-              const statusMap: any = { BROKEN: 'Hỏng', REPAIR: 'Đang sửa chữa', NEW: 'Mới', IN_USE: 'Đang dùng' };
-              const status = statusMap[item.status] || item.status;
 
-              return [
-                  `"${item.name}"`,
-                  `"${item.modelName || ''}"`,
-                  `"${users}"`,
-                  `"${userDepartments}"`,
-                  `"${assetDepartment}"`,
-                  `"${factory}"`,
-                  `"${ram}"`,
-                  `"${status}"`
-              ].join(",");
+              return {
+                  'STT': idx + 1,
+                  'Tên máy': item.name || '',
+                  'Model': item.modelName || '',
+                  'Người dùng': users,
+                  'Phòng ban User': userDepartments,
+                  'Vị trí máy': assetDepartment,
+                  'Nhà máy': factory,
+                  'RAM': ram,
+                  'Trạng thái': statusMap[item.status] || item.status
+              };
           });
       }
 
-      const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows].join("\n");
-      
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      
-      const dateStr = new Date().toISOString().slice(0,10);
-      let fileName = `Export_${dateStr}.csv`;
-      if (modalConfig.type === 'LOW_RAM') fileName = `DS_May_Tinh_RAM_Yeu_${dateStr}.csv`;
-      else if (modalConfig.type === 'BROKEN') fileName = `DS_May_Tinh_Hong_${dateStr}.csv`;
-      else if (modalConfig.type === 'UPGRADE') fileName = `DS_Lich_Su_Thay_Doi_Phan_Cung_${dateStr}.csv`;
-
-      link.setAttribute("download", fileName);
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      message.success("Xuất file thành công!");
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      XLSX.writeFile(wb, fileName);
+      message.success("Xuất file Excel thành công!");
   };
 
   const getModalColumns = () => {
@@ -556,29 +550,29 @@ const Dashboard = () => {
       {/* --- MODAL HIỂN THỊ DANH SÁCH CHI TIẾT --- */}
       <Modal
         title={
-            <div className="flex justify-between items-center w-full pr-8">
-                <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 w-full">
+                <div className="flex items-center gap-2 text-base sm:text-lg font-bold text-slate-800">
                     {modalConfig.type === 'BROKEN' ? <AlertOutlined className="text-red-500" /> : 
                      modalConfig.type === 'UPGRADE' ? <ToolOutlined className="text-indigo-500" /> :
                      <SafetyCertificateOutlined className="text-amber-500" />}
-                    {modalConfig.title}
+                    <span>{modalConfig.title}</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                     <Input
                         placeholder="Tìm tên máy..."
                         prefix={<SearchOutlined className="text-gray-400" />}
                         value={modalSearchText}
                         onChange={(e) => setModalSearchText(e.target.value)}
-                        className="w-48"
+                        className="flex-1 sm:w-48"
                         allowClear
                     />
                     <Button 
-                        type="dashed" 
-                        icon={<DownloadOutlined />} 
-                        onClick={exportToCSV}
-                        className="border-blue-200 text-blue-600 hover:bg-blue-50"
+                        type="primary" 
+                        icon={<FileExcelOutlined />} 
+                        onClick={exportToExcel}
+                        className="bg-green-600 hover:!bg-green-700 border-none"
                     >
-                        Xuất CSV
+                        Xuất Excel
                     </Button>
                 </div>
             </div>
@@ -596,7 +590,7 @@ const Dashboard = () => {
                 Đóng
             </Button>
         }
-        width={950}
+        width="min(96vw, 950px)"
         closeIcon={false}
         className="custom-modal"
       >
@@ -605,6 +599,7 @@ const Dashboard = () => {
                 dataSource={getFilteredModalData()}
                 columns={getModalColumns()}
                 rowKey="id"
+                scroll={{ x: 'max-content' }}
                 pagination={{ pageSize: 6, position: ['bottomCenter'], showSizeChanger: false }}
                 size="middle"
                 className="border border-gray-100 rounded-lg overflow-hidden"

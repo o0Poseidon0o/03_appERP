@@ -94,19 +94,19 @@ const PeripheralForm: React.FC<PeripheralFormProps> = ({ open, onCancel, onSucce
       onCancel={onCancel}
       onOk={() => form.submit()}
       confirmLoading={loading}
-      width={700}
+      width="min(96vw, 700px)"
       maskClosable={false}
     >
       <Form form={form} layout="vertical" onFinish={onFinish} className="pt-2">
         
         {/* --- Dòng 1: Tên & Loại --- */}
         <Row gutter={16}>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Item name="name" label="Tên thiết bị / Mã tài sản" rules={[{ required: true, message: 'Vui lòng nhập tên' }]}>
               <Input placeholder="VD: MOUSE-LOGITECH-01" />
             </Form.Item>
           </Col>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Item name="typeId" label="Loại thiết bị" rules={[{ required: true, message: 'Chọn loại thiết bị' }]}>
               <Select placeholder="Chọn loại...">
                 {peripheralTypes.map(t => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
@@ -117,12 +117,12 @@ const PeripheralForm: React.FC<PeripheralFormProps> = ({ open, onCancel, onSucce
 
         {/* --- Dòng 2: Model & Serial --- */}
         <Row gutter={16}>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Item name="modelName" label="Model (Dòng máy)">
               <Input placeholder="VD: Dell P2419H" />
             </Form.Item>
           </Col>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Item name="serialNumber" label="Serial Number (S/N)">
               <Input placeholder="Nhập số Serial..." />
             </Form.Item>
@@ -149,7 +149,7 @@ const PeripheralForm: React.FC<PeripheralFormProps> = ({ open, onCancel, onSucce
 
         {/* --- Dòng 4: Vị trí & Trạng thái --- */}
         <Row gutter={16}>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
              <Form.Item name="factoryId" label="Nhà máy / Chi nhánh">
                 <Select placeholder="Chọn nhà máy..." allowClear>
                     {factories.map((f: any) => (
@@ -158,7 +158,7 @@ const PeripheralForm: React.FC<PeripheralFormProps> = ({ open, onCancel, onSucce
                 </Select>
              </Form.Item>
           </Col>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Item name="status" label="Trạng thái" initialValue="NEW">
               <Select>
                 <Select.Option value="NEW">Mới nhập</Select.Option>

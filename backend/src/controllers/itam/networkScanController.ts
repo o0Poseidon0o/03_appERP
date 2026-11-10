@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { spawn } from "child_process";
 import path from "path";
 import os from "os";
+import prisma from "../../config/prisma";
 // [QUAN TRỌNG] Import hàm lấy Socket IO (Hãy kiểm tra đường dẫn file socket của bạn)
 import { getIO } from "../../socket"; 
 
@@ -120,5 +121,53 @@ export const auditDeviceSecurity = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     if (!res.headersSent) res.status(500).json({ message: error.message });
+  }
+};
+
+// API Lưu thiết bị quét được vào bảng Asset
+export const importScannedDevices = async (req: Request, res: Response) => {
+  try {
+    const { devices } = req.body;
+    if (!Array.isArray(devices) || devices.length === 0) {
+      return res.status(400).json({ status: "error", message: "Danh sách thiết bị trống" });
+    }
+
+    let importedCount = 0;
+    for (const dev of devices) {
+      const code = dev.type === "NETWORK_DEVICE" ? "NETWORK" : (dev.type || "OTHER");
+      const assetType = await prisma.assetType.upsert({
+        where: { code },
+        update: {},
+        create: { code, name: code },
+      });
+
+      const name = (dev.hostname && dev.hostname !== "Unknown" ? dev.hostname : `${code}-${dev.ip}`).toUpperCase();
+      await prisma.asset.upsert({
+        where: { name },
+        update: {
+          ipAddress: dev.ip,
+          macAddress: dev.mac || undefined,
+          manufacturer: dev.vendor || undefined,
+          lastSeen: new Date(),
+        },
+        create: {
+          name,
+          typeId: assetType.id,
+          ipAddress: dev.ip,
+          macAddress: dev.mac || null,
+          manufacturer: dev.vendor || null,
+          status: "IN_USE",
+          lastSeen: new Date(),
+        },
+      });
+      importedCount++;
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: `Đã lưu ${importedCount} thiết bị vào hệ thống`,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ status: "error", message: error.message });
   }
 };

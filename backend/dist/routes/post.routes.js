@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const post_controller_1 = require("../controllers/notification/post.controller");
+const authMiddleware_1 = require("../middlewares/authMiddleware");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.protect);
+router.get('/', (0, authMiddleware_1.hasPermission)('POST_VIEW'), post_controller_1.getMyPosts);
+router.get('/:id', (0, authMiddleware_1.hasPermission)('POST_VIEW'), post_controller_1.getPostDetail);
+router.post('/', (0, authMiddleware_1.hasPermission)('POST_CREATE'), post_controller_1.createPost);
+router.patch('/:id', (0, authMiddleware_1.hasPermission)('POST_EDIT'), post_controller_1.updatePost);
+router.delete('/:id', (0, authMiddleware_1.hasPermission)('POST_DELETE'), post_controller_1.deletePost);
+exports.default = router;
