@@ -14,6 +14,7 @@ import { QRCodeSVG } from 'qrcode.react';
 
 import { useSocket } from '../../contexts/SocketContext'; 
 import { assetService } from '../../services/assetService';
+import axiosClient from '../../api/axiosClient';
 import AssetForm from './AssetForm';
 import AssetSoftwareDrawer from './AssetSoftwareDrawer'; 
 import AssetMaintenanceDrawer from './AssetMaintenanceDrawer'; 
@@ -134,9 +135,23 @@ const AssetList = () => {
   };
 
   const handleQRScanSuccess = async (decodedText: string) => {
-    const cleanCode = decodedText.trim();
+    let cleanCode = decodedText.trim();
+    if (cleanCode.includes('/qr/asset/')) {
+      cleanCode = decodeURIComponent(cleanCode.split('/qr/asset/').pop() || '').split('?')[0].trim();
+    }
     setQrScannerOpen(false);
     setSearchText(cleanCode);
+
+    try {
+      const qrRes = await axiosClient.get(`/assets/public-qr/${encodeURIComponent(cleanCode)}`);
+      if (qrRes.data?.data) {
+        setScannedAsset(qrRes.data.data);
+        message.success(`Đã tải đầy đủ thông tin & phần mềm máy: ${qrRes.data.data.name}`);
+        return;
+      }
+    } catch {
+      // Fallback tìm kiếm thông thường nếu không khớp chính xác
+    }
 
     const matched = data.find(
       (item) =>
@@ -355,13 +370,29 @@ const AssetList = () => {
         render: (_, record) => (
             <div className="text-xs space-y-2">
               {record.osName && (
-                  <div className="flex items-center gap-1.5 text-slate-700 font-medium truncate bg-slate-50 px-2 py-1 rounded" title={record.osName}>
-                      {/ubuntu|linux|debian|centos|redhat/i.test(record.osName) ? (
-                          <span className="text-orange-600 font-bold">🐧</span>
-                      ) : (
-                          <WindowsOutlined className="text-blue-500" />
-                      )}
-                      <span className="truncate">{record.osName}</span>
+                  <div className="flex flex-col gap-1 bg-slate-50 px-2 py-1 rounded">
+                    <div className="flex items-center gap-1.5 text-slate-700 font-medium truncate" title={record.osName}>
+                        {/ubuntu|linux|debian|centos|redhat/i.test(record.osName) ? (
+                            <span className="text-orange-600 font-bold">🐧</span>
+                        ) : (
+                            <WindowsOutlined className="text-blue-500" />
+                        )}
+                        <span className="truncate">{record.osName}</span>
+                    </div>
+                    {(record.customSpecs as any)?.osLicense?.status === 'LICENSED' && (
+                        <Tooltip title={`Kênh: ${(record.customSpecs as any)?.osLicense?.channel || 'OEM/Retail'} ${((record.customSpecs as any)?.osLicense?.partialKey) ? `- Key: *${(record.customSpecs as any).osLicense.partialKey}` : ''}`}>
+                            <Tag color="green" bordered={false} className="m-0 text-[10px] w-max">✓ Bản quyền Windows</Tag>
+                        </Tooltip>
+                    )}
+                    {Array.isArray((record as any).licenseAssignments) && (record as any).licenseAssignments.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                            {(record as any).licenseAssignments.map((la: any) => (
+                                <Tag key={la.id} color="gold" className="m-0 text-[10px]">
+                                    🔑 {la.licenseKey?.policy?.name || 'Key'}
+                                </Tag>
+                            ))}
+                        </div>
+                    )}
                   </div>
               )}
               <div className="flex flex-col text-slate-500 font-mono gap-1">
@@ -699,24 +730,34 @@ const AssetList = () => {
         onScanSuccess={handleQRScanSuccess}
       />
 
-      {/* MODAL THAO TÁC NHANH KHI QUÉT QR TRÊN ĐIỆN THOẠI */}
+      {/* MODAL THAO TÁC NHANH KHI QUÉT QR TRÊN ĐIỆN THOẠI (HIỂN THỊ ĐẦY ĐỦ CẤU HÌNH + PHẦN MỀM) */}
       <Modal
         title={
           <div className="flex items-center gap-2 text-blue-700">
             <QrcodeOutlined />
-            <span>Thông tin Thiết bị vừa quét QR</span>
+            <span>Hồ sơ Thiết bị & Phần mềm (Quét QR)</span>
           </div>
         }
         open={!!scannedAsset}
         onCancel={() => setScannedAsset(null)}
+        width={680}
         footer={null}
       >
         {scannedAsset && (
           <div className="space-y-3">
-            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1 text-sm">
-              <div className="text-base font-bold text-slate-800">
-                {scannedAsset.name}{' '}
-                <Tag color="blue">{scannedAsset.type?.name || 'PC'}</Tag>
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
+              <div className="sm:col-span-2 flex items-center justify-between border-b pb-2 mb-1">
+                <span className="text-base font-bold text-slate-800 font-mono">
+                  {scannedAsset.name}{' '}
+                  <Tag color="blue">{scannedAsset.type?.name || 'PC'}</Tag>
+                </span>
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => window.open(`/qr/asset/${encodeURIComponent(scannedAsset.name)}`, '_blank')}
+                >
+                  Mở trang Hồ sơ đầy đủ ↗
+                </Button>
               </div>
               <div>
                 <b>Hãng / Model:</b> {scannedAsset.manufacturer || '-'}{' '}
@@ -727,7 +768,10 @@ const AssetList = () => {
                 <span className="font-mono">{scannedAsset.serialNumber || 'N/A'}</span>
               </div>
               <div>
-                <b>IP Address:</b>{' '}
+                <b>Hệ điều hành:</b> {scannedAsset.osName || 'N/A'}
+              </div>
+              <div>
+                <b>IP / MAC:</b>{' '}
                 <span className="font-mono">{scannedAsset.ipAddress || 'N/A'}</span>
               </div>
               <div>
@@ -740,9 +784,35 @@ const AssetList = () => {
                 <b>Vị trí:</b> {scannedAsset.factory?.name || '-'}{' '}
                 {scannedAsset.department ? `/ ${scannedAsset.department.name}` : ''}
               </div>
+              <div>
+                <b>CPU:</b> {(scannedAsset.customSpecs as any)?.cpu || 'N/A'}
+              </div>
+              <div>
+                <b>RAM / Ổ cứng:</b> {(scannedAsset.customSpecs as any)?.ram || 'N/A'} •{' '}
+                {(scannedAsset.customSpecs as any)?.disk || 'N/A'}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+            {/* DANH SÁCH PHẦN MỀM ĐÃ CÀI TRÊN MÁY */}
+            {Array.isArray((scannedAsset as any).softwares) && (
+              <div className="border rounded-lg p-2.5 bg-white">
+                <div className="font-bold text-xs sm:text-sm text-emerald-700 mb-2 flex items-center justify-between">
+                  <span>💿 Phần mềm đang cài đặt trên máy ({(scannedAsset as any).softwares.length} phần mềm)</span>
+                </div>
+                <div className="max-h-52 overflow-y-auto divide-y text-xs">
+                  {(scannedAsset as any).softwares.map((sw: any, idx: number) => (
+                    <div key={sw.id || idx} className="py-1.5 flex items-center justify-between gap-2">
+                      <span className="font-medium text-slate-800">{sw.name}</span>
+                      <Tag color="geekblue" className="m-0 font-mono text-[10px]">
+                        {sw.version || '-'}
+                      </Tag>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
               <Button
                 type="primary"
                 icon={<ToolOutlined />}
@@ -763,7 +833,7 @@ const AssetList = () => {
                   handleViewSoftware(target);
                 }}
               >
-                Phần mềm cài đặt
+                Chi tiết Phần mềm
               </Button>
               <Button
                 icon={<EditOutlined />}
@@ -836,7 +906,11 @@ const AssetList = () => {
               className="qr-label-card border border-dashed border-gray-300 rounded-lg p-2.5 flex items-center gap-3 bg-white"
             >
               <div className="qr-svg-wrap flex-shrink-0">
-                <QRCodeSVG value={asset.name} size={76} level="M" />
+                <QRCodeSVG
+                  value={`${window.location.origin}/qr/asset/${encodeURIComponent(asset.name)}`}
+                  size={76}
+                  level="M"
+                />
               </div>
               <div className="qr-info flex-1 min-w-0">
                 <div className="qr-company text-[10px] font-bold text-blue-700 uppercase">

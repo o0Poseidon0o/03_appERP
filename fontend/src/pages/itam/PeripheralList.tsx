@@ -426,10 +426,15 @@ const PeripheralList = () => {
       <QRScannerModal
         isOpen={qrScannerOpen}
         onClose={() => setQrScannerOpen(false)}
-        onScanSuccess={(code) => {
+        onScanSuccess={(rawCode) => {
           setQrScannerOpen(false);
-          setSearchText(code.trim());
-          message.success(`Đã quét mã: ${code.trim()}`);
+          let code = rawCode.trim();
+          const qrRouteMatch = code.match(/\/qr\/asset\/([^/?#]+)/i);
+          if (qrRouteMatch && qrRouteMatch[1]) {
+            code = decodeURIComponent(qrRouteMatch[1]).trim();
+          }
+          setSearchText(code);
+          message.success(`Đã quét mã: ${code}`);
         }}
       />
 
@@ -453,23 +458,26 @@ const PeripheralList = () => {
           </Radio.Group>
         </div>
         <div ref={qrPrintAreaRef} className="max-h-[400px] overflow-y-auto p-3 border rounded grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-          {qrAssetsToPrint.map((asset) => (
-            <div key={asset.id} className="qr-label-card border border-dashed rounded p-2 flex items-center gap-2.5 bg-white">
-              <div className="qr-svg-wrap flex-shrink-0">
-                <QRCodeSVG value={asset.serialNumber || asset.name} size={72} level="M" />
-              </div>
-              <div className="qr-info flex-1 min-w-0">
-                <div className="qr-company text-[10px] font-bold text-blue-700 uppercase">
-                  {asset.type?.name || 'TOWA ITAM'}
+          {qrAssetsToPrint.map((asset) => {
+            const qrUrl = `${window.location.origin}/qr/asset/${encodeURIComponent(asset.serialNumber || asset.name)}`;
+            return (
+              <div key={asset.id} className="qr-label-card border border-dashed rounded p-2 flex items-center gap-2.5 bg-white">
+                <div className="qr-svg-wrap flex-shrink-0">
+                  <QRCodeSVG value={qrUrl} size={72} level="M" />
                 </div>
-                <div className="qr-hostname text-xs font-bold font-mono truncate">{asset.name}</div>
-                <div className="qr-meta text-[11px] text-gray-600 truncate">SN: {asset.serialNumber || 'N/A'}</div>
-                <div className="qr-meta text-[11px] text-gray-500 truncate">
-                  {asset.parent?.name ? `Máy: ${asset.parent.name}` : asset.department?.name || ''}
+                <div className="qr-info flex-1 min-w-0">
+                  <div className="qr-company text-[10px] font-bold text-blue-700 uppercase">
+                    {asset.type?.name || 'TOWA ITAM'}
+                  </div>
+                  <div className="qr-hostname text-xs font-bold font-mono truncate">{asset.name}</div>
+                  <div className="qr-meta text-[11px] text-gray-600 truncate">SN: {asset.serialNumber || 'N/A'}</div>
+                  <div className="qr-meta text-[11px] text-gray-500 truncate">
+                    {asset.parent?.name ? `Máy: ${asset.parent.name}` : asset.department?.name || ''}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Modal>
     </div>

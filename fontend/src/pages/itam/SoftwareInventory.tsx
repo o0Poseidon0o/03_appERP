@@ -91,18 +91,27 @@ const SoftwareInventory = () => {
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [assignSubmitting, setAssignSubmitting] = useState(false);
 
+  // State cho Tab Bản quyền theo Máy người dùng & Windows
+  const [machineSearchText, setMachineSearchText] = useState('');
+  const [machineLicenseFilter, setMachineLicenseFilter] = useState<string>('ALL');
+  const [quickAssignAsset, setQuickAssignAsset] = useState<any | null>(null);
+  const [selectedKeyIdForAsset, setSelectedKeyIdForAsset] = useState<string | undefined>(undefined);
+  const [quickAssignLoading, setQuickAssignLoading] = useState(false);
+
   // --- FETCH ALL DATA ---
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      const [invRes, polRes, keyRes] = await Promise.all([
+      const [invRes, polRes, keyRes, assetsRes] = await Promise.all([
         softwareService.getInventory(),
         softwareService.getPolicies().catch(() => ({ data: { data: [] } })),
         softwareService.getLicenseKeys().catch(() => ({ data: { data: [] } })),
+        axiosClient.get('/assets?limit=1000').catch(() => ({ data: { data: [] } })),
       ]);
       setData(invRes.data?.data || []);
       setPolicies(polRes.data?.data || []);
       setLicenseKeys(keyRes.data?.data || []);
+      setAllAssets(assetsRes.data?.data || []);
     } catch (error) {
       message.error('Không thể tải dữ liệu phần mềm');
     } finally {
@@ -117,6 +126,35 @@ const SoftwareInventory = () => {
       setAllAssets(res.data?.data || []);
     } catch {
       // ignore
+    }
+  };
+
+  const handleQuickAssignKeyToMachine = async () => {
+    if (!quickAssignAsset || !selectedKeyIdForAsset) {
+      message.warning('Vui lòng chọn Key bản quyền cần gán cho máy này!');
+      return;
+    }
+    setQuickAssignLoading(true);
+    try {
+      await softwareService.assignLicenseKey(selectedKeyIdForAsset, [quickAssignAsset.id]);
+      message.success(`Đã gán Key bản quyền cho máy ${quickAssignAsset.name}!`);
+      setQuickAssignAsset(null);
+      setSelectedKeyIdForAsset(undefined);
+      fetchAllData();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Lỗi khi gán Key cho máy');
+    } finally {
+      setQuickAssignLoading(false);
+    }
+  };
+
+  const handleUnassignKeyFromMachine = async (keyId: string, assetId: string) => {
+    try {
+      await softwareService.unassignLicenseKey(keyId, assetId);
+      message.success('Đã thu hồi Key khỏi máy tính!');
+      fetchAllData();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Lỗi khi thu hồi Key');
     }
   };
 
@@ -615,9 +653,26 @@ const SoftwareInventory = () => {
 
         if (pol.category === 'LICENSED') {
           const seats = pol.totalSeats || 0;
-          const isOver = seats > 0 && record.installCount > seats;
-          const percent =
-            seats > 0 ? Math.min(100, Math.round((record.installCount / seats) * 100)) : 100;
+          if (seats === 0) {
+            return (
+              <div className="flex flex-wrap items-center justify-between gap-1 pr-2">
+                <Tag color="geekblue" icon={<SafetyCertificateOutlined />} className="m-0">
+                  Cần Bản quyền (Chưa nhập Key)
+                </Tag>
+                <Button
+                  size="small"
+                  type="link"
+                  className="p-0 h-auto text-xs font-medium"
+                  onClick={() => handleOpenKeyModal(null, pol.id || undefined, record.name)}
+                >
+                  + Nhập Key
+                </Button>
+              </div>
+            );
+          }
+
+          const isOver = record.installCount > seats;
+          const percent = Math.min(100, Math.round((record.installCount / seats) * 100));
 
           return (
             <div className="w-full pr-2">
@@ -627,7 +682,7 @@ const SoftwareInventory = () => {
                   icon={isOver ? <WarningOutlined /> : <SafetyCertificateOutlined />}
                   className="m-0"
                 >
-                  {isOver ? `Vượt ${record.installCount - seats} máy` : 'Bản quyền'}
+                  {isOver ? `Vượt ${record.installCount - seats} máy` : 'Đủ Bản quyền'}
                 </Tag>
                 <span className="font-mono font-semibold text-slate-700">
                   {record.installCount} / {seats} License
@@ -939,7 +994,13 @@ const SoftwareInventory = () => {
       title: 'Đối chiếu License & Máy thực tế',
       key: 'compliance',
       render: (_, record) => {
-        const installed = record.installedCount || 0;
+        const isWindowsOsPolicy = /Windows/i.test(record.matchKeyword || record.name);
+        const windowsMachinesCount = allAssets.filter((a) =>
+          /Windows/i.test(a.osName || '')
+        ).length;
+        const installed = isWindowsOsPolicy
+          ? windowsMachinesCount || record.installedCount || 0
+          : record.installedCount || 0;
         const seats = record.effectiveSeats || record.totalSeats || 0;
         if (record.category === 'BLACKLIST') {
           return installed > 0 ? (
@@ -953,14 +1014,24 @@ const SoftwareInventory = () => {
           );
         }
         if (record.category === 'LICENSED') {
-          const isOver = seats > 0 && installed > seats;
+          if (seats === 0) {
+            return (
+              <Space wrap>
+                <Tag color="default">Đang cài: {installed} máy</Tag>
+                <Tag color="geekblue">Chưa nhập Key bản quyền</Tag>
+              </Space>
+            );
+          }
+          const isOver = installed > seats;
           return (
-            <Space>
+            <Space wrap>
               <Tag color={isOver ? 'error' : 'processing'}>
                 Đang cài: {installed} / {seats} License đã mua
               </Tag>
               {record.keyCount ? (
-                <Tag color="gold">{record.keyCount} Key</Tag>
+                <Tag color="gold">
+                  {record.keyCount} Key (Đã gán: {record.assignedSeats || 0} máy)
+                </Tag>
               ) : null}
             </Space>
           );
@@ -1076,6 +1147,220 @@ const SoftwareInventory = () => {
         ) : (
           <span className="text-gray-400">-</span>
         ),
+    },
+  ];
+
+  // --- DANH SÁCH & COLUMNS TAB BẢN QUYỀN THEO MÁY NGƯỜI DÙNG & WINDOWS ---
+  const filteredMachineAssets = allAssets.filter((asset) => {
+    const q = machineSearchText.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      asset.name?.toLowerCase().includes(q) ||
+      asset.ipAddress?.toLowerCase().includes(q) ||
+      asset.osName?.toLowerCase().includes(q) ||
+      asset.domainUser?.toLowerCase().includes(q) ||
+      asset.department?.name?.toLowerCase().includes(q) ||
+      asset.users?.some((u: any) => u.fullName?.toLowerCase().includes(q));
+
+    if (!matchesSearch) return false;
+
+    const osLic = asset.customSpecs?.osLicense;
+    const assignedKeys: any[] = asset.licenseAssignments || [];
+    const hasWinKeyAssigned = assignedKeys.some((la) =>
+      /Windows/i.test(la.licenseKey?.policy?.name || la.licenseKey?.policy?.matchKeyword || '')
+    );
+
+    if (machineLicenseFilter === 'WINDOWS_LICENSED') {
+      return osLic?.status === 'LICENSED' || hasWinKeyAssigned;
+    }
+    if (machineLicenseFilter === 'WINDOWS_UNLICENSED') {
+      return (
+        /Windows/i.test(asset.osName || '') &&
+        osLic?.status !== 'LICENSED' &&
+        !hasWinKeyAssigned
+      );
+    }
+    if (machineLicenseFilter === 'HAS_ERP_KEY') {
+      return assignedKeys.length > 0;
+    }
+    if (machineLicenseFilter === 'NO_ERP_KEY') {
+      return assignedKeys.length === 0;
+    }
+    return true;
+  });
+
+  const machineLicenseColumns: ColumnsType<any> = [
+    {
+      title: 'Máy tính & Người dùng',
+      key: 'machine',
+      width: 240,
+      render: (_, record) => {
+        const assignedUsers = record.users?.map((u: any) => u.fullName).join(', ');
+        return (
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <DesktopOutlined className="text-blue-600" />
+              <span className="font-bold text-slate-800 font-mono">{record.name}</span>
+              {record.type?.name && (
+                <Tag className="m-0 text-[10px]">{record.type.name}</Tag>
+              )}
+            </div>
+            <span className="text-xs text-blue-600 font-medium mt-0.5">
+              <UserOutlined className="mr-1" />
+              {assignedUsers || record.domainUser || 'Chưa gán người dùng'}
+            </span>
+            <div className="flex flex-wrap gap-1 mt-1 text-[11px] text-gray-500">
+              {record.department?.name && (
+                <Tag color="cyan" className="m-0 text-[10px]">
+                  {record.department.name}
+                </Tag>
+              )}
+              {record.ipAddress && <span className="font-mono">IP: {record.ipAddress}</span>}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      title: 'Bản quyền Hệ điều hành (Windows / Linux)',
+      key: 'osLicense',
+      width: 290,
+      render: (_, record) => {
+        const osName = record.osName || 'Chưa ghi nhận OS';
+        const osLic = record.customSpecs?.osLicense;
+        const assignedKeys: any[] = record.licenseAssignments || [];
+        const winKeyAssigned = assignedKeys.find((la) =>
+          /Windows/i.test(la.licenseKey?.policy?.name || la.licenseKey?.policy?.matchKeyword || '')
+        );
+
+        if (/Ubuntu|Linux|Debian|CentOS/i.test(osName)) {
+          return (
+            <div className="flex flex-col gap-1">
+              <span className="font-medium text-slate-700 text-xs">{osName}</span>
+              <Tag color="success" className="m-0 w-fit text-[11px]">
+                ✓ Mã nguồn mở (Miễn phí)
+              </Tag>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="font-semibold text-slate-800 text-xs">{osName}</span>
+            {osLic ? (
+              <div className="flex flex-wrap items-center gap-1">
+                <Tag
+                  color={osLic.status === 'LICENSED' ? 'success' : 'warning'}
+                  className="m-0 text-[11px]"
+                >
+                  {osLic.status === 'LICENSED'
+                    ? `✓ Đã kích hoạt (${osLic.channel || 'Active'})`
+                    : `⚠️ ${osLic.statusText || 'Chưa kích hoạt'}`}
+                </Tag>
+                {osLic.partialKey && (
+                  <Tag className="m-0 font-mono text-[10px]">
+                    Key máy: *{osLic.partialKey}
+                  </Tag>
+                )}
+              </div>
+            ) : winKeyAssigned ? (
+              <Tag color="success" className="m-0 w-fit text-[11px]">
+                ✓ Đã cấp Key Windows từ ERP
+              </Tag>
+            ) : (
+              <span className="text-[11px] text-gray-400 italic">
+                Chạy Agent V3.21 để tự động quét bản quyền Windows hoặc gán Key bên phải
+              </span>
+            )}
+            {osLic?.oemKey && (
+              <span className="text-[11px] text-emerald-700 font-mono">
+                Key OEM BIOS: {osLic.oemKey}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      title: 'Bản quyền Office & Key Phần mềm đã gán trên máy',
+      key: 'softwareLicenses',
+      render: (_, record) => {
+        const offLic = record.customSpecs?.officeLicense;
+        const assignedKeys: any[] = record.licenseAssignments || [];
+
+        return (
+          <div className="flex flex-col gap-1.5">
+            {offLic && (
+              <div className="flex flex-wrap items-center gap-1">
+                <Tag
+                  color={offLic.status === 'LICENSED' ? 'blue' : 'orange'}
+                  className="m-0 text-[11px]"
+                >
+                  Office trên máy: {offLic.statusText}
+                  {offLic.partialKey ? ` (*${offLic.partialKey})` : ''}
+                </Tag>
+              </div>
+            )}
+
+            {assignedKeys.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {assignedKeys.map((la: any) => (
+                  <Tag
+                    key={la.id}
+                    color="gold"
+                    closable
+                    onClose={(e) => {
+                      e.preventDefault();
+                      handleUnassignKeyFromMachine(la.keyId, record.id);
+                    }}
+                    className="m-0 text-xs py-0.5 px-2"
+                  >
+                    🔑 <b>{la.licenseKey?.policy?.name}</b>:{' '}
+                    <span className="font-mono">{la.licenseKey?.licenseKey}</span>
+                  </Tag>
+                ))}
+              </div>
+            ) : (
+              !offLic && (
+                <span className="text-xs text-gray-400 italic">
+                  Chưa gán Key ERP nào (Kaspersky, Office, Windows, AutoCAD...)
+                </span>
+              )
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      title: 'Cấp phát Key',
+      key: 'action',
+      width: 150,
+      align: 'center',
+      render: (_, record) => (
+        <Space size={4}>
+          <Button
+            type="primary"
+            ghost
+            size="small"
+            icon={<KeyOutlined />}
+            onClick={() => {
+              setQuickAssignAsset(record);
+              setSelectedKeyIdForAsset(undefined);
+            }}
+          >
+            Gán Key
+          </Button>
+          <Tooltip title="Xem trang hồ sơ QR & Phần mềm của máy này">
+            <Button
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() =>
+                window.open(`/qr/asset/${encodeURIComponent(record.name)}`, '_blank')
+              }
+            />
+          </Tooltip>
+        </Space>
+      ),
     },
   ];
 
@@ -1300,6 +1585,87 @@ const SoftwareInventory = () => {
                     pagination={{ pageSize: 12, showSizeChanger: true }}
                     size="middle"
                     scroll={{ x: 680 }}
+                  />
+                </div>
+              ),
+            },
+            {
+              key: 'machine_licenses',
+              label: (
+                <span>
+                  <DesktopOutlined /> Bản quyền trên Máy người dùng & Windows (
+                  {allAssets.length})
+                </span>
+              ),
+              children: (
+                <div>
+                  <Alert
+                    type="info"
+                    showIcon
+                    className="mb-3 text-xs"
+                    message={
+                      <span>
+                        <b>Quản lý Bản quyền theo từng Máy người dùng (Windows & Phần mềm):</b>{' '}
+                        Khi chạy <code>powershell_phancung.ps1</code> (V3.21), hệ thống tự động đọc trạng thái kích hoạt{' '}
+                        <b>Windows (OEM / Retail / Volume MAK / KMS + 5 ký tự cuối Product Key + OEM Key BIOS)</b> và{' '}
+                        <b>Microsoft Office</b> trên máy người dùng. Bạn cũng có thể bấm nút{' '}
+                        <b>"Gán Key"</b> ở từng máy để cấp phát trực tiếp Key Windows, Office, Kaspersky, AutoCAD từ Kho Key ERP.
+                      </span>
+                    }
+                  />
+
+                  <div className="mb-4 flex flex-col sm:flex-row justify-between gap-2">
+                    <Input
+                      placeholder="Tìm theo tên máy (Hostname), người dùng, phòng ban, IP hoặc hệ điều hành..."
+                      prefix={<SearchOutlined className="text-gray-400" />}
+                      allowClear
+                      value={machineSearchText}
+                      onChange={(e) => setMachineSearchText(e.target.value)}
+                      className="w-full sm:max-w-md"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Select
+                        value={machineLicenseFilter}
+                        onChange={setMachineLicenseFilter}
+                        className="w-full sm:w-64"
+                        options={[
+                          { value: 'ALL', label: 'Tất cả máy tính người dùng' },
+                          {
+                            value: 'WINDOWS_LICENSED',
+                            label: '✓ Máy đã có Bản quyền Windows',
+                          },
+                          {
+                            value: 'WINDOWS_UNLICENSED',
+                            label: '⚠️ Máy Windows chưa kích hoạt / chưa gán Key',
+                          },
+                          {
+                            value: 'HAS_ERP_KEY',
+                            label: '🔑 Máy đã được gán Key từ ERP',
+                          },
+                          {
+                            value: 'NO_ERP_KEY',
+                            label: 'Chưa gán Key ERP nào',
+                          },
+                        ]}
+                      />
+                      <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        onClick={() => handleOpenKeyModal(null)}
+                      >
+                        Nhập Key mới (Windows / Office / Kaspersky)
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Table
+                    columns={machineLicenseColumns}
+                    dataSource={filteredMachineAssets}
+                    rowKey="id"
+                    loading={loading}
+                    pagination={{ pageSize: 12, showSizeChanger: true }}
+                    size="middle"
+                    scroll={{ x: 860 }}
                   />
                 </div>
               ),
@@ -1704,6 +2070,87 @@ const SoftwareInventory = () => {
                   }`,
                 }))}
               />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* MODAL GÁN NHANH KEY CHO 1 MÁY NGƯỜI DÙNG */}
+      <Modal
+        title={
+          quickAssignAsset
+            ? `Cấp phát Key Bản quyền cho máy: ${quickAssignAsset.name}`
+            : 'Cấp phát Key Bản quyền cho máy'
+        }
+        open={!!quickAssignAsset}
+        onCancel={() => {
+          setQuickAssignAsset(null);
+          setSelectedKeyIdForAsset(undefined);
+        }}
+        onOk={handleQuickAssignKeyToMachine}
+        confirmLoading={quickAssignLoading}
+        okText="Gán Key cho máy này"
+        cancelText="Đóng"
+      >
+        {quickAssignAsset && (
+          <div className="space-y-3">
+            <div className="bg-slate-50 p-3 rounded-lg border text-xs space-y-1">
+              <div>
+                <b>Tên máy:</b>{' '}
+                <span className="font-mono font-bold text-blue-700">
+                  {quickAssignAsset.name}
+                </span>{' '}
+                {quickAssignAsset.ipAddress ? `(${quickAssignAsset.ipAddress})` : ''}
+              </div>
+              <div>
+                <b>Hệ điều hành:</b> {quickAssignAsset.osName || 'Chưa rõ'}
+              </div>
+              <div>
+                <b>Người dùng:</b>{' '}
+                {quickAssignAsset.users?.map((u: any) => u.fullName).join(', ') ||
+                  quickAssignAsset.domainUser ||
+                  'Chưa gán'}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium text-gray-700 mb-1">
+                Chọn Key bản quyền trong Kho Key (Windows, Office, Kaspersky, AutoCAD...):
+              </div>
+              <Select
+                showSearch
+                optionFilterProp="label"
+                className="w-full"
+                placeholder="Chọn Key bản quyền cần gán cho máy..."
+                value={selectedKeyIdForAsset}
+                onChange={setSelectedKeyIdForAsset}
+                options={licenseKeys
+                  .filter((k) => k.remainingSeats > 0)
+                  .map((k) => ({
+                    value: k.id,
+                    label: `${k.policy?.name} — Key: ${k.licenseKey} (Còn trống ${k.remainingSeats}/${k.maxSeats} máy)`,
+                  }))}
+              />
+              {licenseKeys.length === 0 && (
+                <div className="mt-2 text-xs text-amber-600">
+                  Kho Key hiện chưa có Key nào.{' '}
+                  <Button
+                    type="link"
+                    size="small"
+                    className="p-0 h-auto"
+                    onClick={() => {
+                      const assetId = quickAssignAsset.id;
+                      setQuickAssignAsset(null);
+                      handleOpenKeyModal(null);
+                      setTimeout(() => {
+                        keyForm.setFieldValue('assetIds', [assetId]);
+                      }, 100);
+                    }}
+                  >
+                    + Bấm vào đây để thêm Key mới và gán luôn cho máy này
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         )}

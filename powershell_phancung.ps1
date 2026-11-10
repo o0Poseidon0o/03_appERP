@@ -131,6 +131,7 @@ $ExcludeSoftwarePatterns = @(
     "Standard Library", "Tcl/Tk", "Test Suite", "Utility Scripts", "Python Launcher",
     "Windows Software Development Kit", "SDK", "CefSharp", "Genuine Service",
     "Bonjour", "Hotfix", "Security Update", "Service Pack", "Driver", "Add-in",
+    "Meeting Add-in", "Teams Meeting", "Add-in for Microsoft",
     "Connector", "Helper", "Host", " Telemetry", "Diagnostic"
 )
 
@@ -513,6 +514,57 @@ try {
     } catch {}
     Write-Host " OK" -ForegroundColor Green
 
+    # H2. QUÉT BẢN QUYỀN WINDOWS & OFFICE THỰC TẾ ĐANG HOẠT ĐỘNG TRÊN MÁY
+    Write-Host "[8/8] Quet ban quyen Windows & Office tren may..." -NoNewline
+    $osLicenseInfo = @{
+        productName = [string]$os.Caption
+        status      = "UNLICENSED"
+        channel     = "UNKNOWN"
+        partialKey  = ""
+        oemKey      = ""
+    }
+    $officeLicenseInfo = $null
+
+    try {
+        $sls = @(Get-WmiObject SoftwareLicensingService -ErrorAction SilentlyContinue)[0]
+        if ($sls -and $sls.OA3xOriginalProductKey) {
+            $osLicenseInfo.oemKey = ([string]$sls.OA3xOriginalProductKey).Trim()
+        }
+
+        $licProducts = @(Get-WmiObject SoftwareLicensingProduct -Filter "PartialProductKey IS NOT NULL" -ErrorAction SilentlyContinue)
+        foreach ($lp in $licProducts) {
+            if ($null -eq $lp -or -not $lp.Name) { continue }
+            $lpName = [string]$lp.Name
+            $lpDesc = [string]$lp.Description
+            $lpStatus = if ($lp.LicenseStatus -eq 1) { "LICENSED" } else { "UNLICENSED" }
+            $lpKey = if ($lp.PartialProductKey) { ([string]$lp.PartialProductKey).Trim() } else { "" }
+
+            $channel = "RETAIL"
+            if ($lpDesc -match "OEM") { $channel = "OEM" }
+            elseif ($lpDesc -match "VOLUME_KMSCLIENT|KMS") { $channel = "VOLUME_KMS" }
+            elseif ($lpDesc -match "VOLUME_MAK|MAK") { $channel = "VOLUME_MAK" }
+
+            if ($lpName -match "Windows" -or ([string]$lp.ApplicationId) -eq "55c92734-d682-4d71-983e-d6ec3f16059f") {
+                if ($osLicenseInfo.status -ne "LICENSED" -or $lpStatus -eq "LICENSED") {
+                    $osLicenseInfo.productName = $lpName
+                    $osLicenseInfo.status      = $lpStatus
+                    $osLicenseInfo.channel     = $channel
+                    $osLicenseInfo.partialKey  = $lpKey
+                }
+            } elseif ($lpName -match "Office") {
+                if ($null -eq $officeLicenseInfo -or $lpStatus -eq "LICENSED") {
+                    $officeLicenseInfo = @{
+                        productName = $lpName
+                        status      = $lpStatus
+                        channel     = $channel
+                        partialKey  = $lpKey
+                    }
+                }
+            }
+        }
+    } catch {}
+    Write-Host " OK ($($osLicenseInfo.status))" -ForegroundColor Green
+
     # I. GỬI DỮ LIỆU (HỖ TRỢ CẢ POWERSHELL 2.0 WINDOWS 7 & POWERSHELL 5.1 WINDOWS 10/11)
     $serialNum = if ($bios -and $bios.SerialNumber) { ([string]$bios.SerialNumber).Trim() } else { "N/A" }
     $hostNameStr = if ($comp -and $comp.Name) { [string]$comp.Name } else { $env:COMPUTERNAME }
@@ -528,9 +580,11 @@ try {
         cpuName      = [string]$cpu.Name
         ramGB        = [math]::Round($comp.TotalPhysicalMemory / 1GB, 0)
         
-        ramDetails   = $ramDetails      
-        gpus         = $gpuList         
-        peripherals  = $peripheralList 
+        ramDetails    = $ramDetails      
+        gpus          = $gpuList         
+        peripherals   = $peripheralList 
+        osLicense     = $osLicenseInfo
+        officeLicense = $officeLicenseInfo
         
         disks        = $diskList
         monitors     = $monitorList

@@ -58,6 +58,12 @@ const EXCLUDE_PATTERNS: RegExp[] = [
   /\bHotfix\b/i,
   /Security Update/i,
   /Service Pack/i,
+  /Add-in/i,
+  /Meeting Add-in/i,
+  /Teams Meeting/i,
+  /Add-in for Microsoft/i,
+  /Connector/i,
+  /Helper/i,
   /Telemetry/i,
   /Diagnostic/i,
 ];

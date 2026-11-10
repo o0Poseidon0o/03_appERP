@@ -12,8 +12,7 @@ import {
   MoonOutlined, SunOutlined,
   UnorderedListOutlined,
   TagsOutlined,
-  EnvironmentOutlined, SwapOutlined, 
-  BoxPlotOutlined, DatabaseOutlined,
+  DatabaseOutlined,
   BarChartOutlined,
   AppstoreOutlined, 
   CloseOutlined,
@@ -290,31 +289,6 @@ const MainLayout: React.FC = () => {
       items.push({ key: '/admin/users', icon: <TeamOutlined />, label: 'Nhân sự' });
     }
 
-    const canSeeWarehouse = hasPermission('WMS_VIEW') || hasPermission('WMS_APPROVE');
-    if (canSeeWarehouse) {
-      const warehouseChildren: MenuProps['items'] = [];
-      if (hasPermission('WMS_VIEW')) {
-          warehouseChildren.push(
-            { key: '/warehouse/stock', icon: <DatabaseOutlined />, label: 'Tồn kho thực tế' },
-            { key: '/warehouse/transactions', icon: <SwapOutlined />, label: 'Phiếu Nhập/Xuất' },
-            { key: '/warehouse/locations', icon: <EnvironmentOutlined />, label: 'Sơ đồ kho' },
-            { key: '/warehouse/items', icon: <BoxPlotOutlined />, label: 'Vật tư' },
-            { key: '/warehouse/categories', icon: <TagsOutlined />, label: 'Nhóm vật tư' },
-            { key: '/warehouse/suppliers', icon: <TeamOutlined />, label: 'Nhà cung cấp' },
-            { key: '/warehouse/report/monthly', icon: <BarChartOutlined />, label: 'Báo cáo' }
-          );
-      }
-      if (hasPermission('WMS_APPROVE')) {
-          warehouseChildren.push({ key: '/warehouse/approvals', icon: <SafetyCertificateOutlined />, label: 'Phê duyệt' });
-      }
-      if (warehouseChildren.length > 0) {
-        items.push({
-            key: 'grp-warehouse', label: 'Kho vận', icon: <DatabaseOutlined />, 
-            children: warehouseChildren
-        });
-      }
-    }
-
     const canSeeAssets = hasPermission('ITAM_ASSET_VIEW') || user?.roleId === 'ROLE-ADMIN' || user?.roleId === 'IT_MANAGER';
     if (canSeeAssets) {
         items.push({
@@ -322,10 +296,10 @@ const MainLayout: React.FC = () => {
             children: [
                 { key: '/itam/dashboard', label: 'Dashboard IT', icon: <BarChartOutlined /> }, 
                 { key: '/itam', label: 'Máy tính & Server', icon: <DatabaseOutlined /> }, 
-                { key: '/itam/software-inventory', label: 'Phần mềm cài đặt', icon: <AppstoreOutlined /> },
+                { key: '/itam/software-inventory', label: 'Phần mềm & Bản quyền', icon: <AppstoreOutlined /> },
                 { key: '/itam/network-scan', label: 'Quét mạng (Scan)', icon: <RadarChartOutlined /> },
                 ...(hasPermission('ITAM_ASSET_CREATE') ? [
-                    { key: '/itam/peripherals', label: 'Loại tài sản', icon: <TagsOutlined /> },
+                    { key: '/itam/peripherals', label: 'Thiết bị ngoại vi', icon: <TagsOutlined /> },
                 ] : [])
             ]
         });

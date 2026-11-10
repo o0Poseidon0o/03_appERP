@@ -17,53 +17,99 @@ const DEFAULT_BLACKLIST_PATTERNS = [
 
 const ensureDefaultPolicies = async () => {
   try {
-    const count = await prisma.softwarePolicy.count();
-    if (count === 0) {
-      await prisma.softwarePolicy.createMany({
-        data: [
-          {
-            name: "Kaspersky Endpoint Security",
-            matchKeyword: "Kaspersky",
-            category: "LICENSED",
-            totalSeats: 50,
-            publisher: "Kaspersky",
-            note: "Bản quyền phần mềm diệt virus Kaspersky cho máy trạm & Server",
-          },
-          {
-            name: "Microsoft Office / Microsoft 365",
-            matchKeyword: "Microsoft Office|Microsoft 365",
-            category: "LICENSED",
-            totalSeats: 50,
-            publisher: "Microsoft Corporation",
-            note: "Bản quyền bộ ứng dụng văn phòng Microsoft Office / M365",
-          },
-          {
-            name: "Autodesk AutoCAD",
-            matchKeyword: "AutoCAD",
-            category: "LICENSED",
-            totalSeats: 10,
-            publisher: "Autodesk",
-            note: "Bản quyền thiết kế kỹ thuật AutoCAD",
-          },
-          {
-            name: "Phần mềm Torrent (uTorrent / BitTorrent / qBittorrent)",
-            matchKeyword: "uTorrent|BitTorrent|qBittorrent",
-            category: "BLACKLIST",
-            totalSeats: 0,
-            publisher: "Various",
-            note: "Cấm sử dụng phần mềm P2P Torrent gây nghẽn băng thông và rủi ro mã độc",
-          },
-          {
-            name: "Công cụ Crack / Active lậu (KMSPico / KMSAuto / Cheat Engine)",
-            matchKeyword: "KMSPico|KMSAuto|Cheat Engine",
-            category: "BLACKLIST",
-            totalSeats: 0,
-            publisher: "Unknown",
-            note: "Công cụ bẻ khóa tiềm ẩn Trojan/Ransomware nguy hiểm",
-          },
+    // 1. Tự động dọn các bản ghi Add-in rác cũ trong bảng InstalledSoftware (VD: Microsoft Teams Meeting Add-in for Microsoft Office)
+    await prisma.installedSoftware.deleteMany({
+      where: {
+        OR: [
+          { name: { contains: "Meeting Add-in", mode: "insensitive" } },
+          { name: { contains: "Add-in for Microsoft", mode: "insensitive" } },
         ],
-        skipDuplicates: true,
+      },
+    });
+
+    // 2. Đảm bảo có sẵn danh mục phần mềm chính (với totalSeats = 0, chỉ tính số lượng khi người dùng nhập Key thực tế)
+    const defaultPolicies = [
+      {
+        name: "Hệ điều hành Windows (Windows 7 / 10 / 11 / Server)",
+        matchKeyword: "^Windows ",
+        category: "LICENSED",
+        totalSeats: 0,
+        publisher: "Microsoft Corporation",
+        note: "Quản lý Key bản quyền Hệ điều hành Windows (OEM / Retail / MAK / KMS) trên máy người dùng",
+      },
+      {
+        name: "Kaspersky Endpoint Security",
+        matchKeyword: "^Kaspersky",
+        category: "LICENSED",
+        totalSeats: 0,
+        publisher: "Kaspersky",
+        note: "Bản quyền phần mềm diệt virus Kaspersky cho máy trạm & Server",
+      },
+      {
+        name: "Microsoft Office / Microsoft 365",
+        matchKeyword: "^(Microsoft Office|Microsoft 365)",
+        category: "LICENSED",
+        totalSeats: 0,
+        publisher: "Microsoft Corporation",
+        note: "Bản quyền bộ ứng dụng văn phòng Microsoft Office / M365",
+      },
+      {
+        name: "Autodesk AutoCAD",
+        matchKeyword: "^(Autodesk )?AutoCAD",
+        category: "LICENSED",
+        totalSeats: 0,
+        publisher: "Autodesk",
+        note: "Bản quyền thiết kế kỹ thuật AutoCAD",
+      },
+      {
+        name: "Phần mềm Torrent (uTorrent / BitTorrent / qBittorrent)",
+        matchKeyword: "uTorrent|BitTorrent|qBittorrent",
+        category: "BLACKLIST",
+        totalSeats: 0,
+        publisher: "Various",
+        note: "Cấm sử dụng phần mềm P2P Torrent gây nghẽn băng thông và rủi ro mã độc",
+      },
+      {
+        name: "Công cụ Crack / Active lậu (KMSPico / KMSAuto / Cheat Engine)",
+        matchKeyword: "KMSPico|KMSAuto|Cheat Engine",
+        category: "BLACKLIST",
+        totalSeats: 0,
+        publisher: "Unknown",
+        note: "Công cụ bẻ khóa tiềm ẩn Trojan/Ransomware nguy hiểm",
+      },
+    ];
+
+    for (const dp of defaultPolicies) {
+      await prisma.softwarePolicy.upsert({
+        where: { name: dp.name },
+        update: {},
+        create: dp,
       });
+    }
+
+    // 3. Nếu các policy mặc định cũ chưa có Key nào nhưng đang bị gán số 50/10 mẫu từ phiên bản trước -> đưa về 0
+    const existingLicensed = await prisma.softwarePolicy.findMany({
+      where: { category: "LICENSED" },
+      include: { keys: true },
+    });
+    for (const pol of existingLicensed) {
+      if (
+        pol.keys.length === 0 &&
+        pol.totalSeats > 0 &&
+        (pol.note?.includes("Bản quyền bộ ứng dụng văn phòng") ||
+          pol.note?.includes("Bản quyền phần mềm diệt virus Kaspersky") ||
+          pol.note?.includes("Bản quyền thiết kế kỹ thuật AutoCAD"))
+      ) {
+        await prisma.softwarePolicy.update({
+          where: { id: pol.id },
+          data: {
+            totalSeats: 0,
+            matchKeyword: pol.name.includes("Office")
+              ? "^(Microsoft Office|Microsoft 365)"
+              : pol.matchKeyword,
+          },
+        });
+      }
     }
   } catch (err) {
     // Bỏ qua nếu bảng chưa được migrate trên DB
@@ -72,6 +118,10 @@ const ensureDefaultPolicies = async () => {
 
 const matchPolicyKeyword = (softwareName: string, matchKeyword: string): boolean => {
   if (!softwareName || !matchKeyword) return false;
+  // Không bao giờ khớp các gói Add-in / Plugin phụ vào bản quyền phần mềm chính
+  if (/\b(Add-in|Plugin|Helper|Connector|MUI|Proofing)\b/i.test(softwareName)) {
+    return false;
+  }
   try {
     return new RegExp(matchKeyword, "i").test(softwareName);
   } catch {
@@ -137,7 +187,7 @@ export const getSoftwareInventory = async (req: Request, res: Response) => {
           0
         );
         const effectiveSeats =
-          keyTotalSeats > 0 ? Math.max(matchedPolicy.totalSeats, keyTotalSeats) : matchedPolicy.totalSeats;
+          keyTotalSeats > 0 ? keyTotalSeats : matchedPolicy.totalSeats;
 
         policyInfo = {
           id: matchedPolicy.id,

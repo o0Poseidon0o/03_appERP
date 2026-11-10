@@ -10,6 +10,7 @@ const agentAuthMiddleware_1 = require("../../middlewares/agentAuthMiddleware");
 const router = express_1.default.Router();
 router.post('/sync', agentAuthMiddleware_1.verifyAgentSecret, asset_controller_1.syncAssetAgent);
 router.post('/sync-agent', agentAuthMiddleware_1.verifyAgentSecret, asset_controller_1.syncAssetAgent);
+router.get('/public-qr/:code', asset_controller_1.getPublicAssetByQrCode);
 router.use(authMiddleware_1.protect);
 router.get('/my-assets', asset_controller_1.getMyAssets);
 router.get('/', (0, authMiddleware_1.hasPermission)('ITAM_ASSET_VIEW'), asset_controller_1.getAllAssets);

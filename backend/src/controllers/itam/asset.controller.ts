@@ -63,6 +63,21 @@ interface AgentPayload {
     Version: string;
     Publisher: string;
   }>;
+
+  osLicense?: {
+    productName?: string;
+    status?: string;
+    channel?: string;
+    partialKey?: string;
+    oemKey?: string;
+  } | null;
+
+  officeLicense?: {
+    productName?: string;
+    status?: string;
+    channel?: string;
+    partialKey?: string;
+  } | null;
 }
 
 // [HELPER] Hàm hỗ trợ so sánh sự thay đổi chuỗi cơ bản
@@ -253,6 +268,8 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
           disk: newDiskSummary,
           ramDetails: data.ramDetails || [],
           gpus: data.gpus || [],
+          osLicense: data.osLicense || (existingAsset?.customSpecs as any)?.osLicense || null,
+          officeLicense: data.officeLicense || (existingAsset?.customSpecs as any)?.officeLicense || null,
           lastAgentSync: data.timestamp,
         },
       };
@@ -570,8 +587,17 @@ export const getAllAssets = async (req: Request, res: Response) => {
           parent: { select: { id: true, name: true } },
           _count: { select: { children: true, softwares: true } },
           components: {
-             where: { type: { in: ['MONITOR', 'KEYBOARD', 'MOUSE'] } },
+             where: { type: { in: ['MONITOR', 'KEYBOARD', 'MOUSE', 'HARD_DISK'] } },
              select: { id: true, name: true, serialNumber: true, type: true, specs: true }
+          },
+          licenseAssignments: {
+             include: {
+               licenseKey: {
+                 include: {
+                   policy: true
+                 }
+               }
+             }
           }
         },
       }),
@@ -608,6 +634,15 @@ export const getAssetById = async (req: Request, res: Response) => {
         components: true, 
         softwares: { orderBy: { name: "asc" } },
         maintenances: { orderBy: { startDate: "desc" } },
+        licenseAssignments: {
+          include: {
+            licenseKey: {
+              include: {
+                policy: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -616,6 +651,93 @@ export const getAssetById = async (req: Request, res: Response) => {
     res.status(200).json({ status: "success", data: asset });
   } catch (error: any) {
     res.status(500).json({ status: "error", message: error.message });
+  }
+};
+
+// ==========================================
+// 2B. TRA CỨU TÀI SẢN & PHẦN MỀM QUA MÃ QR (PUBLIC CHO NGƯỜI DÙNG QUÉT ĐIỆN THOẠI)
+// ==========================================
+export const getPublicAssetByQrCode = async (req: Request, res: Response) => {
+  try {
+    const rawCode = decodeURIComponent(req.params.code || "").trim();
+    if (!rawCode) {
+      return res.status(400).json({ status: "error", message: "Mã QR không hợp lệ!" });
+    }
+
+    const asset = await prisma.asset.findFirst({
+      where: {
+        OR: [
+          { name: { equals: rawCode, mode: "insensitive" } },
+          { serialNumber: { equals: rawCode, mode: "insensitive" } },
+          { id: rawCode },
+        ],
+      },
+      include: {
+        type: true,
+        factory: { select: { id: true, name: true } },
+        department: { select: { id: true, name: true } },
+        users: { select: { id: true, fullName: true, email: true } },
+        parent: { select: { id: true, name: true } },
+        children: {
+          include: { type: true },
+        },
+        components: {
+          orderBy: { type: "asc" },
+        },
+        softwares: {
+          orderBy: { name: "asc" },
+        },
+        maintenances: {
+          orderBy: { startDate: "desc" },
+          take: 10,
+        },
+        licenseAssignments: {
+          include: {
+            licenseKey: {
+              include: {
+                policy: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!asset) {
+      return res.status(404).json({
+        status: "error",
+        message: `Không tìm thấy thiết bị với mã: ${rawCode}`,
+      });
+    }
+
+    // Che bớt phần giữa của mã Key khi hiển thị công khai qua QR (chỉ hiện 5 ký tự cuối)
+    const safeLicenses = (asset.licenseAssignments || []).map((assign: any) => {
+      const rawKey = assign.licenseKey?.licenseKey || "";
+      const maskedKey =
+        rawKey.length > 5
+          ? `*****-${rawKey.slice(-5)}`
+          : rawKey;
+      return {
+        id: assign.id,
+        assignedAt: assign.assignedAt,
+        softwareName: assign.licenseKey?.policy?.name || "Phần mềm bản quyền",
+        publisher: assign.licenseKey?.policy?.publisher || "",
+        keyType: assign.licenseKey?.keyType || "SUBSCRIPTION",
+        maskedKey,
+        expiredAt: assign.licenseKey?.expiredAt || null,
+        status: assign.licenseKey?.status || "ACTIVE",
+      };
+    });
+
+    return res.status(200).json({
+      status: "success",
+      data: {
+        ...asset,
+        safeLicenses,
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({ status: "error", message: error.message });
   }
 };
 

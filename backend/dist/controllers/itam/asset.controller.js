@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMyAssets = exports.deleteAsset = exports.updateAsset = exports.createAsset = exports.getAssetById = exports.getAllAssets = exports.syncAssetAgent = void 0;
+exports.getMyAssets = exports.deleteAsset = exports.updateAsset = exports.createAsset = exports.getPublicAssetByQrCode = exports.getAssetById = exports.getAllAssets = exports.syncAssetAgent = void 0;
 const prisma_1 = __importDefault(require("../../config/prisma"));
 const socket_1 = require("../../socket");
 const softwareNormalizer_1 = require("../../utils/softwareNormalizer");
@@ -131,6 +131,8 @@ const syncAssetAgent = async (req, res, next) => {
                     disk: newDiskSummary,
                     ramDetails: data.ramDetails || [],
                     gpus: data.gpus || [],
+                    osLicense: data.osLicense || existingAsset?.customSpecs?.osLicense || null,
+                    officeLicense: data.officeLicense || existingAsset?.customSpecs?.officeLicense || null,
                     lastAgentSync: data.timestamp,
                 },
             };
@@ -406,8 +408,17 @@ const getAllAssets = async (req, res) => {
                     parent: { select: { id: true, name: true } },
                     _count: { select: { children: true, softwares: true } },
                     components: {
-                        where: { type: { in: ['MONITOR', 'KEYBOARD', 'MOUSE'] } },
+                        where: { type: { in: ['MONITOR', 'KEYBOARD', 'MOUSE', 'HARD_DISK'] } },
                         select: { id: true, name: true, serialNumber: true, type: true, specs: true }
+                    },
+                    licenseAssignments: {
+                        include: {
+                            licenseKey: {
+                                include: {
+                                    policy: true
+                                }
+                            }
+                        }
                     }
                 },
             }),
@@ -441,6 +452,15 @@ const getAssetById = async (req, res) => {
                 components: true,
                 softwares: { orderBy: { name: "asc" } },
                 maintenances: { orderBy: { startDate: "desc" } },
+                licenseAssignments: {
+                    include: {
+                        licenseKey: {
+                            include: {
+                                policy: true,
+                            },
+                        },
+                    },
+                },
             },
         });
         if (!asset)
@@ -452,6 +472,85 @@ const getAssetById = async (req, res) => {
     }
 };
 exports.getAssetById = getAssetById;
+const getPublicAssetByQrCode = async (req, res) => {
+    try {
+        const rawCode = decodeURIComponent(req.params.code || "").trim();
+        if (!rawCode) {
+            return res.status(400).json({ status: "error", message: "Mã QR không hợp lệ!" });
+        }
+        const asset = await prisma_1.default.asset.findFirst({
+            where: {
+                OR: [
+                    { name: { equals: rawCode, mode: "insensitive" } },
+                    { serialNumber: { equals: rawCode, mode: "insensitive" } },
+                    { id: rawCode },
+                ],
+            },
+            include: {
+                type: true,
+                factory: { select: { id: true, name: true } },
+                department: { select: { id: true, name: true } },
+                users: { select: { id: true, fullName: true, email: true } },
+                parent: { select: { id: true, name: true } },
+                children: {
+                    include: { type: true },
+                },
+                components: {
+                    orderBy: { type: "asc" },
+                },
+                softwares: {
+                    orderBy: { name: "asc" },
+                },
+                maintenances: {
+                    orderBy: { startDate: "desc" },
+                    take: 10,
+                },
+                licenseAssignments: {
+                    include: {
+                        licenseKey: {
+                            include: {
+                                policy: true,
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        if (!asset) {
+            return res.status(404).json({
+                status: "error",
+                message: `Không tìm thấy thiết bị với mã: ${rawCode}`,
+            });
+        }
+        const safeLicenses = (asset.licenseAssignments || []).map((assign) => {
+            const rawKey = assign.licenseKey?.licenseKey || "";
+            const maskedKey = rawKey.length > 5
+                ? `*****-${rawKey.slice(-5)}`
+                : rawKey;
+            return {
+                id: assign.id,
+                assignedAt: assign.assignedAt,
+                softwareName: assign.licenseKey?.policy?.name || "Phần mềm bản quyền",
+                publisher: assign.licenseKey?.policy?.publisher || "",
+                keyType: assign.licenseKey?.keyType || "SUBSCRIPTION",
+                maskedKey,
+                expiredAt: assign.licenseKey?.expiredAt || null,
+                status: assign.licenseKey?.status || "ACTIVE",
+            };
+        });
+        return res.status(200).json({
+            status: "success",
+            data: {
+                ...asset,
+                safeLicenses,
+            },
+        });
+    }
+    catch (error) {
+        return res.status(500).json({ status: "error", message: error.message });
+    }
+};
+exports.getPublicAssetByQrCode = getPublicAssetByQrCode;
 const createAsset = async (req, res) => {
     try {
         const data = req.body;

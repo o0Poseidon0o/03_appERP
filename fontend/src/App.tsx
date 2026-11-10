@@ -28,22 +28,13 @@ const RoleManagement = lazy(() => import("./pages/Role/RoleManagement"));
 const MenuManagement = lazy(() => import("./pages/admin/MenuManagement"));
 const WorkflowManagement = lazy(() => import("./pages/admin/WorkflowManagement"));
 
-// 4. Warehouse System (Kho & Nhà máy & Vật tư)
-const ItemManagement = lazy(() => import("./pages/warehouse/ItemManagement"));
-const CategoryManagement = lazy(() => import("./pages/warehouse/CategoryManagement"));
-const SupplierPage = lazy(() => import("./pages/warehouse/SupplierList"));
-const WarehouseManagement = lazy(() => import("./pages/warehouse/WarehouseManagement"));
-const PendingApprovals = lazy(() => import("./pages/warehouse/PendingApprovals"));
-const StockTransaction = lazy(() => import("./pages/warehouse/StockTransaction"));
-const StockActual = lazy(() => import("./pages/warehouse/StockActual"));
-const MonthlyReport = lazy(() => import("./pages/warehouse/MonthlyReport"));
-
-// 5. IT Asset Management (ITAM)
+// 4. IT Asset Management (ITAM)
 const AssetList = lazy(() => import("./pages/itam/AssetList"));
 const DashboardItam = lazy(() => import("./pages/itam/Dashboard"));
 const PeripheralList = lazy(() => import("./pages/itam/PeripheralList"));
 const SoftwareInventory = lazy(() => import("./pages/itam/SoftwareInventory"));
 const NetworkScanner = lazy(() => import("./pages/itam/NetworkScanner"));
+const AssetQrPublicPage = lazy(() => import("./pages/itam/AssetQrPublicPage"));
 
 // --- COMPONENTS BẢO VỆ ---
 
@@ -114,6 +105,7 @@ const AppContent = () => {
           {/* ========================================================= */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/qr/asset/:code" element={<AssetQrPublicPage />} />
 
           {/* ========================================================= */}
           {/* 2. PROTECTED ROUTES (Phải đăng nhập) */}
@@ -145,37 +137,6 @@ const AppContent = () => {
               <Route
                 path="admin/departments"
                 element={<DepartmentManagement />}
-              />
-            </Route>
-
-            {/* C. HẠ TẦNG & KHO: Cần quyền WMS_VIEW */}
-            <Route element={<RoleRoute requiredPermission="WMS_VIEW" />}>
-              <Route
-                path="warehouse/locations"
-                element={<WarehouseManagement />}
-              />
-              <Route path="warehouse/items" element={<ItemManagement />} />
-              <Route
-                path="warehouse/categories"
-                element={<CategoryManagement />}
-              />
-              <Route path="warehouse/stock" element={<StockActual />} />
-              <Route path="warehouse/suppliers" element={<SupplierPage />} />
-              <Route
-                path="warehouse/transactions"
-                element={<StockTransaction />}
-              />
-              <Route
-                path="warehouse/report/monthly"
-                element={<MonthlyReport />}
-              />
-            </Route>
-
-            {/* D. PHÊ DUYỆT PHIẾU: Cần quyền WMS_APPROVE */}
-            <Route element={<RoleRoute requiredPermission="WMS_APPROVE" />}>
-              <Route
-                path="warehouse/approvals"
-                element={<PendingApprovals />}
               />
             </Route>
 
