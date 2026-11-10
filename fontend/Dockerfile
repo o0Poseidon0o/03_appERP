@@ -6,8 +6,8 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 
-# Set biến môi trường khi build (để trống để Nginx tự xử lý proxy)
-ENV VITE_API_URL=/
+# Set biến môi trường khi build (trỏ chuẩn về /api để Nginx reverse proxy sang backend:3000)
+ENV VITE_API_URL=/api
 
 # Build ra file tĩnh (dist)
 RUN npm run build

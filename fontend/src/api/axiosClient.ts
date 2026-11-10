@@ -1,8 +1,10 @@
 import axios from 'axios';
 
 const getBaseURL = () => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+  const envUrl = import.meta.env.VITE_API_URL?.trim();
+  if (envUrl && envUrl !== '/') {
+    const clean = envUrl.replace(/\/+$/, '');
+    return clean.endsWith('/api') ? clean : `${clean}/api`;
   }
 
   // 1. Khi đang chạy DEV (npm run dev): dùng hostname hiện tại để Mobile/Tablet truy cập qua IP LAN vẫn gọi đúng Backend
