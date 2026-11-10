@@ -6,7 +6,7 @@ const getBaseURL = () => {
     const host = window.location.hostname || 'localhost';
     return `http://${host}:3000/api`;
   }
-
+  
   // 2. Khi chạy Production qua Nginx reverse proxy: luôn dùng đường dẫn tương đối /api
   return '/api';
 };
