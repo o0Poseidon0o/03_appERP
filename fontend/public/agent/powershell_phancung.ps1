@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # TOWA ITAM AGENT - V3.22 (MULTI-WINDOWS: WINDOWS 7 PS 2.0 -> WINDOWS 11 PS 5.1+)
 # Features: Win7/PS2.0 + Hardware Health (CPU/RAM/SMART Disk) + Multi-Software License Scan
 # =============================================================================
@@ -273,65 +273,181 @@ try {
     Write-Host "[0/8] Delay $jitter giay..." -ForegroundColor DarkGray
     Start-Sleep -Seconds $jitter
 
-    # A. PHẦN CỨNG CƠ BẢN (Tương thích mảng trên PowerShell 2.0 Windows 7)
+    # A. PHẦN CỨNG CƠ BẢN (DUAL ENGINE: WMI + REGISTRY / .NET FALLBACK KHI WMI BỊ HỎNG)
     Write-Host "[1/8] Quet he thong co ban..." -NoNewline
-    $bios = @(Get-WmiObject Win32_BIOS)[0]
-    $comp = @(Get-WmiObject Win32_ComputerSystem)[0]
-    $os   = @(Get-WmiObject Win32_OperatingSystem)[0]
-    $cpu  = @(Get-WmiObject Win32_Processor)[0]
-    $currentUser = if ($comp.UserName) { $comp.UserName } else { "$env:USERDOMAIN\$env:USERNAME" }
+    $bios = $null; $comp = $null; $os = $null; $cpu = $null
+    try { $bios = @(Get-WmiObject Win32_BIOS -ErrorAction SilentlyContinue)[0] } catch {}
+    try { $comp = @(Get-WmiObject Win32_ComputerSystem -ErrorAction SilentlyContinue)[0] } catch {}
+    try { $os   = @(Get-WmiObject Win32_OperatingSystem -ErrorAction SilentlyContinue)[0] } catch {}
+    try { $cpu  = @(Get-WmiObject Win32_Processor -ErrorAction SilentlyContinue)[0] } catch {}
+
+    # TỰ ĐỘNG CỨU HỘ: NẾU KHO WMI BỊ LỖI (INVALID CLASS NHƯ MÁY PC37)
+    $isWmiCorrupted = ($null -eq $os -and $null -eq $cpu)
+    if ($isWmiCorrupted) {
+        try {
+            Start-Process -FilePath "winmgmt" -ArgumentList "/salvagerepository" -WindowStyle Hidden -ErrorAction SilentlyContinue
+        } catch {}
+    }
+
+    # FALLBACK REGISTRY: Hãng, Model, Serial
+    $regBios = Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue
+    $manufacturer = if ($comp -and $comp.Manufacturer) { [string]$comp.Manufacturer } `
+                    elseif ($regBios.SystemManufacturer -and $regBios.SystemManufacturer -notmatch "Default|To be filled") { [string]$regBios.SystemManufacturer } `
+                    elseif ($regBios.BaseBoardManufacturer) { [string]$regBios.BaseBoardManufacturer } `
+                    else { "PC" }
+
+    $model = if ($comp -and $comp.Model) { [string]$comp.Model } `
+             elseif ($regBios.SystemProductName -and $regBios.SystemProductName -notmatch "Default|To be filled") { [string]$regBios.SystemProductName } `
+             elseif ($regBios.BaseBoardProduct) { [string]$regBios.BaseBoardProduct } `
+             else { "Workstation" }
+
+    $serialNum = if ($bios -and $bios.SerialNumber) { ([string]$bios.SerialNumber).Trim() } `
+                 elseif ($regBios.SystemSerialNumber -and $regBios.SystemSerialNumber -notmatch "Default|To be filled") { ([string]$regBios.SystemSerialNumber).Trim() } `
+                 elseif ($regBios.BaseBoardSerialNumber -and $regBios.BaseBoardSerialNumber -notmatch "Default|To be filled") { ([string]$regBios.BaseBoardSerialNumber).Trim() } `
+                 else { "N/A" }
+
+    # FALLBACK REGISTRY: CPU
+    $regCpu = Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor\0' -ErrorAction SilentlyContinue
+    $cpuName = if ($cpu -and $cpu.Name) { ([string]$cpu.Name).Trim() } `
+               elseif ($regCpu.ProcessorNameString) { ([string]$regCpu.ProcessorNameString).Trim() } `
+               elseif ($env:PROCESSOR_IDENTIFIER) { $env:PROCESSOR_IDENTIFIER } `
+               else { "Intel/AMD Processor" }
+
+    # FALLBACK REGISTRY: OS
+    $regOs = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue
+    $osName = if ($os -and $os.Caption) { [string]$os.Caption } `
+              elseif ($regOs.ProductName) { [string]$regOs.ProductName } `
+              else { "Windows" }
+
+    $osVersion = if ($os -and $os.Version) { [string]$os.Version } `
+                 elseif ($regOs.DisplayVersion) { "$($regOs.DisplayVersion) ($($regOs.CurrentBuild))" } `
+                 elseif ($regOs.CurrentBuild) { [string]$regOs.CurrentBuild } `
+                 else { "" }
+
+    $currentUser = if ($comp -and $comp.UserName) { [string]$comp.UserName } else { "$env:USERDOMAIN\$env:USERNAME" }
     Write-Host " OK" -ForegroundColor Green
 
-    # B. MẠNG (ACTIVE & INTERNET ONLY)
+    # B. MẠNG (ƯU TIÊN .NET NETWORKINTERFACE - CHẠY 100% KHÔNG CẦN WMI, TRÁNH LỖI 127.0.0.1)
     Write-Host "[2/8] Quet mang (Active)..." -NoNewline
     $finalIP = "127.0.0.1"; $finalMac = ""
     
     try {
-        # Lấy tất cả card mạng đang Connected (Status=2)
-        $activeNics = Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionStatus -eq 2 }
-        
-        foreach ($nic in $activeNics) {
-            $config = Get-WmiObject Win32_NetworkAdapterConfiguration | Where-Object { $_.Index -eq $nic.Index }
-            
-            # Chỉ lấy Card có Default Gateway (Ra được mạng ngoài)
-            if ($config.DefaultIPGateway) {
-                $finalIP = $config.IPAddress | Where-Object { $_ -match '\.' } | Select-Object -First 1
-                $finalMac = $nic.MACAddress
-                break # Lấy được cái đầu tiên ngon thì dừng luôn
+        # 1. Quét bằng .NET NetworkInterface (Chuẩn trên mọi bản Windows, không bao giờ bị Invalid Class WMI)
+        $nics = [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() | Where-Object {
+            $_.OperationalStatus.ToString() -eq "Up" -and `
+            $_.NetworkInterfaceType.ToString() -ne "Loopback" -and `
+            $_.NetworkInterfaceType.ToString() -ne "Tunnel"
+        }
+        foreach ($n in $nics) {
+            $ipProps = $n.GetIPProperties()
+            $hasGateway = ($ipProps.GatewayAddresses | Where-Object { $_.Address.ToString() -ne "0.0.0.0" }).Count -gt 0
+            $ipv4Obj = $ipProps.UnicastAddresses | Where-Object {
+                $_.Address.AddressFamily.ToString() -eq "InterNetwork" -and `
+                $_.Address.ToString() -notmatch "^169\.254\." -and `
+                $_.Address.ToString() -ne "127.0.0.1"
+            } | Select-Object -First 1
+
+            if ($ipv4Obj) {
+                $candidateIP = $ipv4Obj.Address.ToString()
+                $rawMac = $n.GetPhysicalAddress().ToString()
+                $formattedMac = if ($rawMac.Length -eq 12) { ($rawMac -split '(?<=\G..)(?=.)' -join ':') } else { $rawMac }
+                
+                # Ưu tiên card mạng có Default Gateway (kết nối ra router/LAN thật)
+                if ($hasGateway) {
+                    $finalIP = $candidateIP
+                    $finalMac = $formattedMac
+                    break
+                } elseif ($finalIP -eq "127.0.0.1") {
+                    $finalIP = $candidateIP
+                    $finalMac = $formattedMac
+                }
             }
         }
     } catch {}
+
+    # 2. Fallback WMI nếu .NET chưa lấy được
+    if ($finalIP -eq "127.0.0.1") {
+        try {
+            $activeNics = Get-WmiObject Win32_NetworkAdapter -ErrorAction SilentlyContinue | Where-Object { $_.NetConnectionStatus -eq 2 }
+            foreach ($nic in $activeNics) {
+                $config = Get-WmiObject Win32_NetworkAdapterConfiguration -ErrorAction SilentlyContinue | Where-Object { $_.Index -eq $nic.Index }
+                if ($config.DefaultIPGateway) {
+                    $finalIP = $config.IPAddress | Where-Object { $_ -match '\.' } | Select-Object -First 1
+                    $finalMac = $nic.MACAddress
+                    break
+                }
+            }
+        } catch {}
+    }
     Write-Host " OK ($finalIP)" -ForegroundColor Green
 
     # C. PHÂN LOẠI
     $detectedType = "PC"
-    if ($os.Caption -match "Server") { $detectedType = "SERVER" }
-    elseif ((Get-WmiObject Win32_SystemEnclosure).ChassisTypes -contains 9) { $detectedType = "LAPTOP" }
+    if ($osName -match "Server") { $detectedType = "SERVER" }
+    else {
+        try {
+            $chassis = (Get-WmiObject Win32_SystemEnclosure -ErrorAction SilentlyContinue).ChassisTypes
+            if ($chassis -contains 8 -or $chassis -contains 9 -or $chassis -contains 10 -or $chassis -contains 14) {
+                $detectedType = "LAPTOP"
+            }
+        } catch {}
+    }
 
-    # D. RAM CHI TIẾT
+    # D. RAM CHI TIẾT & TỔNG DUNG LƯỢNG RAM (KHÔNG BAO GIỜ BỊ 0 GB KHI WMI HỎNG)
     Write-Host "[3/8] Quet RAM..." -NoNewline
+    $ramGB = 0
+    if ($comp -and $comp.TotalPhysicalMemory) {
+        $ramGB = [math]::Round($comp.TotalPhysicalMemory / 1GB, 0)
+    }
+    if ($ramGB -le 0) {
+        try {
+            Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction SilentlyContinue
+            $ci = New-Object Microsoft.VisualBasic.Devices.ComputerInfo
+            if ($ci.TotalPhysicalMemory) {
+                $ramGB = [math]::Round($ci.TotalPhysicalMemory / 1GB, 0)
+            }
+        } catch {}
+    }
+
     $ramDetails = @()
     try {
-        $pMem = Get-WmiObject Win32_PhysicalMemory
-        foreach ($stick in $pMem) {
-            $busSpeed = if ($stick.Speed) { $stick.Speed } else { "Unknown" }
-            $capacityGB = [math]::Round($stick.Capacity / 1GB, 0)
-            $ramDetails += @{ Slot = $stick.BankLabel; Capacity = "${capacityGB}GB"; Speed = "${busSpeed}MHz"; Manufacturer = $stick.Manufacturer }
+        $pMem = Get-WmiObject Win32_PhysicalMemory -ErrorAction SilentlyContinue
+        if ($pMem) {
+            foreach ($stick in $pMem) {
+                $busSpeed = if ($stick.Speed) { $stick.Speed } else { "Unknown" }
+                $capacityGB = [math]::Round($stick.Capacity / 1GB, 0)
+                $ramDetails += @{ Slot = $stick.BankLabel; Capacity = "${capacityGB}GB"; Speed = "${busSpeed}MHz"; Manufacturer = $stick.Manufacturer }
+            }
         }
     } catch {}
-    Write-Host " OK" -ForegroundColor Green
+
+    if ($ramDetails.Count -eq 0 -and $ramGB -gt 0) {
+        $ramDetails += @{ Slot = "Slot 1"; Capacity = "${ramGB}GB"; Speed = "Standard"; Manufacturer = "System RAM" }
+    }
+    Write-Host " OK (${ramGB}GB)" -ForegroundColor Green
 
     # E. GPU
     Write-Host "[4/8] Quet GPU..." -NoNewline
     $gpuList = @()
     try {
-        $gpus = Get-WmiObject Win32_VideoController
-        foreach ($g in $gpus) {
-            $vram = "N/A"
-            if ($g.AdapterRAM -gt 0) { $vram = "$([math]::Round($g.AdapterRAM / 1GB, 1)) GB" }
-            $gpuList += @{ Name = $g.Name; VRAM = $vram; DriverVersion = $g.DriverVersion }
+        $gpus = Get-WmiObject Win32_VideoController -ErrorAction SilentlyContinue
+        if ($gpus) {
+            foreach ($g in $gpus) {
+                $vram = "N/A"
+                if ($g.AdapterRAM -gt 0) { $vram = "$([math]::Round($g.AdapterRAM / 1GB, 1)) GB" }
+                $gpuList += @{ Name = $g.Name; VRAM = $vram; DriverVersion = $g.DriverVersion }
+            }
         }
     } catch {}
+    if ($gpuList.Count -eq 0) {
+        # Fallback Registry Display Adapters nếu WMI lỗi
+        try {
+            $videoReg = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0*' -ErrorAction SilentlyContinue | Where-Object { $_.DriverDesc }
+            foreach ($v in $videoReg) {
+                $gpuList += @{ Name = [string]$v.DriverDesc; VRAM = "N/A"; DriverVersion = [string]$v.DriverVersion }
+            }
+        } catch {}
+    }
     Write-Host " OK" -ForegroundColor Green
 
     # =========================================================================
@@ -341,51 +457,50 @@ try {
     $peripheralList = @()
     try {
         # Dùng Win32_PnPEntity thay vì Get-PnpDevice để lấy tên chuẩn hơn
-        $pnpEntities = Get-WmiObject Win32_PnPEntity | Where-Object { 
+        $pnpEntities = Get-WmiObject Win32_PnPEntity -ErrorAction SilentlyContinue | Where-Object { 
             ($_.PNPClass -eq "Keyboard" -or $_.PNPClass -eq "Mouse") -and $_.Status -eq "OK" 
         }
         
-        foreach ($p in $pnpEntities) {
-            # Lọc bỏ thiết bị ảo
-            if ($p.Name -notmatch "Terminal Server" -and $p.Name -notmatch "Remote Desktop") {
-                
-                $rawName = $p.Name
-                $brand = "Unknown"
-                $connType = "Other"
+        if ($pnpEntities) {
+            foreach ($p in $pnpEntities) {
+                # Lọc bỏ thiết bị ảo
+                if ($p.Name -notmatch "Terminal Server" -and $p.Name -notmatch "Remote Desktop") {
+                    
+                    $rawName = $p.Name
+                    $brand = "Unknown"
+                    $connType = "Other"
 
-                # 1. Phân tích VID để lấy Brand
-                if ($p.DeviceID -match "VID_([0-9A-F]{4})") {
-                    $vid = $matches[1]
-                    if ($VendorLookup.ContainsKey($vid)) { $brand = $VendorLookup[$vid] }
-                }
-
-                # 2. Xác định kết nối
-                if ($p.DeviceID -match "USB") { $connType = "USB" }
-                elseif ($p.DeviceID -match "BTH") { $connType = "Bluetooth" }
-                elseif ($p.DeviceID -match "Unifying") { $connType = "Wireless (Unifying)" }
-
-                # 3. Xử lý tên hiển thị
-                # Nếu tên là "HID-compliant...", ta cố gắng ghép Brand vào
-                if ($rawName -match "HID-compliant" -or $rawName -match "Standard") {
-                    if ($brand -ne "Unknown") {
-                        $rawName = "$brand Device ($rawName)"
+                    # 1. Phân tích VID để lấy Brand
+                    if ($p.DeviceID -match "VID_([0-9A-F]{4})") {
+                        $vid = $matches[1]
+                        if ($VendorLookup.ContainsKey($vid)) { $brand = $VendorLookup[$vid] }
                     }
-                }
-                
-                # 4. Kiểm tra trùng lặp (Vì 1 chuột có thể sinh ra nhiều dòng HID)
-                # Logic: Chỉ lấy dòng nào có tên khác "HID-compliant..." HOẶC nếu chưa có thiết bị nào
-                $exists = $false
-                foreach ($item in $peripheralList) {
-                    if ($item.Id -eq $p.DeviceID) { $exists = $true; break }
-                }
 
-                if (-not $exists) {
-                    $peripheralList += @{ 
-                        Name = $rawName
-                        Type = $p.PNPClass 
-                        Brand = $brand 
-                        Connection = $connType 
-                        Id = $p.DeviceID 
+                    # 2. Xác định kết nối
+                    if ($p.DeviceID -match "USB") { $connType = "USB" }
+                    elseif ($p.DeviceID -match "BTH") { $connType = "Bluetooth" }
+                    elseif ($p.DeviceID -match "Unifying") { $connType = "Wireless (Unifying)" }
+
+                    # 3. Xử lý tên hiển thị
+                    if ($rawName -match "HID-compliant" -or $rawName -match "Standard") {
+                        if ($brand -ne "Unknown") {
+                            $rawName = "$brand Device ($rawName)"
+                        }
+                    }
+                    
+                    $exists = $false
+                    foreach ($item in $peripheralList) {
+                        if ($item.Id -eq $p.DeviceID) { $exists = $true; break }
+                    }
+
+                    if (-not $exists) {
+                        $peripheralList += @{ 
+                            Name = $rawName
+                            Type = $p.PNPClass 
+                            Brand = $brand 
+                            Connection = $connType 
+                            Id = $p.DeviceID 
+                        }
                     }
                 }
             }
@@ -535,7 +650,7 @@ try {
     if (-not $usedPhysicalDisk) {
         # Fallback WMI chuẩn cho Windows 7 / Windows Server 2008 R2
         try {
-            $wmiDisks = @(Get-WmiObject Win32_DiskDrive | Sort-Object Index)
+            $wmiDisks = @(Get-WmiObject Win32_DiskDrive -ErrorAction SilentlyContinue | Sort-Object Index)
             foreach ($d in $wmiDisks) {
                 $mediaType = if ($d.Model -match "SSD|NVMe|Solid") { "SSD" } else { "HDD" }
                 $wmiStatus = if ($d.Status) { ([string]$d.Status).Trim() } else { "OK" }
@@ -817,19 +932,18 @@ try {
     Write-Host " OK ($($osLicenseInfo.status), $($detectedSoftwareLicenses.Count) licenses)" -ForegroundColor Green
 
     # I. GỬI DỮ LIỆU (HỖ TRỢ CẢ POWERSHELL 2.0 WINDOWS 7 & POWERSHELL 5.1 WINDOWS 10/11)
-    $serialNum = if ($bios -and $bios.SerialNumber) { ([string]$bios.SerialNumber).Trim() } else { "N/A" }
     $hostNameStr = if ($comp -and $comp.Name) { [string]$comp.Name } else { $env:COMPUTERNAME }
 
     $payload = @{
-        serialNumber = $serialNum
-        hostname     = $hostNameStr
+        serialNumber = [string]$serialNum
+        hostname     = [string]$hostNameStr
         username     = [string]$currentUser
-        model        = [string]$comp.Model
-        manufacturer = [string]$comp.Manufacturer
-        osName       = [string]$os.Caption
-        osVersion    = [string]$os.Version
-        cpuName      = [string]$cpu.Name
-        ramGB        = [math]::Round($comp.TotalPhysicalMemory / 1GB, 0)
+        model        = [string]$model
+        manufacturer = [string]$manufacturer
+        osName       = [string]$osName
+        osVersion    = [string]$osVersion
+        cpuName      = [string]$cpuName
+        ramGB        = [int]$ramGB
         
         ramDetails       = $ramDetails      
         gpus             = $gpuList         

@@ -48,7 +48,7 @@ if exist "%~dp0powershell_phancung.ps1" (
     copy /Y "%~dp0powershell_phancung.ps1" "%INSTALL_DIR%\powershell_phancung.ps1" >nul
 ) else (
     echo [1/4] Dang tai powershell_phancung.ps1 truc tiep tu Server %SERVER_IP%...
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$wc = New-Object System.Net.WebClient; $wc.Encoding = [System.Text.Encoding]::UTF8; try { $wc.DownloadFile('http://%SERVER_IP%:90/agent/powershell_phancung.ps1', '%INSTALL_DIR%\powershell_phancung.ps1') } catch { $wc.DownloadFile('http://%SERVER_IP%:3000/api/assets/agent-script/windows', '%INSTALL_DIR%\powershell_phancung.ps1') }"
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$wc = New-Object System.Net.WebClient; $wc.Encoding = [System.Text.Encoding]::UTF8; try { $wc.DownloadFile('http://%SERVER_IP%:90/agent/powershell_phancung.ps1', '%INSTALL_DIR%\powershell_phancung.ps1') } catch { try { $wc.DownloadFile('http://%SERVER_IP%:3000/api/assets/agent-script/windows', '%INSTALL_DIR%\powershell_phancung.ps1') } catch { $wc.DownloadFile('http://%SERVER_IP%:90/api/assets/agent-script/windows', '%INSTALL_DIR%\powershell_phancung.ps1') } }"
 )
 
 REM --- 4. TAO SCRIPT AUTO-UPDATE + RUNNER (TU CAP NHAT TU SERVER KHI CHAY) ---
@@ -56,7 +56,7 @@ REM --- 4. TAO SCRIPT AUTO-UPDATE + RUNNER (TU CAP NHAT TU SERVER KHI CHAY) ---
 echo $ErrorActionPreference = "SilentlyContinue"
 echo $InstallDir = "C:\ProgramData\TowaITAM"
 echo $LocalScript = "$InstallDir\powershell_phancung.ps1"
-echo $ServerUrls = @^("http://%SERVER_IP%:90/agent/powershell_phancung.ps1", "http://%SERVER_IP%:90/api/assets/agent-script/windows"^)
+echo $ServerUrls = @^("http://%SERVER_IP%:90/agent/powershell_phancung.ps1", "http://%SERVER_IP%:3000/api/assets/agent-script/windows", "http://%SERVER_IP%:90/api/assets/agent-script/windows"^)
 echo foreach ^($u in $ServerUrls^) {
 echo     try {
 echo         $req = [System.Net.HttpWebRequest]::Create^($u^)
