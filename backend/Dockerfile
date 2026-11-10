@@ -32,5 +32,5 @@ RUN npx prisma generate
 # 7. Mở port
 EXPOSE 3000
 
-# 8. Lệnh chạy server
-CMD ["npm", "run", "dev"]
+# 8. Tự động đồng bộ bảng Prisma mới (SoftwarePolicy, LicenseKey...) và chạy server
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm run dev"]

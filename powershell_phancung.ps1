@@ -1,6 +1,6 @@
 # =============================================================================
-# TOWA ITAM AGENT - V3.15 (FIXED)
-# Features: Real Mouse Model Name + Active Network Only + Anti-Congestion
+# TOWA ITAM AGENT - V3.20 (MULTI-WINDOWS: WINDOWS 7 PS 2.0 -> WINDOWS 11 PS 5.1+)
+# Features: Win7/PS2.0 Compatible + UTF-8 Safe + Software Normalization + Secret Key
 # =============================================================================
 
 # --- 1. CẤU HÌNH ---
@@ -10,10 +10,104 @@ $ServerPort     = "3000"
 $AgentSecretKey = "@Towa2026!#Secure_Agent_998811_AbCdEf"
 $ApiKey         = $AgentSecretKey
 
-# --- 2. URL ---
+# --- 2. URL & TLS (Tương thích cả Windows 7 .NET 2.0/3.5 và Windows 10/11) ---
 if ($IsDevMode) { $BaseUrl = "http://127.0.0.1:$ServerPort" } else { $BaseUrl = "http://${ServerIP}:${ServerPort}" }
 $ApiUrl = "$BaseUrl/api/assets/sync"
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Enum]::ToObject([Net.SecurityProtocolType], 3072)
+} catch {}
+
+# --- 2B. HÀM HỖ TRỢ TƯƠNG THÍCH WINDOWS 7 (POWERSHELL 2.0) ---
+function ConvertFrom-WmiChars {
+    param ($CharArray)
+    if ($null -eq $CharArray) { return "" }
+    try {
+        $chars = @($CharArray | Where-Object { $_ -gt 0 } | ForEach-Object { [char][int]$_ })
+        return ($chars -join "").Trim()
+    } catch {
+        return ""
+    }
+}
+
+function Escape-JsonString {
+    param ([string]$Str)
+    if ($null -eq $Str) { return "" }
+    $s = $Str.Replace('\', '\\').Replace('"', '\"').Replace("`r", '\r').Replace("`n", '\n').Replace("`t", '\t')
+    return $s
+}
+
+function ConvertTo-JsonManual {
+    param ($Obj)
+    if ($null -eq $Obj) { return "null" }
+    if ($Obj -is [bool]) { if ($Obj) { return "true" } else { return "false" } }
+    if ($Obj -is [int] -or $Obj -is [long] -or $Obj -is [double] -or $Obj -is [decimal]) {
+        return [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, "{0}", $Obj)
+    }
+    if ($Obj -is [string]) {
+        return '"' + (Escape-JsonString $Obj) + '"'
+    }
+    if ($Obj -is [System.Collections.IDictionary]) {
+        $pairs = @()
+        foreach ($k in $Obj.Keys) {
+            $valJson = ConvertTo-JsonManual $Obj[$k]
+            $pairs += ('"' + (Escape-JsonString ([string]$k)) + '":' + $valJson)
+        }
+        return '{' + ($pairs -join ',') + '}'
+    }
+    if ($Obj -is [System.Collections.IEnumerable]) {
+        $items = @()
+        foreach ($item in $Obj) {
+            $items += (ConvertTo-JsonManual $item)
+        }
+        return '[' + ($items -join ',') + ']'
+    }
+    return '"' + (Escape-JsonString ($Obj.ToString())) + '"'
+}
+
+function ConvertTo-JsonCompat {
+    param ($InputObject)
+    if (Get-Command ConvertTo-Json -ErrorAction SilentlyContinue) {
+        return ($InputObject | ConvertTo-Json -Depth 5 -Compress)
+    }
+    try {
+        Add-Type -AssemblyName System.Web.Extensions -ErrorAction Stop
+        $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+        $serializer.MaxJsonLength = 67108864
+        return $serializer.Serialize($InputObject)
+    } catch {
+        return (ConvertTo-JsonManual $InputObject)
+    }
+}
+
+function Send-AgentPayload {
+    param (
+        [string]$Uri,
+        [string]$JsonBody,
+        [string]$SecretKey
+    )
+    $utf8Bytes = [System.Text.Encoding]::UTF8.GetBytes($JsonBody)
+    $req = [System.Net.HttpWebRequest]::Create($Uri)
+    $req.Method = "POST"
+    $req.ContentType = "application/json; charset=utf-8"
+    $req.Timeout = 30000
+    $req.ReadWriteTimeout = 30000
+    $req.Headers.Add("X-Agent-Secret-Key", $SecretKey)
+    $req.Headers.Add("x-api-key", $SecretKey)
+    $req.ContentLength = $utf8Bytes.Length
+
+    $reqStream = $req.GetRequestStream()
+    $reqStream.Write($utf8Bytes, 0, $utf8Bytes.Length)
+    $reqStream.Flush()
+    $reqStream.Close()
+
+    $resp = $req.GetResponse()
+    $respStream = $resp.GetResponseStream()
+    $reader = New-Object System.IO.StreamReader($respStream, [System.Text.Encoding]::UTF8)
+    $respText = $reader.ReadToEnd()
+    $reader.Close()
+    $resp.Close()
+    return $respText
+}
 
 # --- 3. DANH SÁCH VID (MỞ RỘNG - ĐÃ SỬA LỖI TRÙNG LẶP) ---
 $VendorLookup = @{
@@ -168,12 +262,12 @@ try {
     Write-Host "[0/8] Delay $jitter giay..." -ForegroundColor DarkGray
     Start-Sleep -Seconds $jitter
 
-    # A. PHẦN CỨNG CƠ BẢN
+    # A. PHẦN CỨNG CƠ BẢN (Tương thích mảng trên PowerShell 2.0 Windows 7)
     Write-Host "[1/8] Quet he thong co ban..." -NoNewline
-    $bios = Get-WmiObject Win32_BIOS
-    $comp = Get-WmiObject Win32_ComputerSystem
-    $os   = Get-WmiObject Win32_OperatingSystem
-    $cpu  = Get-WmiObject Win32_Processor
+    $bios = @(Get-WmiObject Win32_BIOS)[0]
+    $comp = @(Get-WmiObject Win32_ComputerSystem)[0]
+    $os   = @(Get-WmiObject Win32_OperatingSystem)[0]
+    $cpu  = @(Get-WmiObject Win32_Processor)[0]
     $currentUser = if ($comp.UserName) { $comp.UserName } else { "$env:USERDOMAIN\$env:USERNAME" }
     Write-Host " OK" -ForegroundColor Green
 
@@ -288,7 +382,7 @@ try {
     } catch {}
     Write-Host " OK" -ForegroundColor Green
 
-    # G. PHẦN MỀM (ĐÃ TỐI ƯU: GOM NHÓM OFFICE & LOẠI BỎ GÓI PHỤ TRỢ)
+    # G. PHẦN MỀM (ĐÃ TỐI ƯU: GOM NHÓM OFFICE & LOẠI BỎ GÓI PHỤ TRỢ, TƯƠNG THÍCH WIN7 32/64-BIT)
     Write-Host "[6/8] Quet phan mem..." -NoNewline
     $softwareList = @()
     $softwareMap = @{}
@@ -297,8 +391,15 @@ try {
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
         "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
     )
-    $installed = Get-ItemProperty $regPaths -ErrorAction SilentlyContinue | Where-Object {
-        $_.DisplayName -ne $null -and $_.SystemComponent -ne 1 -and -not $_.ParentKeyName
+    $rawInstalled = @()
+    foreach ($rp in $regPaths) {
+        $parentPath = $rp -replace "\\\*$", ""
+        if (Test-Path $parentPath) {
+            $rawInstalled += @(Get-ItemProperty $rp -ErrorAction SilentlyContinue)
+        }
+    }
+    $installed = $rawInstalled | Where-Object {
+        $_ -ne $null -and $_.DisplayName -ne $null -and $_.SystemComponent -ne 1 -and -not $_.ParentKeyName
     } | Sort-Object -Property DisplayName -Unique
 
     foreach ($app in $installed) {
@@ -364,35 +465,43 @@ try {
     $softwareList = @($softwareMap.Values | Sort-Object { $_.Name })
     Write-Host " OK ($($softwareList.Count) apps)" -ForegroundColor Green
 
-    # H. Ổ CỨNG & MÀN HÌNH (GIỮ NGUYÊN + BỔ SUNG FALLBACK WMI)
+    # H. Ổ CỨNG & MÀN HÌNH (HỖ TRỢ CẢ WINDOWS 7 WMI LẪN WINDOWS 10/11)
     Write-Host "[7/8] Quet O cung & Man hinh..." -NoNewline
     $diskList = @()
-    try {
-        $pDisks = Get-PhysicalDisk | Sort-Object DeviceId -ErrorAction Stop
-        foreach ($d in $pDisks) {
-            $diskList += @{ Index = $d.DeviceId; Model = $d.FriendlyName; MediaType = $d.MediaType; SizeGB = [math]::Round($d.Size / 1GB, 0); Interface = $d.BusType; SerialNumber = if ($d.SerialNumber) { $d.SerialNumber.Trim() } else { "N/A" } }
-        }
-    } catch {
-        # Fallback WMI cho các máy Windows cũ không hỗ trợ Get-PhysicalDisk
+    $usedPhysicalDisk = $false
+    if (Get-Command Get-PhysicalDisk -ErrorAction SilentlyContinue) {
         try {
-            $wmiDisks = Get-WmiObject Win32_DiskDrive | Sort-Object Index
+            $pDisks = @(Get-PhysicalDisk | Sort-Object DeviceId -ErrorAction Stop)
+            foreach ($d in $pDisks) {
+                $diskList += @{ Index = [int]$d.DeviceId; Model = [string]$d.FriendlyName; MediaType = [string]$d.MediaType; SizeGB = [math]::Round($d.Size / 1GB, 0); Interface = [string]$d.BusType; SerialNumber = if ($d.SerialNumber) { $d.SerialNumber.Trim() } else { "N/A" } }
+            }
+            if ($diskList.Count -gt 0) { $usedPhysicalDisk = $true }
+        } catch {}
+    }
+    if (-not $usedPhysicalDisk) {
+        # Fallback WMI chuẩn cho Windows 7 / Windows Server 2008 R2
+        try {
+            $wmiDisks = @(Get-WmiObject Win32_DiskDrive | Sort-Object Index)
             foreach ($d in $wmiDisks) {
-                $mediaType = if ($d.Model -match "SSD|NVMe") { "SSD" } else { "HDD" }
-                $diskList += @{ Index = $d.Index; Model = $d.Model; MediaType = $mediaType; SizeGB = [math]::Round($d.Size / 1GB, 0); Interface = $d.InterfaceType; SerialNumber = if ($d.SerialNumber) { $d.SerialNumber.Trim() } else { "N/A" } }
+                $mediaType = if ($d.Model -match "SSD|NVMe|Solid") { "SSD" } else { "HDD" }
+                $diskList += @{ Index = [int]$d.Index; Model = [string]$d.Model; MediaType = $mediaType; SizeGB = [math]::Round($d.Size / 1GB, 0); Interface = [string]$d.InterfaceType; SerialNumber = if ($d.SerialNumber) { ([string]$d.SerialNumber).Trim() } else { "N/A" } }
             }
         } catch {}
     }
 
     $monitorList = @()
     try {
-        $wmiMonitors = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorID -ErrorAction SilentlyContinue
-        $wmiSizes = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayParams -ErrorAction SilentlyContinue
-        if ($wmiMonitors) {
+        $wmiMonitors = @(Get-WmiObject -Namespace root\wmi -Class WmiMonitorID -ErrorAction SilentlyContinue)
+        $wmiSizes    = @(Get-WmiObject -Namespace root\wmi -Class WmiMonitorBasicDisplayParams -ErrorAction SilentlyContinue)
+        if ($wmiMonitors.Count -gt 0) {
             foreach ($m in $wmiMonitors) {
-                $Manufacturer = [System.Text.Encoding]::ASCII.GetString($m.ManufacturerName).Trim([char]0)
-                $Model = [System.Text.Encoding]::ASCII.GetString($m.UserFriendlyName).Trim([char]0)
-                $Serial = [System.Text.Encoding]::ASCII.GetString($m.SerialNumberID).Trim([char]0)
-                $sizeInfo = $wmiSizes | Where-Object { $_.InstanceName -eq $m.InstanceName }
+                if ($null -eq $m) { continue }
+                $Manufacturer = ConvertFrom-WmiChars $m.ManufacturerName
+                $Model        = ConvertFrom-WmiChars $m.UserFriendlyName
+                $Serial       = ConvertFrom-WmiChars $m.SerialNumberID
+                if (-not $Model) { $Model = "Generic Monitor" }
+                if (-not $Serial) { $Serial = "N/A" }
+                $sizeInfo = $wmiSizes | Where-Object { $_.InstanceName -eq $m.InstanceName } | Select-Object -First 1
                 $screenSize = "N/A"
                 if ($sizeInfo) {
                     $width = $sizeInfo.MaxHorizontalImageSize; $height = $sizeInfo.MaxVerticalImageSize
@@ -404,16 +513,19 @@ try {
     } catch {}
     Write-Host " OK" -ForegroundColor Green
 
-    # I. GỬI DỮ LIỆU
+    # I. GỬI DỮ LIỆU (HỖ TRỢ CẢ POWERSHELL 2.0 WINDOWS 7 & POWERSHELL 5.1 WINDOWS 10/11)
+    $serialNum = if ($bios -and $bios.SerialNumber) { ([string]$bios.SerialNumber).Trim() } else { "N/A" }
+    $hostNameStr = if ($comp -and $comp.Name) { [string]$comp.Name } else { $env:COMPUTERNAME }
+
     $payload = @{
-        serialNumber = $bios.SerialNumber.Trim()
-        hostname     = $comp.Name
-        username     = $currentUser
-        model        = $comp.Model
-        manufacturer = $comp.Manufacturer
-        osName       = $os.Caption
-        osVersion    = $os.Version
-        cpuName      = $cpu.Name
+        serialNumber = $serialNum
+        hostname     = $hostNameStr
+        username     = [string]$currentUser
+        model        = [string]$comp.Model
+        manufacturer = [string]$comp.Manufacturer
+        osName       = [string]$os.Caption
+        osVersion    = [string]$os.Version
+        cpuName      = [string]$cpu.Name
         ramGB        = [math]::Round($comp.TotalPhysicalMemory / 1GB, 0)
         
         ramDetails   = $ramDetails      
@@ -423,21 +535,21 @@ try {
         disks        = $diskList
         monitors     = $monitorList
         software     = $softwareList
-        ipAddress    = $finalIP
-        macAddress   = $finalMac
-        deviceType   = $detectedType 
+        ipAddress    = [string]$finalIP
+        macAddress   = [string]$finalMac
+        deviceType   = [string]$detectedType 
         timestamp    = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
 
-    $jsonPayload = $payload | ConvertTo-Json -Depth 5 
+    $jsonPayload = ConvertTo-JsonCompat -InputObject $payload
     Write-Host "`n>>> GUI DU LIEU VE SERVER ($ApiUrl)..." -ForegroundColor Yellow
     
     # Retry Logic (3 Times)
     $maxRetries = 3; $retryCount = 0; $success = $false
     while (-not $success -and $retryCount -lt $maxRetries) {
         try {
-            $response = Invoke-RestMethod -Uri $ApiUrl -Method Post -ContentType "application/json" -Body $jsonPayload -Headers @{ "X-Agent-Secret-Key" = $AgentSecretKey; "x-api-key" = $ApiKey } -TimeoutSec 30
-            Write-Host " SUCCESS: $($response.message)" -ForegroundColor Green
+            $respText = Send-AgentPayload -Uri $ApiUrl -JsonBody $jsonPayload -SecretKey $AgentSecretKey
+            Write-Host " SUCCESS: Dong bo thanh cong ($hostNameStr)!" -ForegroundColor Green
             $success = $true
         } catch {
             $retryCount++

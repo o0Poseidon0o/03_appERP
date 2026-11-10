@@ -42,7 +42,6 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children, title, subtitle }) =>
             className="absolute inset-0 w-full h-full object-cover scale-105 opacity-80"
         />
         <div className="absolute inset-0 bg-linear-to-r from-slate-950/95 via-slate-900/90 to-blue-950/85" />
-        <div className="absolute inset-0 opacity-[0.15] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] pointer-events-none mix-blend-overlay"></div>
 
         <div className="relative z-10 p-16 text-white max-w-2xl flex flex-col h-full justify-center">
           <div className="mb-8">

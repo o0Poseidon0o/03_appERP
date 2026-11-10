@@ -356,7 +356,12 @@ const AssetList = () => {
             <div className="text-xs space-y-2">
               {record.osName && (
                   <div className="flex items-center gap-1.5 text-slate-700 font-medium truncate bg-slate-50 px-2 py-1 rounded" title={record.osName}>
-                      <WindowsOutlined className="text-blue-500" /> {record.osName} 
+                      {/ubuntu|linux|debian|centos|redhat/i.test(record.osName) ? (
+                          <span className="text-orange-600 font-bold">🐧</span>
+                      ) : (
+                          <WindowsOutlined className="text-blue-500" />
+                      )}
+                      <span className="truncate">{record.osName}</span>
                   </div>
               )}
               <div className="flex flex-col text-slate-500 font-mono gap-1">
