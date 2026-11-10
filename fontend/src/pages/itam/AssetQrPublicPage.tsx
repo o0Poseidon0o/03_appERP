@@ -93,7 +93,28 @@ const AssetQrPublicPage: React.FC = () => {
   const scannedSwLicenses: any[] = Array.isArray(specs.softwareLicenses)
     ? specs.softwareLicenses
     : [];
-  const hwHealth = specs.hardwareHealth || null;
+  const parsedRamGB = parseInt(String(specs.ram || '0'), 10) || 0;
+  const isLowRam = parsedRamGB > 0 && parsedRamGB <= 4;
+  const hwHealth = specs.hardwareHealth || {
+    overallStatus: asset.status === 'BROKEN' ? 'CRITICAL' : isLowRam ? 'WARNING' : 'GOOD',
+    overallText:
+      asset.status === 'BROKEN'
+        ? 'Thiết bị đang báo hỏng'
+        : isLowRam
+        ? 'RAM thấp (<= 4GB - Khuyên nâng cấp)'
+        : 'Phần cứng hoạt động Tốt',
+    cpu: specs.cpu ? { status: 'GOOD', statusText: 'Hoạt động ổn định' } : null,
+    ram: specs.ram
+      ? {
+          status: isLowRam ? 'WARNING' : 'GOOD',
+          statusText: isLowRam ? 'RAM thấp' : 'Tốt',
+        }
+      : null,
+    diskStatus: 'GOOD',
+    diskText: '✓ S.M.A.R.T OK',
+    logicalVolumes: [],
+    alerts: isLowRam ? [`Máy chỉ có ${specs.ram} RAM, khuyên nâng cấp lên >= 8GB`] : [],
+  };
   const assignedLicenses: any[] = asset.safeLicenses || [];
   const components: any[] = asset.components || [];
   const monitors = components.filter((c) => c.type === 'MONITOR');

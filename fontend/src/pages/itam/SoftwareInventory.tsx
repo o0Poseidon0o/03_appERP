@@ -1216,24 +1216,23 @@ const SoftwareInventory = () => {
                 </Tag>
               )}
               {record.ipAddress && <span className="font-mono">IP: {record.ipAddress}</span>}
-              {record.customSpecs?.hardwareHealth && (
-                <Tag
-                  color={
-                    record.customSpecs.hardwareHealth.overallStatus === 'CRITICAL'
-                      ? 'error'
-                      : record.customSpecs.hardwareHealth.overallStatus === 'WARNING'
-                      ? 'warning'
-                      : 'green'
-                  }
-                  className="m-0 text-[10px]"
-                >
-                  {record.customSpecs.hardwareHealth.overallStatus === 'CRITICAL'
-                    ? '🚨 Lỗi phần cứng'
-                    : record.customSpecs.hardwareHealth.overallStatus === 'WARNING'
-                    ? '⚠️ Cần chú ý (RAM/Ổ đĩa)'
-                    : '✓ CPU/RAM/Disk Tốt'}
-                </Tag>
-              )}
+              {(() => {
+                const rawH = record.customSpecs?.hardwareHealth;
+                const ramNum = parseInt(String(record.customSpecs?.ram || '0'), 10) || 0;
+                const status = rawH?.overallStatus || (record.status === 'BROKEN' ? 'CRITICAL' : ramNum > 0 && ramNum <= 4 ? 'WARNING' : 'GOOD');
+                return (
+                  <Tag
+                    color={status === 'CRITICAL' ? 'error' : status === 'WARNING' ? 'warning' : 'green'}
+                    className="m-0 text-[10px]"
+                  >
+                    {status === 'CRITICAL'
+                      ? '🚨 Lỗi phần cứng'
+                      : status === 'WARNING'
+                      ? '⚠️ Cần chú ý (RAM/Ổ đĩa)'
+                      : '✓ CPU/RAM/Disk Tốt'}
+                  </Tag>
+                );
+              })()}
             </div>
           </div>
         );

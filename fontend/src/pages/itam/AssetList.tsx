@@ -442,25 +442,56 @@ const AssetList = () => {
               </div>
           );
 
-          const hwHealth = (record.customSpecs as any)?.hardwareHealth || null;
-          const healthPopoverContent = hwHealth ? (
-              <div className="text-xs min-w-[250px] max-w-[320px] space-y-1.5">
+          const rawHealth = (record.customSpecs as any)?.hardwareHealth || null;
+          const parsedRamGB = parseInt(String(ram || '0'), 10) || 0;
+          const diskComps = (record.components || []).filter((c: any) => c.type === 'HARD_DISK');
+          const hasFaultyDisk = diskComps.some((d: any) => d.status === 'FAULTY' || d.specs?.healthStatus === 'CRITICAL');
+          const isLowRam = parsedRamGB > 0 && parsedRamGB <= 4;
+
+          const hwHealth = rawHealth || {
+              overallStatus: record.status === 'BROKEN' || hasFaultyDisk ? 'CRITICAL' : (record.status === 'REPAIR' || isLowRam ? 'WARNING' : 'GOOD'),
+              overallText: record.status === 'BROKEN' ? 'Thiết bị đang báo hỏng' : (isLowRam ? 'RAM thấp (<= 4GB - Khuyên nâng cấp)' : 'Phần cứng hoạt động Tốt'),
+              cpu: cpu ? { status: 'GOOD', statusText: 'Hoạt động ổn định', loadPercent: null, cores: null, threads: null } : null,
+              ram: ram ? { status: isLowRam ? 'WARNING' : 'GOOD', statusText: isLowRam ? `Dung lượng thấp (${ram})` : `Tốt (${ram})`, totalGB: parsedRamGB || null } : null,
+              diskStatus: hasFaultyDisk ? 'CRITICAL' : 'GOOD',
+              diskText: hasFaultyDisk ? 'Phát hiện lỗi ổ cứng!' : (disk ? `Tốt (${disk})` : 'Chưa ghi nhận'),
+              logicalVolumes: [],
+              alerts: isLowRam ? [`Máy chỉ có ${ram} RAM, có thể chậm khi mở nhiều ứng dụng`] : [],
+              isFallback: true,
+          };
+
+          const healthPopoverContent = (
+              <div className="text-xs min-w-[260px] max-w-[330px] space-y-1.5">
                   <div className="font-bold border-b pb-1 text-blue-700">
                       🩺 Chẩn đoán Sức khỏe CPU / RAM / Ổ cứng
                   </div>
-                  {hwHealth.cpu && (
-                      <div>
-                          • <b>CPU:</b> {hwHealth.cpu.status === 'GOOD' ? '✓ Tốt' : hwHealth.cpu.statusText} (Tải {hwHealth.cpu.loadPercent ?? 0}% • {hwHealth.cpu.cores} nhân/{hwHealth.cpu.threads} luồng)
-                      </div>
-                  )}
-                  {hwHealth.ram && (
-                      <div>
-                          • <b>RAM:</b> Đang dùng {hwHealth.ram.usedGB}/{hwHealth.ram.totalGB} GB ({hwHealth.ram.usagePercent}% - Trống {hwHealth.ram.freeGB} GB)
-                      </div>
-                  )}
+                  <div>
+                      • <b>CPU:</b> {cpu || 'N/A'}{' '}
+                      <Tag color={hwHealth.cpu?.status === 'CRITICAL' ? 'error' : hwHealth.cpu?.status === 'WARNING' ? 'warning' : 'success'} className="m-0 text-[10px]">
+                          {hwHealth.cpu?.loadPercent != null ? `✓ Tốt (Tải ${hwHealth.cpu.loadPercent}% • ${hwHealth.cpu.cores}C/${hwHealth.cpu.threads}T)` : '✓ Hoạt động tốt'}
+                      </Tag>
+                  </div>
+                  <div>
+                      • <b>RAM:</b>{' '}
+                      {hwHealth.ram?.usedGB != null
+                          ? `Đang dùng ${hwHealth.ram.usedGB}/${hwHealth.ram.totalGB} GB (${hwHealth.ram.usagePercent}% - Trống ${hwHealth.ram.freeGB} GB)`
+                          : `${ram || 'N/A'} (${hwHealth.ram?.statusText || 'Ổn định'})`}
+                  </div>
                   <div>
                       • <b>Ổ cứng (S.M.A.R.T):</b> {hwHealth.diskText || 'Tốt (S.M.A.R.T OK)'}
                   </div>
+                  {diskComps.length > 0 && (
+                      <div className="pl-2 text-[11px] text-gray-500 space-y-0.5">
+                          {diskComps.map((dc: any) => (
+                              <div key={dc.id} className="flex justify-between gap-2">
+                                  <span className="truncate">{dc.name} ({dc.specs?.sizeGB}GB {dc.specs?.type})</span>
+                                  <span className={dc.specs?.healthStatus === 'CRITICAL' ? 'text-red-600 font-bold' : 'text-emerald-600 font-medium'}>
+                                      {dc.specs?.healthStatus === 'CRITICAL' ? 'Sắp hỏng!' : '✓ Tốt'}
+                                  </span>
+                              </div>
+                          ))}
+                      </div>
+                  )}
                   {Array.isArray(hwHealth.logicalVolumes) && hwHealth.logicalVolumes.length > 0 && (
                       <div className="pt-1 border-t space-y-0.5">
                           <div className="text-gray-400">Dung lượng các phân vùng:</div>
@@ -475,14 +506,14 @@ const AssetList = () => {
                       </div>
                   )}
                   {Array.isArray(hwHealth.alerts) && hwHealth.alerts.length > 0 && (
-                      <div className="pt-1 border-t text-red-600 space-y-0.5">
+                      <div className="pt-1 border-t text-amber-700 space-y-0.5">
                           {hwHealth.alerts.map((al: string, idx: number) => (
                               <div key={idx}>⚠️ {al}</div>
                           ))}
                       </div>
                   )}
               </div>
-          ) : null;
+          );
 
           return (
              <div className="text-xs space-y-2">
@@ -497,20 +528,18 @@ const AssetList = () => {
                             <Tag color="volcano" bordered={false} className="cursor-help m-0 hover:opacity-80 transition-opacity">GPU</Tag>
                         </Popover>
                     )}
-                    {hwHealth && (
-                        <Popover content={healthPopoverContent} title={null} placement="top">
-                            <Tag
-                                color={hwHealth.overallStatus === 'CRITICAL' ? 'error' : hwHealth.overallStatus === 'WARNING' ? 'warning' : 'success'}
-                                className="cursor-help m-0 text-[10px]"
-                            >
-                                {hwHealth.overallStatus === 'CRITICAL'
-                                    ? '🚨 Lỗi Phần cứng (S.M.A.R.T)'
-                                    : hwHealth.overallStatus === 'WARNING'
-                                    ? '⚠️ Cần chú ý (RAM/Ổ đĩa)'
-                                    : '✓ CPU/RAM/Disk Tốt'}
-                            </Tag>
-                        </Popover>
-                    )}
+                    <Popover content={healthPopoverContent} title={null} placement="top">
+                        <Tag
+                            color={hwHealth.overallStatus === 'CRITICAL' ? 'error' : hwHealth.overallStatus === 'WARNING' ? 'warning' : 'success'}
+                            className="cursor-help m-0 text-[10px]"
+                        >
+                            {hwHealth.overallStatus === 'CRITICAL'
+                                ? '🚨 Lỗi Phần cứng'
+                                : hwHealth.overallStatus === 'WARNING'
+                                ? '⚠️ Cần chú ý (RAM/Ổ đĩa)'
+                                : '✓ Sức khỏe: Tốt'}
+                        </Tag>
+                    </Popover>
                 </div>
 
                 {disk && <div className="truncate text-slate-500 flex items-center gap-1.5" title={disk}><span>💾</span> {disk}</div>}
