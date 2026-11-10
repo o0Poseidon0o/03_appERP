@@ -90,6 +90,10 @@ const AssetQrPublicPage: React.FC = () => {
   const specs = asset.customSpecs || {};
   const osLic = specs.osLicense;
   const officeLic = specs.officeLicense;
+  const scannedSwLicenses: any[] = Array.isArray(specs.softwareLicenses)
+    ? specs.softwareLicenses
+    : [];
+  const hwHealth = specs.hardwareHealth || null;
   const assignedLicenses: any[] = asset.safeLicenses || [];
   const components: any[] = asset.components || [];
   const monitors = components.filter((c) => c.type === 'MONITOR');
@@ -244,6 +248,40 @@ const AssetQrPublicPage: React.FC = () => {
               </div>
             )}
 
+            {/* Các bản quyền phần mềm Agent quét được trực tiếp trên máy (Kaspersky, AutoCAD, Office...) */}
+            {scannedSwLicenses.length > 0 && (
+              <div className="pt-1">
+                <div className="text-xs font-semibold text-gray-500 mb-1.5">
+                  Bản quyền Phần mềm phát hiện trực tiếp trên máy ({scannedSwLicenses.length}):
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {scannedSwLicenses.map((slic: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="p-2 rounded-lg border bg-emerald-50/40 flex justify-between items-center gap-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-800 text-xs truncate">
+                          {slic.softwareName}
+                        </div>
+                        <div className="text-[11px] text-gray-500 font-mono">
+                          {slic.channel ? `${slic.channel}` : ''}
+                          {slic.partialKey ? ` • ${slic.partialKey}` : ''}
+                        </div>
+                      </div>
+                      <Tag
+                        color={slic.status === 'LICENSED' ? 'success' : 'warning'}
+                        className="m-0 text-[10px]"
+                      >
+                        {slic.statusText ||
+                          (slic.status === 'LICENSED' ? 'Đã kích hoạt' : 'Cảnh báo')}
+                      </Tag>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Các Key Bản quyền cấp phát từ hệ thống ERP (Kaspersky, Office, Windows, AutoCAD...) */}
             {assignedLicenses.length > 0 && (
               <div className="pt-1">
@@ -277,29 +315,105 @@ const AssetQrPublicPage: React.FC = () => {
           </div>
         </Card>
 
-        {/* 2. CẤU HÌNH PHẦN CỨNG & NGOẠI VI */}
+        {/* 2. CẤU HÌNH & SỨC KHỎE PHẦN CỨNG (CPU, RAM, Ổ CỨNG S.M.A.R.T) */}
         <Card
           size="small"
           className="rounded-xl shadow-sm"
           title={
-            <div className="flex items-center gap-2 text-blue-700 font-bold">
-              <HddOutlined />
-              <span>Cấu hình Phần cứng & Thiết bị đi kèm</span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-blue-700 font-bold">
+                <HddOutlined />
+                <span>Cấu hình & Sức khỏe Phần cứng (CPU / RAM / Ổ cứng)</span>
+              </div>
+              {hwHealth && (
+                <Tag
+                  color={
+                    hwHealth.overallStatus === 'CRITICAL'
+                      ? 'error'
+                      : hwHealth.overallStatus === 'WARNING'
+                      ? 'warning'
+                      : 'success'
+                  }
+                  icon={
+                    hwHealth.overallStatus === 'GOOD' ? (
+                      <CheckCircleOutlined />
+                    ) : (
+                      <WarningOutlined />
+                    )
+                  }
+                  className="m-0 font-semibold"
+                >
+                  {hwHealth.overallText ||
+                    (hwHealth.overallStatus === 'GOOD'
+                      ? 'Phần cứng hoạt động Tốt'
+                      : 'Cần kiểm tra phần cứng')}
+                </Tag>
+              )}
             </div>
           }
         >
+          {hwHealth?.alerts?.length > 0 && (
+            <div className="mb-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-1">
+              <div className="font-bold">⚠️ Cảnh báo Sức khỏe Phần cứng:</div>
+              {hwHealth.alerts.map((al: string, idx: number) => (
+                <div key={idx}>• {al}</div>
+              ))}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm">
             <div className="bg-slate-50 p-2.5 rounded-lg border">
-              <div className="text-gray-400 text-xs">Vi xử lý (CPU)</div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400 text-xs">Vi xử lý (CPU)</span>
+                {hwHealth?.cpu && (
+                  <Tag
+                    color={
+                      hwHealth.cpu.status === 'GOOD'
+                        ? 'success'
+                        : hwHealth.cpu.status === 'WARNING'
+                        ? 'warning'
+                        : 'error'
+                    }
+                    className="m-0 text-[10px]"
+                  >
+                    {hwHealth.cpu.status === 'GOOD'
+                      ? `✓ Tốt (Tải ${hwHealth.cpu.loadPercent ?? 0}%)`
+                      : hwHealth.cpu.statusText}
+                  </Tag>
+                )}
+              </div>
               <div className="font-bold text-slate-800 mt-0.5">
                 {specs.cpu || 'N/A'}
               </div>
+              {hwHealth?.cpu && (
+                <div className="text-[11px] text-gray-500 mt-1">
+                  Số nhân: <b>{hwHealth.cpu.cores} Cores / {hwHealth.cpu.threads} Threads</b>
+                  {hwHealth.cpu.temperatureC ? ` • Nhiệt độ: ${hwHealth.cpu.temperatureC}°C` : ''}
+                </div>
+              )}
             </div>
 
             <div className="bg-slate-50 p-2.5 rounded-lg border">
-              <div className="text-gray-400 text-xs">Bộ nhớ RAM</div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400 text-xs">Bộ nhớ RAM</span>
+                {hwHealth?.ram && (
+                  <Tag
+                    color={hwHealth.ram.status === 'GOOD' ? 'success' : 'warning'}
+                    className="m-0 text-[10px]"
+                  >
+                    {hwHealth.ram.status === 'GOOD'
+                      ? `✓ Tốt (Đang dùng ${hwHealth.ram.usagePercent}%)`
+                      : `⚠️ Đầy RAM (${hwHealth.ram.usagePercent}%)`}
+                  </Tag>
+                )}
+              </div>
               <div className="font-bold text-slate-800 mt-0.5">
                 {specs.ram || 'N/A'}
+                {hwHealth?.ram && (
+                  <span className="text-xs font-normal text-gray-500 ml-1">
+                    (Trống {hwHealth.ram.freeGB} GB / {hwHealth.ram.totalGB} GB)
+                  </span>
+                )}
               </div>
               {Array.isArray(specs.ramDetails) && specs.ramDetails.length > 0 && (
                 <div className="text-[11px] text-gray-500 mt-1 space-y-0.5">
@@ -313,20 +427,78 @@ const AssetQrPublicPage: React.FC = () => {
             </div>
 
             <div className="bg-slate-50 p-2.5 rounded-lg border">
-              <div className="text-gray-400 text-xs">Ổ cứng lưu trữ (Disk)</div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400 text-xs">Ổ cứng lưu trữ (S.M.A.R.T)</span>
+                {hwHealth?.diskStatus && (
+                  <Tag
+                    color={
+                      hwHealth.diskStatus === 'CRITICAL'
+                        ? 'error'
+                        : hwHealth.diskStatus === 'WARNING'
+                        ? 'warning'
+                        : 'success'
+                    }
+                    className="m-0 text-[10px]"
+                  >
+                    {hwHealth.diskText || '✓ S.M.A.R.T OK'}
+                  </Tag>
+                )}
+              </div>
               <div className="font-bold text-slate-800 mt-0.5">
                 {specs.disk || 'N/A'}
               </div>
               {disks.length > 0 && (
-                <div className="text-[11px] text-gray-500 mt-1 space-y-0.5">
+                <div className="text-[11px] text-gray-500 mt-1 space-y-1">
                   {disks.map((d: any) => (
-                    <div key={d.id}>
-                      • {d.name} ({d.specs?.sizeGB}GB {d.specs?.type}) - SN:{' '}
-                      <span className="font-mono">{d.serialNumber || 'N/A'}</span>
+                    <div key={d.id} className="flex items-center justify-between gap-1">
+                      <span>
+                        • {d.name} ({d.specs?.sizeGB}GB {d.specs?.type}) - SN:{' '}
+                        <span className="font-mono">{d.serialNumber || 'N/A'}</span>
+                      </span>
+                      <Tag
+                        color={
+                          d.specs?.healthStatus === 'CRITICAL'
+                            ? 'error'
+                            : d.specs?.healthStatus === 'WARNING'
+                            ? 'warning'
+                            : 'green'
+                        }
+                        className="m-0 text-[10px]"
+                      >
+                        {d.specs?.healthStatus === 'CRITICAL'
+                          ? 'Sắp hỏng!'
+                          : d.specs?.healthStatus === 'WARNING'
+                          ? 'Cảnh báo'
+                          : 'Tốt'}
+                      </Tag>
                     </div>
                   ))}
                 </div>
               )}
+              {Array.isArray(hwHealth?.logicalVolumes) &&
+                hwHealth.logicalVolumes.length > 0 && (
+                  <div className="mt-2 pt-1.5 border-t space-y-1 text-[11px]">
+                    <div className="text-gray-400">Dung lượng các phân vùng:</div>
+                    {hwHealth.logicalVolumes.map((vol: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between">
+                        <span className="font-mono font-semibold text-slate-700">
+                          Ổ {vol.drive} ({vol.label})
+                        </span>
+                        <span
+                          className={
+                            vol.status === 'CRITICAL'
+                              ? 'text-red-600 font-bold'
+                              : vol.status === 'WARNING'
+                              ? 'text-amber-600 font-semibold'
+                              : 'text-emerald-700'
+                          }
+                        >
+                          Trống {vol.freeGB} GB / {vol.totalGB} GB ({vol.usedPercent}% đã dùng)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
             </div>
 
             <div className="bg-slate-50 p-2.5 rounded-lg border">

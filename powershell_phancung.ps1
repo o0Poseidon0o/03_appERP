@@ -1,18 +1,28 @@
 # =============================================================================
-# TOWA ITAM AGENT - V3.20 (MULTI-WINDOWS: WINDOWS 7 PS 2.0 -> WINDOWS 11 PS 5.1+)
-# Features: Win7/PS2.0 Compatible + UTF-8 Safe + Software Normalization + Secret Key
+# TOWA ITAM AGENT - V3.22 (MULTI-WINDOWS: WINDOWS 7 PS 2.0 -> WINDOWS 11 PS 5.1+)
+# Features: Win7/PS2.0 + Hardware Health (CPU/RAM/SMART Disk) + Multi-Software License Scan
 # =============================================================================
 
 # --- 1. CẤU HÌNH ---
 $IsDevMode      = $false                     # $true = Localhost, $false = Server
 $ServerIP       = "192.168.20.17"
 $ServerPort     = "3000"
+$FallbackPort   = "90"
 $AgentSecretKey = "@Towa2026!#Secure_Agent_998811_AbCdEf"
 $ApiKey         = $AgentSecretKey
 
 # --- 2. URL & TLS (Tương thích cả Windows 7 .NET 2.0/3.5 và Windows 10/11) ---
-if ($IsDevMode) { $BaseUrl = "http://127.0.0.1:$ServerPort" } else { $BaseUrl = "http://${ServerIP}:${ServerPort}" }
-$ApiUrl = "$BaseUrl/api/assets/sync"
+if ($IsDevMode) {
+    $BaseUrl = "http://127.0.0.1:$ServerPort"
+    $CandidateApiUrls = @("$BaseUrl/api/assets/sync")
+} else {
+    $BaseUrl = "http://${ServerIP}:${ServerPort}"
+    $CandidateApiUrls = @(
+        "http://${ServerIP}:${ServerPort}/api/assets/sync",
+        "http://${ServerIP}:${FallbackPort}/api/assets/sync"
+    )
+}
+$ApiUrl = $CandidateApiUrls[0]
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Enum]::ToObject([Net.SecurityProtocolType], 3072)
 } catch {}
@@ -466,15 +476,58 @@ try {
     $softwareList = @($softwareMap.Values | Sort-Object { $_.Name })
     Write-Host " OK ($($softwareList.Count) apps)" -ForegroundColor Green
 
-    # H. Ổ CỨNG & MÀN HÌNH (HỖ TRỢ CẢ WINDOWS 7 WMI LẪN WINDOWS 10/11)
-    Write-Host "[7/8] Quet O cung & Man hinh..." -NoNewline
+    # H. Ổ CỨNG, SỨC KHỎE PHẦN CỨNG (CPU/RAM/DISK S.M.A.R.T) & MÀN HÌNH
+    Write-Host "[7/8] Quet Suc khoe CPU, RAM, O cung (S.M.A.R.T) & Man hinh..." -NoNewline
+    $hardwareAlerts = @()
+
+    # 1. Kiểm tra S.M.A.R.T PredictFailure từ WMI (Hoạt động trên cả Win 7, 10, 11)
+    $smartFailureDetected = $false
+    try {
+        $smartStatuses = @(Get-WmiObject -Namespace root\wmi -Class MSStorageDriver_FailurePredictStatus -ErrorAction SilentlyContinue)
+        foreach ($st in $smartStatuses) {
+            if ($null -ne $st -and $st.PredictFailure -eq $true) {
+                $smartFailureDetected = $true
+            }
+        }
+    } catch {}
+
+    # 2. Quét danh sách Ổ cứng vật lý + Trạng thái Sức khỏe từng ổ
     $diskList = @()
     $usedPhysicalDisk = $false
+    $anyDiskCritical = $false
+    $anyDiskWarning = $false
+
     if (Get-Command Get-PhysicalDisk -ErrorAction SilentlyContinue) {
         try {
             $pDisks = @(Get-PhysicalDisk | Sort-Object DeviceId -ErrorAction Stop)
             foreach ($d in $pDisks) {
-                $diskList += @{ Index = [int]$d.DeviceId; Model = [string]$d.FriendlyName; MediaType = [string]$d.MediaType; SizeGB = [math]::Round($d.Size / 1GB, 0); Interface = [string]$d.BusType; SerialNumber = if ($d.SerialNumber) { $d.SerialNumber.Trim() } else { "N/A" } }
+                $rawHealth = if ($d.HealthStatus) { [string]$d.HealthStatus } else { "Healthy" }
+                $opStatus  = if ($d.OperationalStatus) { ([string]$d.OperationalStatus) } else { "OK" }
+                $dHealth   = "GOOD"
+                $dHealthText = "Tot (Healthy)"
+
+                if ($rawHealth -match "Unhealthy" -or $opStatus -match "Error|Failed|Lost|Predictive" -or $smartFailureDetected) {
+                    $dHealth = "CRITICAL"
+                    $dHealthText = "NGUY HIEM: Sap hong ($rawHealth)"
+                    $anyDiskCritical = $true
+                    $hardwareAlerts += "O cung [$($d.FriendlyName)] bao loi S.M.A.R.T ($rawHealth) - Can sao luu ngay!"
+                } elseif ($rawHealth -match "Warning" -or $opStatus -match "Degraded|Stressed") {
+                    $dHealth = "WARNING"
+                    $dHealthText = "Canh bao ($rawHealth)"
+                    $anyDiskWarning = $true
+                    $hardwareAlerts += "O cung [$($d.FriendlyName)] o trang thai Canh bao ($rawHealth)"
+                }
+
+                $diskList += @{
+                    Index        = [int]$d.DeviceId
+                    Model        = [string]$d.FriendlyName
+                    MediaType    = [string]$d.MediaType
+                    SizeGB       = [math]::Round($d.Size / 1GB, 0)
+                    Interface    = [string]$d.BusType
+                    SerialNumber = if ($d.SerialNumber) { $d.SerialNumber.Trim() } else { "N/A" }
+                    HealthStatus = $dHealth
+                    HealthText   = $dHealthText
+                }
             }
             if ($diskList.Count -gt 0) { $usedPhysicalDisk = $true }
         } catch {}
@@ -485,9 +538,148 @@ try {
             $wmiDisks = @(Get-WmiObject Win32_DiskDrive | Sort-Object Index)
             foreach ($d in $wmiDisks) {
                 $mediaType = if ($d.Model -match "SSD|NVMe|Solid") { "SSD" } else { "HDD" }
-                $diskList += @{ Index = [int]$d.Index; Model = [string]$d.Model; MediaType = $mediaType; SizeGB = [math]::Round($d.Size / 1GB, 0); Interface = [string]$d.InterfaceType; SerialNumber = if ($d.SerialNumber) { ([string]$d.SerialNumber).Trim() } else { "N/A" } }
+                $wmiStatus = if ($d.Status) { ([string]$d.Status).Trim() } else { "OK" }
+                $dHealth = "GOOD"
+                $dHealthText = "Tot (S.M.A.R.T OK)"
+
+                if ($wmiStatus -match "Pred Fail|Error|Fail" -or $smartFailureDetected) {
+                    $dHealth = "CRITICAL"
+                    $dHealthText = "NGUY HIEM: Sap hong ($wmiStatus)"
+                    $anyDiskCritical = $true
+                    $hardwareAlerts += "O cung [$($d.Model)] bao loi S.M.A.R.T ($wmiStatus) - Can kiem tra/thay the!"
+                } elseif ($wmiStatus -ne "OK") {
+                    $dHealth = "WARNING"
+                    $dHealthText = "Canh bao ($wmiStatus)"
+                    $anyDiskWarning = $true
+                }
+
+                $diskList += @{
+                    Index        = [int]$d.Index
+                    Model        = [string]$d.Model
+                    MediaType    = $mediaType
+                    SizeGB       = [math]::Round($d.Size / 1GB, 0)
+                    Interface    = [string]$d.InterfaceType
+                    SerialNumber = if ($d.SerialNumber) { ([string]$d.SerialNumber).Trim() } else { "N/A" }
+                    HealthStatus = $dHealth
+                    HealthText   = $dHealthText
+                }
             }
         } catch {}
+    }
+
+    # 3. Quét Dung lượng & Sức khỏe các phân vùng ổ đĩa (C:, D:, E:...)
+    $logicalVolumes = @()
+    try {
+        $lDisks = @(Get-WmiObject Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue)
+        foreach ($ld in $lDisks) {
+            if ($null -eq $ld -or -not $ld.Size -or $ld.Size -le 0) { continue }
+            $totalGB = [math]::Round($ld.Size / 1GB, 1)
+            $freeGB  = [math]::Round($ld.FreeSpace / 1GB, 1)
+            $usedPct = [math]::Round((($ld.Size - $ld.FreeSpace) / $ld.Size) * 100, 0)
+            $vStatus = "GOOD"
+            if ($usedPct -ge 95 -or $freeGB -lt 3) {
+                $vStatus = "CRITICAL"
+                $anyDiskWarning = $true
+                $hardwareAlerts += "Phan vung $($ld.DeviceID) sap het dung luong (Con trong ${freeGB} GB / ${totalGB} GB - Da dung ${usedPct}%)"
+            } elseif ($usedPct -ge 88 -or $freeGB -lt 10) {
+                $vStatus = "WARNING"
+                $anyDiskWarning = $true
+                $hardwareAlerts += "Phan vung $($ld.DeviceID) con it dung luong trong (${freeGB} GB - Da dung ${usedPct}%)"
+            }
+            $logicalVolumes += @{
+                drive       = [string]$ld.DeviceID
+                label       = if ($ld.VolumeName) { [string]$ld.VolumeName } else { "Local Disk" }
+                totalGB     = $totalGB
+                freeGB      = $freeGB
+                usedPercent = [int]$usedPct
+                status      = $vStatus
+            }
+        }
+    } catch {}
+
+    # 4. Chẩn đoán Sức khỏe CPU
+    $cpuLoad = if ($null -ne $cpu.LoadPercentage) { [int]$cpu.LoadPercentage } else { 10 }
+    $cpuWmiStatus = if ($cpu.Status) { ([string]$cpu.Status).Trim() } else { "OK" }
+    $cpuTempC = $null
+    try {
+        $tz = @(Get-WmiObject -Namespace root\wmi -Class MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue)[0]
+        if ($tz -and $tz.CurrentTemperature -gt 2732) {
+            $cpuTempC = [math]::Round(($tz.CurrentTemperature / 10.0) - 273.15, 0)
+        }
+    } catch {}
+
+    $cpuHealthStatus = "GOOD"
+    $cpuHealthText   = "Tot (Hoat dong on dinh)"
+    if ($cpuWmiStatus -notin @("OK", "")) {
+        $cpuHealthStatus = "CRITICAL"
+        $cpuHealthText   = "Loi CPU ($cpuWmiStatus)"
+        $hardwareAlerts += "CPU bao trang thai bat thuong: $cpuWmiStatus"
+    } elseif (($null -ne $cpuTempC -and $cpuTempC -ge 88) -or $cpuLoad -ge 95) {
+        $cpuHealthStatus = "WARNING"
+        $cpuHealthText   = if ($cpuTempC) { "Tai cao (${cpuLoad}% - ${cpuTempC}C)" } else { "Tai cao (${cpuLoad}%)" }
+    }
+
+    $cpuHealth = @{
+        status        = $cpuHealthStatus
+        statusText    = $cpuHealthText
+        loadPercent   = $cpuLoad
+        cores         = if ($cpu.NumberOfCores) { [int]$cpu.NumberOfCores } else { 1 }
+        threads       = if ($cpu.NumberOfLogicalProcessors) { [int]$cpu.NumberOfLogicalProcessors } else { 1 }
+        clockSpeedMHz = if ($cpu.MaxClockSpeed) { [int]$cpu.MaxClockSpeed } else { 0 }
+        temperatureC  = $cpuTempC
+    }
+
+    # 5. Chẩn đoán Sức khỏe RAM
+    $totalRamGB = [math]::Round($comp.TotalPhysicalMemory / 1GB, 1)
+    $freeRamGB  = if ($os.FreePhysicalMemory) { [math]::Round(($os.FreePhysicalMemory * 1KB) / 1GB, 1) } else { [math]::Round($totalRamGB * 0.4, 1) }
+    $usedRamGB  = [math]::Max(0, [math]::Round($totalRamGB - $freeRamGB, 1))
+    $ramUsagePct = if ($totalRamGB -gt 0) { [int][math]::Round(($usedRamGB / $totalRamGB) * 100, 0) } else { 50 }
+
+    $ramHealthStatus = "GOOD"
+    $ramHealthText   = "Tot (Con trong ${freeRamGB} GB)"
+    if ($ramUsagePct -ge 95) {
+        $ramHealthStatus = "WARNING"
+        $ramHealthText   = "Day RAM (${ramUsagePct}% - Can nang cap)"
+        $hardwareAlerts += "RAM dang su dung ${ramUsagePct}% (${usedRamGB}/${totalRamGB} GB) - De gay treo lag may"
+    } elseif ($ramUsagePct -ge 85 -or $totalRamGB -lt 4) {
+        $ramHealthStatus = "WARNING"
+        $ramHealthText   = "Su dung cao (${ramUsagePct}%)"
+    }
+
+    $ramHealth = @{
+        status       = $ramHealthStatus
+        statusText   = $ramHealthText
+        totalGB      = $totalRamGB
+        usedGB       = $usedRamGB
+        freeGB       = $freeRamGB
+        usagePercent = $ramUsagePct
+        slotsUsed    = $ramDetails.Count
+    }
+
+    # 6. Tổng hợp Sức khỏe Toàn máy (Overall Hardware Health)
+    $overallHealthStatus = "GOOD"
+    $overallHealthText   = "Phan cung hoat dong Tot"
+    if ($anyDiskCritical -or $cpuHealthStatus -eq "CRITICAL") {
+        $overallHealthStatus = "CRITICAL"
+        $overallHealthText   = "NGUY HIEM: Co loi phan cung (O cung/CPU)!"
+    } elseif ($anyDiskWarning -or $ramHealthStatus -eq "WARNING" -or $cpuHealthStatus -eq "WARNING") {
+        $overallHealthStatus = "WARNING"
+        $overallHealthText   = "Can chu y (Day o dia / Tai RAM cao)"
+    }
+
+    $diskOverallStatus = if ($anyDiskCritical) { "CRITICAL" } elseif ($anyDiskWarning) { "WARNING" } else { "GOOD" }
+    $diskOverallText   = if ($anyDiskCritical) { "Nguy co hong o cung (S.M.A.R.T)" } elseif ($anyDiskWarning) { "Can don dep dung luong" } else { "Tot (S.M.A.R.T OK)" }
+
+    $hardwareHealth = @{
+        overallStatus  = $overallHealthStatus
+        overallText    = $overallHealthText
+        cpu            = $cpuHealth
+        ram            = $ramHealth
+        diskStatus     = $diskOverallStatus
+        diskText       = $diskOverallText
+        logicalVolumes = $logicalVolumes
+        alerts         = $hardwareAlerts
+        checkedAt      = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
 
     $monitorList = @()
@@ -512,10 +704,10 @@ try {
             }
         }
     } catch {}
-    Write-Host " OK" -ForegroundColor Green
+    Write-Host " OK ($overallHealthStatus)" -ForegroundColor Green
 
-    # H2. QUÉT BẢN QUYỀN WINDOWS & OFFICE THỰC TẾ ĐANG HOẠT ĐỘNG TRÊN MÁY
-    Write-Host "[8/8] Quet ban quyen Windows & Office tren may..." -NoNewline
+    # H2. QUÉT BẢN QUYỀN WINDOWS, OFFICE & CÁC PHẦN MỀM ĐƯỢC CÀI TRÊN MÁY
+    Write-Host "[8/8] Quet ban quyen Windows, Office & Phan mem tren may..." -NoNewline
     $osLicenseInfo = @{
         productName = [string]$os.Caption
         status      = "UNLICENSED"
@@ -524,6 +716,7 @@ try {
         oemKey      = ""
     }
     $officeLicenseInfo = $null
+    $detectedSoftwareLicenses = @()
 
     try {
         $sls = @(Get-WmiObject SoftwareLicensingService -ErrorAction SilentlyContinue)[0]
@@ -537,6 +730,7 @@ try {
             $lpName = [string]$lp.Name
             $lpDesc = [string]$lp.Description
             $lpStatus = if ($lp.LicenseStatus -eq 1) { "LICENSED" } else { "UNLICENSED" }
+            $lpStatusText = if ($lp.LicenseStatus -eq 1) { "Da kich hoat (Licensed)" } elseif ($lp.LicenseStatus -eq 2 -or $lp.LicenseStatus -eq 3) { "Dung thu (Grace/Trial)" } else { "Chua kich hoat (Unlicensed)" }
             $lpKey = if ($lp.PartialProductKey) { ([string]$lp.PartialProductKey).Trim() } else { "" }
 
             $channel = "RETAIL"
@@ -551,7 +745,7 @@ try {
                     $osLicenseInfo.channel     = $channel
                     $osLicenseInfo.partialKey  = $lpKey
                 }
-            } elseif ($lpName -match "Office") {
+            } elseif ($lpName -match "Office|Visio|Project") {
                 if ($null -eq $officeLicenseInfo -or $lpStatus -eq "LICENSED") {
                     $officeLicenseInfo = @{
                         productName = $lpName
@@ -561,9 +755,66 @@ try {
                     }
                 }
             }
+
+            $detectedSoftwareLicenses += @{
+                softwareName = $lpName
+                status       = $lpStatus
+                statusText   = $lpStatusText
+                channel      = $channel
+                partialKey   = if ($lpKey) { "*****-$lpKey" } else { "" }
+                source       = "WMI_SPP"
+            }
         }
     } catch {}
-    Write-Host " OK ($($osLicenseInfo.status))" -ForegroundColor Green
+
+    # Quét trạng thái bảo vệ & bản quyền Kaspersky trên máy (nếu có cài Kaspersky)
+    try {
+        $hasKaspersky = $softwareList | Where-Object { $_.Name -match "Kaspersky" } | Select-Object -First 1
+        $kaspService  = @(Get-Service -Name "AVP*","kes*","klnagent" -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Running" })[0]
+        if ($hasKaspersky -or $kaspService) {
+            $kaspStatus = if ($kaspService) { "LICENSED" } else { "WARNING" }
+            $kaspText   = if ($kaspService) { "Dang bao ve (Service Running)" } else { "Da cai nhung Dich vu dang tat" }
+            $detectedSoftwareLicenses += @{
+                softwareName = if ($hasKaspersky) { [string]$hasKaspersky.Name } else { "Kaspersky Endpoint Security" }
+                status       = $kaspStatus
+                statusText   = $kaspText
+                channel      = "ENDPOINT_AGENT"
+                partialKey   = if ($hasKaspersky -and $hasKaspersky.Version) { "v$($hasKaspersky.Version)" } else { "" }
+                source       = "SERVICE_CHECK"
+            }
+        }
+    } catch {}
+
+    # Quét bản quyền Autodesk (AutoCAD / Inventor / Revit) từ Registry (nếu có cài)
+    try {
+        $adskPaths = @("HKLM:\SOFTWARE\Autodesk\AutoCAD", "HKLM:\SOFTWARE\WOW6432Node\Autodesk\AutoCAD")
+        foreach ($ap in $adskPaths) {
+            if (Test-Path $ap) {
+                $subKeys = @(Get-ChildItem -Path $ap -Recurse -ErrorAction SilentlyContinue)
+                foreach ($sk in $subKeys) {
+                    try {
+                        $props = Get-ItemProperty -Path $sk.PSPath -ErrorAction SilentlyContinue
+                        if ($props -and ($props.SerialNumber -or $props.ProductName)) {
+                            $sn = [string]$props.SerialNumber
+                            if ($sn -and $sn -ne "000-00000000") {
+                                $detectedSoftwareLicenses += @{
+                                    softwareName = if ($props.ProductName) { [string]$props.ProductName } else { "Autodesk AutoCAD" }
+                                    status       = "LICENSED"
+                                    statusText   = "Co Serial tren may"
+                                    channel      = if ($props.StandaloneNetworkType -eq 1) { "STANDALONE" } else { "VOLUME" }
+                                    partialKey   = $sn
+                                    source       = "REGISTRY"
+                                }
+                                break
+                            }
+                        }
+                    } catch {}
+                }
+            }
+        }
+    } catch {}
+
+    Write-Host " OK ($($osLicenseInfo.status), $($detectedSoftwareLicenses.Count) licenses)" -ForegroundColor Green
 
     # I. GỬI DỮ LIỆU (HỖ TRỢ CẢ POWERSHELL 2.0 WINDOWS 7 & POWERSHELL 5.1 WINDOWS 10/11)
     $serialNum = if ($bios -and $bios.SerialNumber) { ([string]$bios.SerialNumber).Trim() } else { "N/A" }
@@ -580,11 +831,13 @@ try {
         cpuName      = [string]$cpu.Name
         ramGB        = [math]::Round($comp.TotalPhysicalMemory / 1GB, 0)
         
-        ramDetails    = $ramDetails      
-        gpus          = $gpuList         
-        peripherals   = $peripheralList 
-        osLicense     = $osLicenseInfo
-        officeLicense = $officeLicenseInfo
+        ramDetails       = $ramDetails      
+        gpus             = $gpuList         
+        peripherals      = $peripheralList 
+        osLicense        = $osLicenseInfo
+        officeLicense    = $officeLicenseInfo
+        softwareLicenses = $detectedSoftwareLicenses
+        hardwareHealth   = $hardwareHealth
         
         disks        = $diskList
         monitors     = $monitorList
@@ -598,16 +851,22 @@ try {
     $jsonPayload = ConvertTo-JsonCompat -InputObject $payload
     Write-Host "`n>>> GUI DU LIEU VE SERVER ($ApiUrl)..." -ForegroundColor Yellow
     
-    # Retry Logic (3 Times)
+    # Retry Logic (3 Times, tự động dự phòng qua cổng 90 nếu cổng 3000 bị chặn)
     $maxRetries = 3; $retryCount = 0; $success = $false
     while (-not $success -and $retryCount -lt $maxRetries) {
-        try {
-            $respText = Send-AgentPayload -Uri $ApiUrl -JsonBody $jsonPayload -SecretKey $AgentSecretKey
-            Write-Host " SUCCESS: Dong bo thanh cong ($hostNameStr)!" -ForegroundColor Green
-            $success = $true
-        } catch {
+        foreach ($targetUrl in $CandidateApiUrls) {
+            if ($success) { break }
+            try {
+                $respText = Send-AgentPayload -Uri $targetUrl -JsonBody $jsonPayload -SecretKey $AgentSecretKey
+                Write-Host " SUCCESS: Dong bo thanh cong ($hostNameStr -> $targetUrl)!" -ForegroundColor Green
+                $success = $true
+            } catch {
+                $lastErr = $_.Exception.Message
+            }
+        }
+        if (-not $success) {
             $retryCount++
-            Write-Host " FAILED ($retryCount/$maxRetries): $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host " FAILED ($retryCount/$maxRetries): $lastErr" -ForegroundColor Red
             if ($retryCount -lt $maxRetries) { Start-Sleep -Seconds (5 * $retryCount) }
         }
     }

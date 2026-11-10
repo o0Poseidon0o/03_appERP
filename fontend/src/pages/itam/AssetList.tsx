@@ -441,17 +441,73 @@ const AssetList = () => {
               </div>
           );
 
+          const hwHealth = (record.customSpecs as any)?.hardwareHealth || null;
+          const healthPopoverContent = hwHealth ? (
+              <div className="text-xs min-w-[250px] max-w-[320px] space-y-1.5">
+                  <div className="font-bold border-b pb-1 text-blue-700">
+                      🩺 Chẩn đoán Sức khỏe CPU / RAM / Ổ cứng
+                  </div>
+                  {hwHealth.cpu && (
+                      <div>
+                          • <b>CPU:</b> {hwHealth.cpu.status === 'GOOD' ? '✓ Tốt' : hwHealth.cpu.statusText} (Tải {hwHealth.cpu.loadPercent ?? 0}% • {hwHealth.cpu.cores} nhân/{hwHealth.cpu.threads} luồng)
+                      </div>
+                  )}
+                  {hwHealth.ram && (
+                      <div>
+                          • <b>RAM:</b> Đang dùng {hwHealth.ram.usedGB}/{hwHealth.ram.totalGB} GB ({hwHealth.ram.usagePercent}% - Trống {hwHealth.ram.freeGB} GB)
+                      </div>
+                  )}
+                  <div>
+                      • <b>Ổ cứng (S.M.A.R.T):</b> {hwHealth.diskText || 'Tốt (S.M.A.R.T OK)'}
+                  </div>
+                  {Array.isArray(hwHealth.logicalVolumes) && hwHealth.logicalVolumes.length > 0 && (
+                      <div className="pt-1 border-t space-y-0.5">
+                          <div className="text-gray-400">Dung lượng các phân vùng:</div>
+                          {hwHealth.logicalVolumes.map((v: any, idx: number) => (
+                              <div key={idx} className="flex justify-between">
+                                  <span className="font-mono font-semibold">Ổ {v.drive}</span>
+                                  <span className={v.status === 'CRITICAL' ? 'text-red-600 font-bold' : v.status === 'WARNING' ? 'text-amber-600' : 'text-emerald-700'}>
+                                      Trống {v.freeGB}/{v.totalGB} GB ({v.usedPercent}%)
+                                  </span>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+                  {Array.isArray(hwHealth.alerts) && hwHealth.alerts.length > 0 && (
+                      <div className="pt-1 border-t text-red-600 space-y-0.5">
+                          {hwHealth.alerts.map((al: string, idx: number) => (
+                              <div key={idx}>⚠️ {al}</div>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          ) : null;
+
           return (
              <div className="text-xs space-y-2">
                 {cpu && <div className="truncate font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded" title={cpu}>CPU: {cpu}</div>}
                 
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap">
                     <Popover content={ramContent} title={null} placement="top">
                         <Tag color="blue" bordered={false} className="cursor-help m-0 hover:opacity-80 transition-opacity">RAM: {ram}</Tag>
                     </Popover>
                     {Array.isArray(gpus) && gpus.length > 0 && (
                         <Popover content={gpuContent} title={null} placement="top">
                             <Tag color="volcano" bordered={false} className="cursor-help m-0 hover:opacity-80 transition-opacity">GPU</Tag>
+                        </Popover>
+                    )}
+                    {hwHealth && (
+                        <Popover content={healthPopoverContent} title={null} placement="top">
+                            <Tag
+                                color={hwHealth.overallStatus === 'CRITICAL' ? 'error' : hwHealth.overallStatus === 'WARNING' ? 'warning' : 'success'}
+                                className="cursor-help m-0 text-[10px]"
+                            >
+                                {hwHealth.overallStatus === 'CRITICAL'
+                                    ? '🚨 Lỗi Phần cứng (S.M.A.R.T)'
+                                    : hwHealth.overallStatus === 'WARNING'
+                                    ? '⚠️ Cần chú ý (RAM/Ổ đĩa)'
+                                    : '✓ CPU/RAM/Disk Tốt'}
+                            </Tag>
                         </Popover>
                     )}
                 </div>

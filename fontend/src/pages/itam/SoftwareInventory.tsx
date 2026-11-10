@@ -1216,6 +1216,24 @@ const SoftwareInventory = () => {
                 </Tag>
               )}
               {record.ipAddress && <span className="font-mono">IP: {record.ipAddress}</span>}
+              {record.customSpecs?.hardwareHealth && (
+                <Tag
+                  color={
+                    record.customSpecs.hardwareHealth.overallStatus === 'CRITICAL'
+                      ? 'error'
+                      : record.customSpecs.hardwareHealth.overallStatus === 'WARNING'
+                      ? 'warning'
+                      : 'green'
+                  }
+                  className="m-0 text-[10px]"
+                >
+                  {record.customSpecs.hardwareHealth.overallStatus === 'CRITICAL'
+                    ? '🚨 Lỗi phần cứng'
+                    : record.customSpecs.hardwareHealth.overallStatus === 'WARNING'
+                    ? '⚠️ Cần chú ý (RAM/Ổ đĩa)'
+                    : '✓ CPU/RAM/Disk Tốt'}
+                </Tag>
+              )}
             </div>
           </div>
         );
@@ -1282,24 +1300,44 @@ const SoftwareInventory = () => {
       },
     },
     {
-      title: 'Bản quyền Office & Key Phần mềm đã gán trên máy',
+      title: 'Bản quyền Office & Phần mềm trên máy',
       key: 'softwareLicenses',
       render: (_, record) => {
         const offLic = record.customSpecs?.officeLicense;
+        const scannedLicenses: any[] = Array.isArray(record.customSpecs?.softwareLicenses)
+          ? record.customSpecs.softwareLicenses.filter(
+              (s: any) => !/Windows/i.test(s.softwareName || '')
+            )
+          : [];
         const assignedKeys: any[] = record.licenseAssignments || [];
 
         return (
           <div className="flex flex-col gap-1.5">
-            {offLic && (
+            {scannedLicenses.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1">
-                <Tag
-                  color={offLic.status === 'LICENSED' ? 'blue' : 'orange'}
-                  className="m-0 text-[11px]"
-                >
-                  Office trên máy: {offLic.statusText}
-                  {offLic.partialKey ? ` (*${offLic.partialKey})` : ''}
-                </Tag>
+                {scannedLicenses.map((slic: any, idx: number) => (
+                  <Tag
+                    key={idx}
+                    color={slic.status === 'LICENSED' ? 'blue' : 'orange'}
+                    className="m-0 text-[11px]"
+                  >
+                    ✓ <b>{slic.softwareName}</b>: {slic.statusText || slic.status}
+                    {slic.partialKey ? ` (${slic.partialKey})` : ''}
+                  </Tag>
+                ))}
               </div>
+            ) : (
+              offLic && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <Tag
+                    color={offLic.status === 'LICENSED' ? 'blue' : 'orange'}
+                    className="m-0 text-[11px]"
+                  >
+                    Office trên máy: {offLic.statusText}
+                    {offLic.partialKey ? ` (*${offLic.partialKey})` : ''}
+                  </Tag>
+                </div>
+              )
             )}
 
             {assignedKeys.length > 0 ? (
@@ -1321,7 +1359,8 @@ const SoftwareInventory = () => {
                 ))}
               </div>
             ) : (
-              !offLic && (
+              !offLic &&
+              scannedLicenses.length === 0 && (
                 <span className="text-xs text-gray-400 italic">
                   Chưa gán Key ERP nào (Kaspersky, Office, Windows, AutoCAD...)
                 </span>

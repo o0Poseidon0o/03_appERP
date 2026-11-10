@@ -56,6 +56,8 @@ interface AgentPayload {
     SizeGB: number;
     Interface: string;
     SerialNumber: string;
+    HealthStatus?: string;
+    HealthText?: string;
   }>;
   
   software: Array<{
@@ -77,6 +79,50 @@ interface AgentPayload {
     status?: string;
     channel?: string;
     partialKey?: string;
+  } | null;
+
+  softwareLicenses?: Array<{
+    softwareName: string;
+    status: string;
+    statusText?: string;
+    channel?: string;
+    partialKey?: string;
+    source?: string;
+  }>;
+
+  hardwareHealth?: {
+    overallStatus: "GOOD" | "WARNING" | "CRITICAL" | string;
+    overallText?: string;
+    cpu?: {
+      status: string;
+      statusText?: string;
+      loadPercent?: number;
+      cores?: number;
+      threads?: number;
+      clockSpeedMHz?: number;
+      temperatureC?: number | null;
+    };
+    ram?: {
+      status: string;
+      statusText?: string;
+      totalGB?: number;
+      usedGB?: number;
+      freeGB?: number;
+      usagePercent?: number;
+      slotsUsed?: number;
+    };
+    diskStatus?: string;
+    diskText?: string;
+    logicalVolumes?: Array<{
+      drive: string;
+      label?: string;
+      totalGB: number;
+      freeGB: number;
+      usedPercent: number;
+      status: string;
+    }>;
+    alerts?: string[];
+    checkedAt?: string;
   } | null;
 }
 
@@ -270,6 +316,8 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
           gpus: data.gpus || [],
           osLicense: data.osLicense || (existingAsset?.customSpecs as any)?.osLicense || null,
           officeLicense: data.officeLicense || (existingAsset?.customSpecs as any)?.officeLicense || null,
+          softwareLicenses: data.softwareLicenses || (existingAsset?.customSpecs as any)?.softwareLicenses || [],
+          hardwareHealth: data.hardwareHealth || (existingAsset?.customSpecs as any)?.hardwareHealth || null,
           lastAgentSync: data.timestamp,
         },
       };
@@ -336,12 +384,14 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
                 type: "HARD_DISK",
                 name: d.Model || "Unknown Disk",
                 serialNumber: d.SerialNumber !== "N/A" ? d.SerialNumber : null,
-                status: "ACTIVE",
+                status: d.HealthStatus === "CRITICAL" ? "FAULTY" : "ACTIVE",
                 specs: {
                     sizeGB: d.SizeGB,
                     interface: d.Interface,
                     type: d.MediaType,
                     index: d.Index,
+                    healthStatus: d.HealthStatus || "GOOD",
+                    healthText: d.HealthText || "Tốt (S.M.A.R.T OK)",
                 },
             }));
             await tx.assetComponent.createMany({ data: diskComponents });
@@ -501,6 +551,13 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
                  io.emit("hardware_alert", {
                      message: `🚨 Cảnh báo bảo mật: Máy ${uniqueHostname} cài phần mềm cấm!`,
                      details: blacklistedFound.map((s) => `Phần mềm cấm: ${s}`),
+                 });
+            }
+
+            if (data.hardwareHealth?.overallStatus === "CRITICAL" && Array.isArray(data.hardwareHealth.alerts) && data.hardwareHealth.alerts.length > 0) {
+                 io.emit("hardware_alert", {
+                     message: `🚨 Cảnh báo sức khỏe phần cứng (S.M.A.R.T): Máy ${uniqueHostname}!`,
+                     details: data.hardwareHealth.alerts,
                  });
             }
         }

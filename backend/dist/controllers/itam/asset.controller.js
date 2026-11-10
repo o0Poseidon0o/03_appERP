@@ -133,6 +133,8 @@ const syncAssetAgent = async (req, res, next) => {
                     gpus: data.gpus || [],
                     osLicense: data.osLicense || existingAsset?.customSpecs?.osLicense || null,
                     officeLicense: data.officeLicense || existingAsset?.customSpecs?.officeLicense || null,
+                    softwareLicenses: data.softwareLicenses || existingAsset?.customSpecs?.softwareLicenses || [],
+                    hardwareHealth: data.hardwareHealth || existingAsset?.customSpecs?.hardwareHealth || null,
                     lastAgentSync: data.timestamp,
                 },
             };
@@ -187,12 +189,14 @@ const syncAssetAgent = async (req, res, next) => {
                         type: "HARD_DISK",
                         name: d.Model || "Unknown Disk",
                         serialNumber: d.SerialNumber !== "N/A" ? d.SerialNumber : null,
-                        status: "ACTIVE",
+                        status: d.HealthStatus === "CRITICAL" ? "FAULTY" : "ACTIVE",
                         specs: {
                             sizeGB: d.SizeGB,
                             interface: d.Interface,
                             type: d.MediaType,
                             index: d.Index,
+                            healthStatus: d.HealthStatus || "GOOD",
+                            healthText: d.HealthText || "Tốt (S.M.A.R.T OK)",
                         },
                     }));
                     await tx.assetComponent.createMany({ data: diskComponents });
@@ -330,6 +334,12 @@ const syncAssetAgent = async (req, res, next) => {
                     io.emit("hardware_alert", {
                         message: `🚨 Cảnh báo bảo mật: Máy ${uniqueHostname} cài phần mềm cấm!`,
                         details: blacklistedFound.map((s) => `Phần mềm cấm: ${s}`),
+                    });
+                }
+                if (data.hardwareHealth?.overallStatus === "CRITICAL" && Array.isArray(data.hardwareHealth.alerts) && data.hardwareHealth.alerts.length > 0) {
+                    io.emit("hardware_alert", {
+                        message: `🚨 Cảnh báo sức khỏe phần cứng (S.M.A.R.T): Máy ${uniqueHostname}!`,
+                        details: data.hardwareHealth.alerts,
                     });
                 }
             }

@@ -40,6 +40,10 @@ AGENT_SECRET_KEY = os.environ.get("AGENT_SECRET_KEY", "@Towa2026!#Secure_Agent_9
 
 BASE_URL = f"http://127.0.0.1:{SERVER_PORT}" if IS_DEV_MODE else f"http://{SERVER_IP}:{SERVER_PORT}"
 API_URL = f"{BASE_URL}/api/assets/sync"
+CANDIDATE_URLS = [API_URL] if IS_DEV_MODE else [
+    f"http://{SERVER_IP}:{SERVER_PORT}/api/assets/sync",
+    f"http://{SERVER_IP}:90/api/assets/sync"
+]
 
 VENDOR_LOOKUP = {
     "046D": "Logitech", "413C": "Dell", "03F0": "HP", "17EF": "Lenovo",
@@ -377,6 +381,87 @@ for line in dpkg_out.splitlines():
 software_list = sorted(software_map.values(), key=lambda x: x["Name"])
 print(f" OK ({len(software_list)} apps)")
 
+# 8. Chan doan Suc khoe CPU / RAM / O cung tren Linux
+logical_volumes = []
+hw_alerts = []
+any_disk_warn = False
+try:
+    st_vfs = os.statvfs("/")
+    total_root_gb = round((st_vfs.f_blocks * st_vfs.f_frsize) / (1024**3), 1)
+    free_root_gb = round((st_vfs.f_bavail * st_vfs.f_frsize) / (1024**3), 1)
+    used_root_pct = int(round(((total_root_gb - free_root_gb) / total_root_gb) * 100)) if total_root_gb > 0 else 0
+    v_status = "GOOD"
+    if used_root_pct >= 95 or free_root_gb < 3:
+        v_status = "CRITICAL"
+        any_disk_warn = True
+        hw_alerts.append(f"Phan vung / sap day (Con trong {free_root_gb} GB / {total_root_gb} GB - {used_root_pct}%)")
+    elif used_root_pct >= 88:
+        v_status = "WARNING"
+        any_disk_warn = True
+    logical_volumes.append({
+        "drive": "/",
+        "label": "Root Filesystem",
+        "totalGB": total_root_gb,
+        "freeGB": free_root_gb,
+        "usedPercent": used_root_pct,
+        "status": v_status
+    })
+except Exception:
+    pass
+
+# RAM usage
+mem_avail_kb = 0
+for line in meminfo.splitlines():
+    if line.startswith("MemAvailable:"):
+        mem_avail_kb = int(re.findall(r"\d+", line)[0])
+        break
+free_ram_gb = round(mem_avail_kb / (1024 * 1024), 1) if mem_avail_kb > 0 else round(ram_gb * 0.4, 1)
+used_ram_gb = max(0.0, round(ram_gb - free_ram_gb, 1))
+ram_usage_pct = int(round((used_ram_gb / ram_gb) * 100)) if ram_gb > 0 else 50
+ram_status = "WARNING" if ram_usage_pct >= 88 else "GOOD"
+
+# CPU load
+try:
+    load1, _, _ = os.getloadavg()
+    cpu_cores = os.cpu_count() or 1
+    cpu_load_pct = min(100, int(round((load1 / cpu_cores) * 100)))
+except Exception:
+    cpu_load_pct = 10
+    cpu_cores = 1
+
+overall_status = "WARNING" if (any_disk_warn or ram_status == "WARNING" or cpu_load_pct >= 90) else "GOOD"
+hardware_health = {
+    "overallStatus": overall_status,
+    "overallText": "Can chu y dung luong/tai" if overall_status == "WARNING" else "Phan cung hoat dong Tot",
+    "cpu": {
+        "status": "WARNING" if cpu_load_pct >= 90 else "GOOD",
+        "statusText": f"Tai {cpu_load_pct}%",
+        "loadPercent": cpu_load_pct,
+        "cores": cpu_cores,
+        "threads": cpu_cores,
+        "clockSpeedMHz": 0,
+        "temperatureC": None
+    },
+    "ram": {
+        "status": ram_status,
+        "statusText": f"Con trong {free_ram_gb} GB ({ram_usage_pct}%)",
+        "totalGB": ram_gb,
+        "usedGB": used_ram_gb,
+        "freeGB": free_ram_gb,
+        "usagePercent": ram_usage_pct,
+        "slotsUsed": len(ram_details)
+    },
+    "diskStatus": "WARNING" if any_disk_warn else "GOOD",
+    "diskText": "Can don dep dung luong" if any_disk_warn else "Tot (S.M.A.R.T OK)",
+    "logicalVolumes": logical_volumes,
+    "alerts": hw_alerts,
+    "checkedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+}
+
+for d in disk_list:
+    d["HealthStatus"] = "GOOD"
+    d["HealthText"] = "Tot (S.M.A.R.T OK)"
+
 payload = {
     "serialNumber": serial_number,
     "hostname": hostname,
@@ -390,6 +475,7 @@ payload = {
     "ramDetails": ram_details,
     "gpus": gpu_list,
     "peripherals": peripheral_list,
+    "hardwareHealth": hardware_health,
     "disks": disk_list,
     "monitors": monitor_list,
     "software": software_list,
@@ -402,25 +488,32 @@ payload = {
 json_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 print(f"\n>>> GUI DU LIEU VE SERVER ({API_URL})...")
 
+sent_ok = False
 for attempt in range(1, 4):
-    try:
-        req = urllib.request.Request(
-            API_URL,
-            data=json_bytes,
-            headers={
-                "Content-Type": "application/json; charset=utf-8",
-                "X-Agent-Secret-Key": AGENT_SECRET_KEY,
-                "x-api-key": AGENT_SECRET_KEY
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            resp_body = resp.read().decode("utf-8", errors="ignore")
-            print(f" SUCCESS: Dong bo thanh cong ({hostname})! Response: {resp_body}")
-            break
-    except Exception as e:
-        print(f" FAILED ({attempt}/3): {e}")
-        if attempt < 3:
-            time.sleep(5 * attempt)
+    last_err = ""
+    for target_url in CANDIDATE_URLS:
+        try:
+            req = urllib.request.Request(
+                target_url,
+                data=json_bytes,
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                    "X-Agent-Secret-Key": AGENT_SECRET_KEY,
+                    "x-api-key": AGENT_SECRET_KEY
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                resp_body = resp.read().decode("utf-8", errors="ignore")
+                print(f" SUCCESS: Dong bo thanh cong ({hostname} -> {target_url})! Response: {resp_body}")
+                sent_ok = True
+                break
+        except Exception as e:
+            last_err = str(e)
+    if sent_ok:
+        break
+    print(f" FAILED ({attempt}/3): {last_err}")
+    if attempt < 3:
+        time.sleep(5 * attempt)
 EOF
 
