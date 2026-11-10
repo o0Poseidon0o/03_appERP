@@ -6,7 +6,7 @@ import {
   LaptopOutlined, CloudServerOutlined, ToolOutlined, UserOutlined,
   FundProjectionScreenOutlined, GlobalOutlined, 
   ThunderboltOutlined, SearchOutlined, FileExcelOutlined,
-  QrcodeOutlined, PrinterOutlined, ScanOutlined
+  QrcodeOutlined, PrinterOutlined, ScanOutlined, DownloadOutlined, CopyOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import * as XLSX from 'xlsx';
@@ -65,6 +65,7 @@ const AssetList = () => {
   const [qrLayoutMode, setQrLayoutMode] = useState<'THERMAL_50x30' | 'A4_GRID'>('THERMAL_50x30');
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   const [scannedAsset, setScannedAsset] = useState<IAsset | null>(null);
+  const [agentInstallerModalOpen, setAgentInstallerModalOpen] = useState(false);
   const qrPrintAreaRef = useRef<HTMLDivElement>(null);
 
   const handleOpenBatchPrintQR = (assetsToPrint?: IAsset[]) => {
@@ -698,6 +699,16 @@ const AssetList = () => {
             />
             
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                <Tooltip title="Tải bộ cài Agent tự động gửi cấu hình cho máy không Join Domain (Win 7/10/11 & Ubuntu)">
+                    <Button
+                        icon={<DownloadOutlined />}
+                        onClick={() => setAgentInstallerModalOpen(true)}
+                        className="flex-shrink-0 text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100"
+                    >
+                        Bộ cài Agent
+                    </Button>
+                </Tooltip>
+
                 <Tooltip title="Quét mã QR trên thiết bị bằng Camera điện thoại / Máy quét">
                     <Button
                         icon={<ScanOutlined />}
@@ -984,6 +995,134 @@ const AssetList = () => {
               </div>
             </div>
           ))}
+        </div>
+      </Modal>
+
+      {/* MODAL TẢI & CÀI ĐẶT TỰ ĐỘNG AGENT CHO MÁY KHÔNG JOIN DOMAIN (WIN 7/10/11 & UBUNTU) */}
+      <Modal
+        title={
+          <div className="flex items-center gap-2 text-amber-700 font-bold">
+            <DownloadOutlined />
+            <span>Bộ cài Tự động Đồng bộ cho máy KHÔNG Join Domain (Workgroup)</span>
+          </div>
+        }
+        open={agentInstallerModalOpen}
+        onCancel={() => setAgentInstallerModalOpen(false)}
+        width={720}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setAgentInstallerModalOpen(false)}>
+            Đã hiểu & Đóng
+          </Button>,
+        ]}
+      >
+        <div className="space-y-4 text-xs sm:text-sm">
+          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900">
+            💡 <b>Giải pháp cho máy không Join Domain (Workgroup / Laptop cá nhân / Ubuntu):</b>{' '}
+            Bạn chỉ cần chạy bộ cài dưới đây <b>1 lần duy nhất</b> trên máy người dùng. Bộ cài sẽ tự động đăng ký{' '}
+            <b>Task Scheduler (Windows 7/10/11)</b> hoặc <b>Cronjob (Ubuntu)</b> chạy ngầm với quyền <code>SYSTEM/root</code>{' '}
+            mỗi khi bật máy và lúc 08:45 sáng hàng ngày (đồng thời tự động tải bản script mới nhất từ Server).
+          </div>
+
+          {/* 1. WINDOWS 7 / 10 / 11 */}
+          <div className="p-3.5 rounded-xl border bg-slate-50 space-y-2.5">
+            <div className="font-bold text-slate-800 flex items-center justify-between">
+              <span>🪟 Cách 1: Cho máy Windows 7, Windows 10, Windows 11 (Không Join Domain)</span>
+              <Tag color="blue">Chạy 1 lần duy nhất</Tag>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="primary"
+                icon={<DownloadOutlined />}
+                href="/agent/cai_dat_tu_dong_windows.bat"
+                download="cai_dat_tu_dong_windows.bat"
+              >
+                1. Tải cai_dat_tu_dong_windows.bat
+              </Button>
+              <Button
+                icon={<DownloadOutlined />}
+                href="/agent/powershell_phancung.ps1"
+                download="powershell_phancung.ps1"
+              >
+                2. Tải powershell_phancung.ps1
+              </Button>
+            </div>
+
+            <div className="text-gray-600 text-xs">
+              👉 <b>Cách dùng:</b> Tải <code>cai_dat_tu_dong_windows.bat</code> về máy đó và nhấp đúp chuột chạy (bấm <b>Yes</b> khi hỏi quyền Admin). File sẽ tự động tải <code>powershell_phancung.ps1</code> từ Server về <code>C:\ProgramData\TowaITAM</code> và tạo lịch tự động chạy ngầm mỗi khi mở máy!
+            </div>
+
+            <div className="pt-1">
+              <div className="text-xs font-semibold text-gray-500 mb-1">
+                Hoặc mở <b>Command Prompt (Run as Administrator)</b> trên máy Windows và dán 1 dòng lệnh này:
+              </div>
+              <div className="flex items-center gap-2 bg-slate-900 text-emerald-400 p-2 rounded font-mono text-xs overflow-x-auto">
+                <code className="flex-1 whitespace-nowrap">
+                  {`powershell -NoProfile -ExecutionPolicy Bypass -Command "$wc=New-Object System.Net.WebClient;$wc.DownloadFile('${window.location.origin}/agent/cai_dat_tu_dong_windows.bat', '$env:TEMP\\install_itam.bat');Start-Process '$env:TEMP\\install_itam.bat' -Verb RunAs"`}
+                </code>
+                <Button
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `powershell -NoProfile -ExecutionPolicy Bypass -Command "$wc=New-Object System.Net.WebClient;$wc.DownloadFile('${window.location.origin}/agent/cai_dat_tu_dong_windows.bat', '$env:TEMP\\install_itam.bat');Start-Process '$env:TEMP\\install_itam.bat' -Verb RunAs"`
+                    );
+                    message.success('Đã sao chép lệnh cài đặt tự động cho Windows!');
+                  }}
+                >
+                  Copy
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. UBUNTU / LINUX */}
+          <div className="p-3.5 rounded-xl border bg-slate-50 space-y-2.5">
+            <div className="font-bold text-slate-800 flex items-center justify-between">
+              <span>🐧 Cách 2: Cho máy trạm / Server chạy Ubuntu / Debian Linux</span>
+              <Tag color="orange">Tự động Cronjob @reboot & hàng ngày</Tag>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                icon={<DownloadOutlined />}
+                href="/agent/cai_dat_tu_dong_ubuntu.sh"
+                download="cai_dat_tu_dong_ubuntu.sh"
+              >
+                Tải cai_dat_tu_dong_ubuntu.sh
+              </Button>
+              <Button
+                icon={<DownloadOutlined />}
+                href="/agent/ubuntu_agent.sh"
+                download="ubuntu_agent.sh"
+              >
+                Tải ubuntu_agent.sh
+              </Button>
+            </div>
+
+            <div>
+              <div className="text-xs font-semibold text-gray-500 mb-1">
+                Hoặc mở <b>Terminal</b> trên máy Ubuntu và dán 1 dòng lệnh duy nhất dưới đây:
+              </div>
+              <div className="flex items-center gap-2 bg-slate-900 text-amber-300 p-2 rounded font-mono text-xs overflow-x-auto">
+                <code className="flex-1 whitespace-nowrap">
+                  {`curl -fsSL ${window.location.origin}/agent/cai_dat_tu_dong_ubuntu.sh | sudo bash`}
+                </code>
+                <Button
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `curl -fsSL ${window.location.origin}/agent/cai_dat_tu_dong_ubuntu.sh | sudo bash`
+                    );
+                    message.success('Đã sao chép lệnh cài đặt tự động cho Ubuntu!');
+                  }}
+                >
+                  Copy
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       </Modal>
     </div>
