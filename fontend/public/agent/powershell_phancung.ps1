@@ -725,7 +725,7 @@ try {
 
     $cpuHealthStatus = "GOOD"
     $cpuHealthText   = "Tot (Hoat dong on dinh)"
-    if ($cpuWmiStatus -notin @("OK", "")) {
+    if ($cpuWmiStatus -ne "OK" -and $cpuWmiStatus -ne "") {
         $cpuHealthStatus = "CRITICAL"
         $cpuHealthText   = "Loi CPU ($cpuWmiStatus)"
         $hardwareAlerts += "CPU bao trang thai bat thuong: $cpuWmiStatus"
