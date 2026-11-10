@@ -27,6 +27,16 @@ echo =====================================================================
 echo   CAI DAT TU DONG TOWA ITAM AGENT (WINDOWS 7 / 10 / 11 - WORKGROUP)
 echo =====================================================================
 
+REM --- 1B. MO KHOA TRIET DE POWERSHELL TRONG REGISTRY (64-BIT, 32-BIT & GPO) ---
+echo [0/4] Dang mo khoa toan bo chinh sach PowerShell (ExecutionPolicy & GPO)...
+reg add "HKLM\SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell" /v ExecutionPolicy /t REG_SZ /d Unrestricted /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Wow6432Node\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell" /v ExecutionPolicy /t REG_SZ /d Unrestricted /f >nul 2>&1
+reg add "HKCU\SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell" /v ExecutionPolicy /t REG_SZ /d Unrestricted /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell" /v EnableScripts /t REG_DWORD /d 1 /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell" /v ExecutionPolicy /t REG_SZ /d Unrestricted /f >nul 2>&1
+reg add "HKCU\SOFTWARE\Policies\Microsoft\Windows\PowerShell" /v EnableScripts /t REG_DWORD /d 1 /f >nul 2>&1
+reg add "HKCU\SOFTWARE\Policies\Microsoft\Windows\PowerShell" /v ExecutionPolicy /t REG_SZ /d Unrestricted /f >nul 2>&1
+
 REM --- 2. TAO THU MUC CAI DAT C:\ProgramData\TowaITAM ---
 if not exist "%INSTALL_DIR%" (
     mkdir "%INSTALL_DIR%"
