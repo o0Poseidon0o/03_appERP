@@ -1,21 +1,14 @@
 import axios from 'axios';
 
 const getBaseURL = () => {
-  const envUrl = import.meta.env.VITE_API_URL?.trim();
-  if (envUrl && envUrl !== '/') {
-    const clean = envUrl.replace(/\/+$/, '');
-    return clean.endsWith('/api') ? clean : `${clean}/api`;
-  }
-
   // 1. Khi đang chạy DEV (npm run dev): dùng hostname hiện tại để Mobile/Tablet truy cập qua IP LAN vẫn gọi đúng Backend
   if (import.meta.env.DEV) {
     const host = window.location.hostname || 'localhost';
     return `http://${host}:3000/api`;
   }
-  
-  // 2. Khi chạy Production qua Nginx reverse proxy
-  const origin = window.location.origin;
-  return `${origin.endsWith('/') ? origin.slice(0, -1) : origin}/api`;
+
+  // 2. Khi chạy Production qua Nginx reverse proxy: luôn dùng đường dẫn tương đối /api
+  return '/api';
 };
 
 const axiosClient = axios.create({
