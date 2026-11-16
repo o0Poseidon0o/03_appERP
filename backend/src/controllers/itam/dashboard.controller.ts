@@ -303,6 +303,70 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       }
     }
 
+    // --- 2B. THỐNG KÊ CHI TIẾT THEO NHÀ MÁY & BỘ PHẬN (PHÒNG BAN) ---
+    const factoryDeptMap: Record<
+      string,
+      {
+        key: string;
+        factoryName: string;
+        departmentName: string;
+        total: number;
+        pcCount: number;
+        laptopCount: number;
+        serverCount: number;
+        inUseCount: number;
+        brokenCount: number;
+        lowRamCount: number;
+      }
+    > = {};
+
+    for (const comp of allComputers) {
+      const factoryName = comp.factory?.name || "Chưa gán Nhà máy";
+      const deptName =
+        comp.department?.name ||
+        comp.users?.[0]?.department?.name ||
+        "Chưa gán Bộ phận";
+      const mapKey = `${factoryName}___${deptName}`;
+
+      if (!factoryDeptMap[mapKey]) {
+        factoryDeptMap[mapKey] = {
+          key: mapKey,
+          factoryName,
+          departmentName: deptName,
+          total: 0,
+          pcCount: 0,
+          laptopCount: 0,
+          serverCount: 0,
+          inUseCount: 0,
+          brokenCount: 0,
+          lowRamCount: 0,
+        };
+      }
+
+      const row = factoryDeptMap[mapKey];
+      row.total++;
+      const tCode = comp.type?.code || "PC";
+      if (tCode === "LAPTOP") row.laptopCount++;
+      else if (tCode === "SERVER") row.serverCount++;
+      else row.pcCount++;
+
+      if (comp.status === "BROKEN" || comp.status === "REPAIR") row.brokenCount++;
+      else row.inUseCount++;
+
+      const specs: any = comp.customSpecs || {};
+      const ramMatch = String(specs.ram || "").match(/^(\d+)/);
+      const ramNum = ramMatch ? parseInt(ramMatch[1], 10) : 0;
+      if (tCode !== "SERVER" && ramNum > 0 && ramNum < 8) {
+        row.lowRamCount++;
+      }
+    }
+
+    const factoryDepartmentSummary = Object.values(factoryDeptMap).sort((a, b) => {
+      const fCmp = a.factoryName.localeCompare(b.factoryName, "vi");
+      if (fCmp !== 0) return fCmp;
+      return b.total - a.total;
+    });
+
     // --- 3. DỮ LIỆU BIỂU ĐỒ ---
     const typeStats = typeGroups.map((g) => {
       const typeInfo = types.find((t) => t.id === g.typeId);
@@ -363,6 +427,8 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           expiringKeys: expiringKeysCount,
         },
         lists: {
+          allComputers,
+          factoryDepartmentSummary,
           broken: brokenAssets,
           lowRam: lowRamList,
           upgraded: upgradedAssetsLogs,

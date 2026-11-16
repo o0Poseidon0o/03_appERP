@@ -12,6 +12,7 @@ import {
   Badge,
   Input,
   Progress,
+  Select,
   Tooltip as AntTooltip,
 } from 'antd';
 import {
@@ -69,12 +70,22 @@ const STATUS_COLOR_MAP: Record<string, string> = {
 
 const FALLBACK_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
-type ModalType = 'BROKEN' | 'LOW_RAM' | 'UPGRADE' | 'OFFLINE' | 'HEALTH' | 'UNLICENSED' | null;
+type ModalType =
+  | 'BROKEN'
+  | 'LOW_RAM'
+  | 'UPGRADE'
+  | 'OFFLINE'
+  | 'HEALTH'
+  | 'UNLICENSED'
+  | 'FACTORY_DEPT'
+  | null;
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<any>(null);
+  const [selectedFactory, setSelectedFactory] = useState<string>('ALL');
+  const [selectedDept, setSelectedDept] = useState<string>('ALL');
   const navigate = useNavigate();
 
   const { socket, isConnected } = useSocket();
@@ -175,6 +186,162 @@ const Dashboard = () => {
     }
   };
 
+  const getAssetFactoryName = (item: any) => item.factory?.name || 'Chưa gán Nhà máy';
+  const getAssetDeptName = (item: any) =>
+    item.department?.name || item.users?.[0]?.department?.name || 'Chưa gán Bộ phận';
+
+  const showFactoryDeptMachines = (factoryName?: string, departmentName?: string) => {
+    setModalSearchText('');
+    const allComps: any[] = stats?.lists?.allComputers || [];
+    const filtered = allComps.filter((c: any) => {
+      const fMatch = !factoryName || factoryName === 'ALL' || getAssetFactoryName(c) === factoryName;
+      const dMatch =
+        !departmentName || departmentName === 'ALL' || getAssetDeptName(c) === departmentName;
+      return fMatch && dMatch;
+    });
+
+    const labelParts: string[] = [];
+    if (factoryName && factoryName !== 'ALL') labelParts.push(`Nhà máy: ${factoryName}`);
+    if (departmentName && departmentName !== 'ALL') labelParts.push(`Bộ phận: ${departmentName}`);
+    const suffix = labelParts.length > 0 ? ` (${labelParts.join(' - ')})` : ' (Toàn công ty)';
+
+    setModalConfig({
+      open: true,
+      title: `Danh sách máy tính theo Nhà máy & Bộ phận${suffix}`,
+      data: filtered,
+      type: 'FACTORY_DEPT',
+    });
+  };
+
+  const formatComputerRowForExcel = (item: any, idx: number) => {
+    const statusMap: Record<string, string> = {
+      BROKEN: 'Đang hỏng',
+      REPAIR: 'Đang sửa chữa',
+      NEW: 'Mới tiếp nhận',
+      IN_USE: 'Đang sử dụng',
+      STORAGE: 'Lưu kho',
+    };
+    const specs = item.customSpecs || {};
+    const comps: any[] = item.components || [];
+    const monitors = comps
+      .filter((c) => c.type === 'MONITOR')
+      .map((m) => `${m.name}${m.specs?.size && m.specs.size !== 'N/A' ? ` (${m.specs.size})` : ''}`)
+      .join(', ');
+    const periphs = comps
+      .filter((c) => ['MOUSE', 'KEYBOARD'].includes(c.type))
+      .map((p) => p.name)
+      .join(', ');
+    const ramSticks = Array.isArray(specs.ramDetails)
+      ? specs.ramDetails
+          .map((r: any) => `${r.Slot}: ${r.Capacity} (${r.Speed}) ${r.Manufacturer || ''}`.trim())
+          .join(' | ')
+      : '';
+    const users =
+      item.users?.map((u: any) => u.fullName).join(' & ') || item.domainUser || 'Chưa cấp phát';
+
+    return {
+      STT: idx + 1,
+      'Nhà máy': getAssetFactoryName(item),
+      'Bộ phận / Phòng ban': getAssetDeptName(item),
+      'Tên máy': item.name || '',
+      'Loại thiết bị': item.type?.name || item.type?.code || 'PC',
+      'Người sử dụng': users,
+      'Tài khoản Domain': item.domainUser || '',
+      'Địa chỉ IP': item.ipAddress || '',
+      'Hãng sản xuất': item.manufacturer || '',
+      Model: item.modelName || '',
+      'Số Serial (SN)': item.serialNumber || 'N/A',
+      'Hệ điều hành': item.osName || '',
+      CPU: specs.cpu || '',
+      RAM: specs.ram || '',
+      'Chi tiết khe RAM': ramSticks,
+      'Ổ cứng': specs.disk || '',
+      'Màn hình đi kèm': monitors || 'Không có',
+      'Chuột & Bàn phím': periphs || 'Không có',
+      'Sức khỏe Phần cứng': specs.hardwareHealth?.overallText || 'Tốt',
+      'Trạng thái': statusMap[item.status] || item.status,
+      'Cập nhật lần cuối': item.lastSeen
+        ? new Date(item.lastSeen).toLocaleString('vi-VN')
+        : 'Chưa kết nối',
+    };
+  };
+
+  const exportFactoryDepartmentExcel = (factoryFilter = selectedFactory, deptFilter = selectedDept) => {
+    const allComps: any[] = stats?.lists?.allComputers || [];
+    const summaryList: any[] = stats?.lists?.factoryDepartmentSummary || [];
+
+    const filteredSummary = summaryList.filter((s: any) => {
+      const fOk = factoryFilter === 'ALL' || s.factoryName === factoryFilter;
+      const dOk = deptFilter === 'ALL' || s.departmentName === deptFilter;
+      return fOk && dOk;
+    });
+
+    const filteredComps = allComps
+      .filter((c: any) => {
+        const fOk = factoryFilter === 'ALL' || getAssetFactoryName(c) === factoryFilter;
+        const dOk = deptFilter === 'ALL' || getAssetDeptName(c) === deptFilter;
+        return fOk && dOk;
+      })
+      .sort((a: any, b: any) => {
+        const fCmp = getAssetFactoryName(a).localeCompare(getAssetFactoryName(b), 'vi');
+        if (fCmp !== 0) return fCmp;
+        const dCmp = getAssetDeptName(a).localeCompare(getAssetDeptName(b), 'vi');
+        if (dCmp !== 0) return dCmp;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'vi');
+      });
+
+    if (filteredComps.length === 0) {
+      message.warning('Không có thiết bị nào khớp với bộ lọc Nhà máy / Bộ phận để xuất Excel!');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Bảng Tổng hợp theo Nhà máy & Bộ phận
+    const summaryRows = filteredSummary.map((s: any, idx: number) => ({
+      STT: idx + 1,
+      'Nhà máy': s.factoryName,
+      'Bộ phận / Phòng ban': s.departmentName,
+      'Tổng số máy': s.total,
+      'Máy bàn (PC)': s.pcCount,
+      Laptop: s.laptopCount,
+      Server: s.serverCount,
+      'Đang hoạt động': s.inUseCount,
+      'Đang hỏng / Sửa': s.brokenCount,
+      'Cấu hình yếu (RAM < 8GB)': s.lowRamCount,
+    }));
+    const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Tong_Hop_NhaMay_BoPhan');
+
+    // Sheet 2: Danh sách chi tiết toàn bộ máy theo bộ lọc
+    const detailRows = filteredComps.map((c: any, idx: number) => formatComputerRowForExcel(c, idx));
+    const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+    XLSX.utils.book_append_sheet(wb, wsDetail, 'Chi_Tiet_Thiet_Bi');
+
+    // Nếu xuất Tất cả Nhà máy: Tạo thêm từng Sheet riêng cho mỗi Nhà máy
+    if (factoryFilter === 'ALL') {
+      const factories = Array.from(new Set(filteredComps.map((c: any) => getAssetFactoryName(c))));
+      factories.forEach((fName) => {
+        const fComps = filteredComps.filter((c: any) => getAssetFactoryName(c) === fName);
+        if (fComps.length > 0) {
+          const fRows = fComps.map((c: any, idx: number) => formatComputerRowForExcel(c, idx));
+          const wsFactory = XLSX.utils.json_to_sheet(fRows);
+          const safeSheetName = `NM_${fName.replace(/[\\/?*[\]:]/g, '_')}`.slice(0, 31);
+          XLSX.utils.book_append_sheet(wb, wsFactory, safeSheetName);
+        }
+      });
+    }
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const suffix =
+      factoryFilter !== 'ALL'
+        ? `_${factoryFilter}${deptFilter !== 'ALL' ? `_${deptFilter}` : ''}`
+        : '';
+    const fileName = `Bao_Cao_Thiet_Bi_Nha_May_Bo_Phan${suffix}_${dateStr}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    message.success(`Đã xuất báo cáo Excel (${filteredComps.length} thiết bị)!`);
+  };
+
   const getFilteredModalData = () => {
     const rawData = modalConfig.data || [];
     if (!modalSearchText) return rawData;
@@ -244,6 +411,7 @@ const Dashboard = () => {
         OFFLINE: `DS_May_Mat_Ket_Noi_Agent_${dateStr}.xlsx`,
         HEALTH: `DS_Canh_Bao_Suc_Khoe_Phan_Cung_${dateStr}.xlsx`,
         UNLICENSED: `DS_May_Chua_Kich_Hoat_Ban_Quyen_${dateStr}.xlsx`,
+        FACTORY_DEPT: `DS_Thiet_Bi_Theo_Nha_May_Bo_Phan_${dateStr}.xlsx`,
       };
       fileName = (modalConfig.type && fileMap[modalConfig.type]) || fileName;
       const statusMap: any = {
@@ -406,6 +574,39 @@ const Dashboard = () => {
         ),
       },
     ];
+
+    if (modalConfig.type === 'FACTORY_DEPT') {
+      return [
+        ...baseColumns,
+        {
+          title: 'Cấu hình (CPU / RAM / Ổ cứng)',
+          key: 'fullSpecs',
+          width: 240,
+          render: (_: any, r: any) => (
+            <div className="text-xs space-y-0.5">
+              <div className="font-medium text-slate-700 truncate max-w-[230px]">
+                {r.customSpecs?.cpu || 'N/A'}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Tag color="blue" className="m-0 text-[11px]">
+                  RAM: {r.customSpecs?.ram || 'N/A'}
+                </Tag>
+                <span className="text-gray-500 truncate max-w-[130px]">
+                  {r.customSpecs?.disk || ''}
+                </span>
+              </div>
+            </div>
+          ),
+        },
+        {
+          title: 'Hệ điều hành',
+          dataIndex: 'osName',
+          key: 'osName',
+          width: 150,
+          render: (t: string) => <span className="text-xs text-slate-600">{t || 'N/A'}</span>,
+        },
+      ];
+    }
 
     if (modalConfig.type === 'LOW_RAM') {
       return [
@@ -582,6 +783,13 @@ const Dashboard = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            icon={<FileExcelOutlined />}
+            onClick={() => exportFactoryDepartmentExcel('ALL', 'ALL')}
+            className="rounded-lg font-medium bg-emerald-600 hover:!bg-emerald-700 !text-white border-none"
+          >
+            Xuất Excel Nhà máy & Bộ phận
+          </Button>
           <Button
             icon={<DesktopOutlined />}
             onClick={() => navigate('/itam/assets')}
@@ -1055,6 +1263,191 @@ const Dashboard = () => {
           )}
         </Card>
       </div>
+
+      {/* --- HÀNG 2.5: BẢNG THỐNG KÊ & XUẤT EXCEL THEO TỪNG NHÀ MÁY & BỘ PHẬN --- */}
+      <Card
+        title={
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 py-1">
+            <div className="flex items-center gap-2 font-bold text-slate-800">
+              <ShopOutlined className="text-emerald-600 text-lg" />
+              <span>Thống kê Thiết bị & Xuất Excel theo Nhà máy / Bộ phận (Phòng ban)</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={selectedFactory}
+                onChange={(val) => {
+                  setSelectedFactory(val);
+                  setSelectedDept('ALL');
+                }}
+                className="w-44"
+                options={[
+                  { value: 'ALL', label: '🏭 Tất cả Nhà máy' },
+                  ...Array.from(
+                    new Set(
+                      (stats?.lists?.factoryDepartmentSummary || []).map((s: any) => s.factoryName)
+                    )
+                  ).map((f: any) => ({ value: f, label: `Nhà máy: ${f}` })),
+                ]}
+              />
+              <Select
+                value={selectedDept}
+                onChange={(val) => setSelectedDept(val)}
+                className="w-48"
+                options={[
+                  { value: 'ALL', label: '🏢 Tất cả Bộ phận' },
+                  ...Array.from(
+                    new Set(
+                      (stats?.lists?.factoryDepartmentSummary || [])
+                        .filter(
+                          (s: any) => selectedFactory === 'ALL' || s.factoryName === selectedFactory
+                        )
+                        .map((s: any) => s.departmentName)
+                    )
+                  ).map((d: any) => ({ value: d, label: `Bộ phận: ${d}` })),
+                ]}
+              />
+              <Button
+                onClick={() => showFactoryDeptMachines(selectedFactory, selectedDept)}
+                icon={<SearchOutlined />}
+              >
+                Xem DS máy
+              </Button>
+              <Button
+                type="primary"
+                icon={<FileExcelOutlined />}
+                onClick={() => exportFactoryDepartmentExcel(selectedFactory, selectedDept)}
+                className="bg-green-600 hover:!bg-green-700 border-none"
+              >
+                Xuất Excel theo Bộ lọc
+              </Button>
+            </div>
+          </div>
+        }
+        bordered={false}
+        className="shadow-sm rounded-2xl border border-slate-100"
+      >
+        <Table
+          dataSource={(stats?.lists?.factoryDepartmentSummary || []).filter((s: any) => {
+            const fOk = selectedFactory === 'ALL' || s.factoryName === selectedFactory;
+            const dOk = selectedDept === 'ALL' || s.departmentName === selectedDept;
+            return fOk && dOk;
+          })}
+          rowKey="key"
+          size="small"
+          pagination={{ pageSize: 8, showSizeChanger: true }}
+          scroll={{ x: 'max-content' }}
+          columns={[
+            {
+              title: 'Nhà máy',
+              dataIndex: 'factoryName',
+              key: 'factoryName',
+              width: 140,
+              render: (t: string) => (
+                <Tag color="geekblue" className="font-bold m-0">
+                  🏭 {t}
+                </Tag>
+              ),
+            },
+            {
+              title: 'Bộ phận / Phòng ban',
+              dataIndex: 'departmentName',
+              key: 'departmentName',
+              width: 200,
+              render: (t: string) => <span className="font-semibold text-slate-700">🏢 {t}</span>,
+            },
+            {
+              title: 'Tổng số máy',
+              dataIndex: 'total',
+              key: 'total',
+              align: 'center',
+              width: 110,
+              sorter: (a: any, b: any) => a.total - b.total,
+              render: (v: number) => (
+                <span className="font-extrabold text-blue-700 text-sm">{v}</span>
+              ),
+            },
+            {
+              title: 'Máy bàn (PC)',
+              dataIndex: 'pcCount',
+              key: 'pcCount',
+              align: 'center',
+              width: 110,
+              render: (v: number) => <span className="text-slate-600 font-medium">{v}</span>,
+            },
+            {
+              title: 'Laptop',
+              dataIndex: 'laptopCount',
+              key: 'laptopCount',
+              align: 'center',
+              width: 90,
+              render: (v: number) => <span className="text-slate-600 font-medium">{v}</span>,
+            },
+            {
+              title: 'Server',
+              dataIndex: 'serverCount',
+              key: 'serverCount',
+              align: 'center',
+              width: 90,
+              render: (v: number) => <span className="text-slate-600 font-medium">{v}</span>,
+            },
+            {
+              title: 'Đang hoạt động',
+              dataIndex: 'inUseCount',
+              key: 'inUseCount',
+              align: 'center',
+              width: 130,
+              render: (v: number) => <Tag color="success">{v} máy</Tag>,
+            },
+            {
+              title: 'Hỏng / Sửa',
+              dataIndex: 'brokenCount',
+              key: 'brokenCount',
+              align: 'center',
+              width: 110,
+              render: (v: number) =>
+                v > 0 ? <Tag color="error">{v} máy</Tag> : <span className="text-gray-300">0</span>,
+            },
+            {
+              title: 'RAM < 8GB',
+              dataIndex: 'lowRamCount',
+              key: 'lowRamCount',
+              align: 'center',
+              width: 110,
+              render: (v: number) =>
+                v > 0 ? (
+                  <Tag color="warning">{v} máy</Tag>
+                ) : (
+                  <span className="text-gray-300">0</span>
+                ),
+            },
+            {
+              title: 'Thao tác',
+              key: 'actions',
+              align: 'right',
+              width: 190,
+              render: (_: any, r: any) => (
+                <div className="flex items-center justify-end gap-1.5">
+                  <Button
+                    size="small"
+                    onClick={() => showFactoryDeptMachines(r.factoryName, r.departmentName)}
+                  >
+                    Chi tiết
+                  </Button>
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<FileExcelOutlined />}
+                    onClick={() => exportFactoryDepartmentExcel(r.factoryName, r.departmentName)}
+                    className="bg-green-600 hover:!bg-green-700 border-none"
+                  >
+                    Excel
+                  </Button>
+                </div>
+              ),
+            },
+          ]}
+        />
+      </Card>
 
       {/* --- HÀNG 3: NHẬT KÝ THAY ĐỔI LINH KIỆN GẦN ĐÂY & TÂM ĐIỂM CẦN XỬ LÝ --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
