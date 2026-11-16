@@ -14,6 +14,7 @@ interface AgentPayload {
   username: string; // Domain User
   cpuName: string;
   ramGB: number;
+  ramType?: string;
   ipAddress: string;
   macAddress: string;
   timestamp: string;
@@ -23,8 +24,10 @@ interface AgentPayload {
   ramDetails?: Array<{
       Slot: string;
       Capacity: string;
+      Type?: string;
       Speed: string;
       Manufacturer: string;
+      PartNumber?: string;
   }>;
 
   gpus?: Array<{
@@ -202,7 +205,17 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
       ? data.disks.map((d) => `${d.SizeGB}GB ${d.MediaType ? `(${d.MediaType})` : ""}`).join(" + ")
       : "N/A";
     
-    const newRamString = `${data.ramGB} GB`;
+    const detectedRamType =
+      data.ramType ||
+      (Array.isArray(data.ramDetails)
+        ? data.ramDetails
+            .map((r: any) => r.Type || r.type || (typeof r.Speed === "string" && r.Speed.match(/L?PDDR\d|DDR\d/i)?.[0]) || "")
+            .find((t: string) => t && t !== "Unknown")
+        : "") ||
+      "";
+    const newRamString = detectedRamType
+      ? `${data.ramGB} GB ${detectedRamType}`
+      : `${data.ramGB} GB`;
     const newCpuString = data.cpuName;
 
     // 5. [LOGIC BẮT TRÁO ĐỔI] Lấy dữ liệu CŨ từ DB để so sánh
@@ -311,6 +324,7 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
         customSpecs: {
           cpu: newCpuString,
           ram: newRamString,
+          ramType: detectedRamType || undefined,
           disk: newDiskSummary,
           ramDetails: data.ramDetails || [],
           gpus: data.gpus || [],

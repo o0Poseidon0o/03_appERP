@@ -393,38 +393,224 @@ try {
         } catch {}
     }
 
-    # D. RAM CHI TIẾT & TỔNG DUNG LƯỢNG RAM (KHÔNG BAO GIỜ BỊ 0 GB KHI WMI HỎNG)
-    Write-Host "[3/8] Quet RAM..." -NoNewline
-    $ramGB = 0
-    if ($comp -and $comp.TotalPhysicalMemory) {
-        $ramGB = [math]::Round($comp.TotalPhysicalMemory / 1GB, 0)
+    # D. RAM CHI TIẾT, LOẠI DDR (DDR3/DDR4/DDR5) & TỔNG DUNG LƯỢNG RAM CHÍNH XÁC
+    Write-Host "[3/8] Quet RAM (Dung luong & DDR Generation)..." -NoNewline
+
+    # Bảng mã JEDEC Manufacturer ID (Hex) phổ biến trong SMBIOS/SPD của thanh RAM
+    $RamJedecMap = @{
+        "04CD" = "G.Skill";     "CD04" = "G.Skill"
+        "0198" = "Kingston";    "9801" = "Kingston"; "7F98" = "Kingston"; "019800000000" = "Kingston"
+        "80AD" = "SK Hynix";    "AD80" = "SK Hynix"; "00AD" = "SK Hynix"; "AD00" = "SK Hynix"
+        "80CE" = "Samsung";     "CE80" = "Samsung";  "00CE" = "Samsung";  "CE00" = "Samsung"
+        "802C" = "Micron";      "2C80" = "Micron";   "002C" = "Micron";   "2C00" = "Micron"
+        "859B" = "Crucial";     "9B85" = "Crucial";  "059B" = "Crucial"
+        "029E" = "Corsair";     "9E02" = "Corsair"
+        "04CB" = "ADATA";       "CB04" = "ADATA"
+        "04EF" = "TeamGroup";   "EF04" = "TeamGroup"
+        "014F" = "Transcend";   "4F01" = "Transcend"
+        "02FE" = "Elpida";      "FE02" = "Elpida"
+        "830B" = "Nanya";       "0B83" = "Nanya";    "030B" = "Nanya"
+        "075D" = "Lexar";       "86F1" = "Lexar"
+        "017A" = "Apacer";      "7A01" = "Apacer"
+        "8551" = "Qimonda";     "0551" = "Qimonda";  "80C1" = "Infineon"; "00C1" = "Infineon"
+        "0420" = "Patriot";     "8502" = "Patriot";  "0502" = "Patriot"
+        "0443" = "GeIL";        "8313" = "Silicon Power"
+        "0B92" = "Kingbank";    "8B92" = "Kingbank"; "07E9" = "Netac";    "86D3" = "Puskill"
     }
-    if ($ramGB -le 0) {
-        try {
-            Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction SilentlyContinue
-            $ci = New-Object Microsoft.VisualBasic.Devices.ComputerInfo
-            if ($ci.TotalPhysicalMemory) {
-                $ramGB = [math]::Round($ci.TotalPhysicalMemory / 1GB, 0)
-            }
-        } catch {}
+
+    function Resolve-RamTypeFromCpu {
+        param ([string]$CpuStr)
+        if ($CpuStr -match "i[3579]-1[234]\d{2}|Core Ultra|Ryzen [3579] [789]\d{3}") { return "DDR4/DDR5" }
+        if ($CpuStr -match "i[3579]-(6|7|8|9|10|11)\d{2}|Ryzen [3579] [12345]\d{3}|Pentium.*G[456]\d{3}|Celeron.*G[3456]\d{3}") { return "DDR4" }
+        if ($CpuStr -match "i[357]-[2345]\d{2}|i[357]-\d{3}\b|Pentium.*G[6823]\d{2}|Celeron.*G1\d{2}|Xeon.*E[35]-") { return "DDR3" }
+        if ($CpuStr -match "Core\(TM\)2|Pentium\(R\) Dual|Pentium\(R\) 4|Celeron\(R\) CPU E") { return "DDR2" }
+        return "DDR4"
+    }
+
+    $ciObj = $null
+    try {
+        Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction SilentlyContinue
+        $ciObj = New-Object Microsoft.VisualBasic.Devices.ComputerInfo
+    } catch {}
+
+    $compBytes = 0
+    if ($comp -and $comp.TotalPhysicalMemory) {
+        $compBytes = [double]$comp.TotalPhysicalMemory
+    } elseif ($ciObj -and $ciObj.TotalPhysicalMemory) {
+        $compBytes = [double]$ciObj.TotalPhysicalMemory
     }
 
     $ramDetails = @()
+    $sumStickBytes = 0
+    $detectedRamType = ""
+    $stickIndex = 0
+
     try {
-        $pMem = Get-WmiObject Win32_PhysicalMemory -ErrorAction SilentlyContinue
-        if ($pMem) {
-            foreach ($stick in $pMem) {
-                $busSpeed = if ($stick.Speed) { $stick.Speed } else { "Unknown" }
-                $capacityGB = [math]::Round($stick.Capacity / 1GB, 0)
-                $ramDetails += @{ Slot = $stick.BankLabel; Capacity = "${capacityGB}GB"; Speed = "${busSpeed}MHz"; Manufacturer = $stick.Manufacturer }
+        $pMem = @(Get-WmiObject Win32_PhysicalMemory -ErrorAction SilentlyContinue)
+        foreach ($stick in $pMem) {
+            if ($null -eq $stick -or -not $stick.Capacity) { continue }
+            $stickIndex++
+            $capBytes = [double]$stick.Capacity
+            $sumStickBytes += $capBytes
+
+            $capStr = if ($capBytes -ge 1GB) { "$([math]::Round($capBytes / 1GB, 0))GB" } else { "$([math]::Round($capBytes / 1MB, 0))MB" }
+            $partNum = if ($stick.PartNumber) { ([string]$stick.PartNumber).Trim() } else { "" }
+            if ($partNum -match "^(Unknown|None|0000+|Array|N/A|ToBeFilled|NotSpecified)$") { $partNum = "" }
+
+            # 1. Giải mã hãng sản xuất RAM (Tránh hiển thị mã Hex như 04CD, 80AD, 0198)
+            $rawMfg = if ($stick.Manufacturer) { ([string]$stick.Manufacturer).Trim() } else { "" }
+            $cleanMfg = $rawMfg.ToUpper()
+            if ($RamJedecMap.ContainsKey($cleanMfg)) {
+                $mfgName = $RamJedecMap[$cleanMfg]
+            } elseif ($cleanMfg.Length -ge 4 -and $RamJedecMap.ContainsKey($cleanMfg.Substring(0, 4))) {
+                $mfgName = $RamJedecMap[$cleanMfg.Substring(0, 4)]
+            } elseif ($rawMfg -match "^(0000+|Undefined|Unknown|Manufacturer.*|[0-9A-Fa-f]{4,})$" -or $rawMfg -eq "") {
+                $mfgName = ""
+            } else {
+                $mfgName = $rawMfg
+            }
+
+            if (-not $mfgName -and $partNum) {
+                if ($partNum -match "^(F[2345]-|FA-)") { $mfgName = "G.Skill" }
+                elseif ($partNum -match "^(KVR|KHX|HX[34]|KF[45]|ACR|CBD|HP\d)") { $mfgName = "Kingston" }
+                elseif ($partNum -match "^(M378|M471|M393|M323|M425|M470)") { $mfgName = "Samsung" }
+                elseif ($partNum -match "^(HMT|HMA|HMCG|HYMP|H5)") { $mfgName = "SK Hynix" }
+                elseif ($partNum -match "^(CT\d|BL[ES2]?|BALLISTIX)") { $mfgName = "Crucial" }
+                elseif ($partNum -match "^(MT\d|MTA|MTC)") { $mfgName = "Micron" }
+                elseif ($partNum -match "^(CM[KZXWHS4V]|VENGEANCE|DOMINATOR)") { $mfgName = "Corsair" }
+                elseif ($partNum -match "^(AX[45]U|AD[345]|AM[12])") { $mfgName = "ADATA" }
+                elseif ($partNum -match "^(TED[345]|TLZ|TF|TEAM)") { $mfgName = "TeamGroup" }
+                elseif ($partNum -match "^(TS\d|JM\d)") { $mfgName = "Transcend" }
+                elseif ($partNum -match "^NT\d") { $mfgName = "Nanya" }
+            }
+            if (-not $mfgName) { $mfgName = "Generic RAM" }
+            $mfgDisplay = if ($partNum) { "$mfgName ($partNum)" } else { $mfgName }
+
+            # 2. Xác định tốc độ Bus thực tế (Ưu tiên ConfiguredClockSpeed nếu có)
+            $rawSpd = 0
+            try { if ($stick.ConfiguredClockSpeed -gt 0) { $rawSpd = [int]$stick.ConfiguredClockSpeed } } catch {}
+            if ($rawSpd -le 0 -and $stick.Speed -gt 0) { $rawSpd = [int]$stick.Speed }
+
+            # 3. Xác định thế hệ RAM (DDR2 / DDR3 / DDR4 / DDR5 / LPDDR)
+            $smbiosType = 0; $memType = 0
+            try { if ($stick.SMBIOSMemoryType) { $smbiosType = [int]$stick.SMBIOSMemoryType } } catch {}
+            try { if ($stick.MemoryType) { $memType = [int]$stick.MemoryType } } catch {}
+
+            $ddrStr = ""
+            if ($smbiosType -eq 34) { $ddrStr = "DDR5" }
+            elseif ($smbiosType -eq 35) { $ddrStr = "LPDDR5" }
+            elseif ($smbiosType -eq 26) { $ddrStr = "DDR4" }
+            elseif ($smbiosType -eq 30) { $ddrStr = "LPDDR4" }
+            elseif ($smbiosType -eq 24) { $ddrStr = "DDR3" }
+            elseif ($smbiosType -eq 29) { $ddrStr = "LPDDR3" }
+            elseif ($smbiosType -eq 21 -or $smbiosType -eq 22) { $ddrStr = "DDR2" }
+            elseif ($smbiosType -eq 28) { $ddrStr = "LPDDR2" }
+            elseif ($smbiosType -eq 20) { $ddrStr = "DDR" }
+
+            if (-not $ddrStr) {
+                if ($memType -eq 26) { $ddrStr = "DDR4" }
+                elseif ($memType -eq 24) { $ddrStr = "DDR3" }
+                elseif ($memType -eq 21 -or $memType -eq 22) { $ddrStr = "DDR2" }
+                elseif ($memType -eq 20) { $ddrStr = "DDR" }
+            }
+
+            if (-not $ddrStr -and $partNum) {
+                if ($partNum -match "DDR5|PC5|^F5-|^KF5|^M323|^M425|^HMCG|^MTC|D5") { $ddrStr = "DDR5" }
+                elseif ($partNum -match "DDR4|PC4|^F4-|^KF4|^HX4|^KVR2[146]|^KVR32|^M378A|^M471A|^HMA[48A]|^MTA|D4") { $ddrStr = "DDR4" }
+                elseif ($partNum -match "DDR3|PC3|^F3-|^KHX1|^HX3|^KVR1[036]|^M378B|^M471B|^HMT[134]|D3") { $ddrStr = "DDR3" }
+                elseif ($partNum -match "DDR2|PC2|^F2-|^KVR[568]|^M378T|^M470T|^HYMP|D2") { $ddrStr = "DDR2" }
+            }
+
+            if (-not $ddrStr -and $rawSpd -gt 0) {
+                if ($rawSpd -ge 3800) { $ddrStr = "DDR5" }
+                elseif ($rawSpd -ge 1867) { $ddrStr = "DDR4" }
+                elseif ($rawSpd -ge 800) {
+                    if ($rawSpd -eq 800 -and $cpuName -match "Core\(TM\)2|Pentium\(R\) Dual|Celeron\(R\) CPU E") { $ddrStr = "DDR2" }
+                    else { $ddrStr = "DDR3" }
+                }
+                elseif ($rawSpd -ge 400) {
+                    if ($cpuName -match "i[357]-[2345]\d{2}|i[357]-\d{3}\b") { $ddrStr = "DDR3" }
+                    else { $ddrStr = "DDR2" }
+                }
+                else { $ddrStr = "DDR" }
+            }
+
+            if (-not $ddrStr) {
+                $ddrStr = Resolve-RamTypeFromCpu $cpuName
+            }
+
+            # 4. Chuẩn hóa xung nhịp nếu BIOS trả về Half-Rate I/O Clock (ví dụ 667MHz cho DDR3-1333, 1333MHz cho DDR4-2666)
+            if ($ddrStr -match "DDR3" -and ($rawSpd -eq 533 -or $rawSpd -eq 667 -or $rawSpd -eq 933)) {
+                $rawSpd = $rawSpd * 2
+                if ($rawSpd -eq 1334) { $rawSpd = 1333 }
+            } elseif ($ddrStr -match "DDR4" -and $rawSpd -ge 933 -and $rawSpd -le 1800) {
+                $rawSpd = $rawSpd * 2
+                if ($rawSpd -eq 2132 -or $rawSpd -eq 2134) { $rawSpd = 2133 }
+                elseif ($rawSpd -eq 2668) { $rawSpd = 2666 }
+                elseif ($rawSpd -eq 2932 -or $rawSpd -eq 2934) { $rawSpd = 2933 }
+            } elseif ($ddrStr -match "DDR5" -and $rawSpd -ge 2000 -and $rawSpd -le 3600) {
+                $rawSpd = $rawSpd * 2
+            }
+
+            if (-not $detectedRamType -and $ddrStr) { $detectedRamType = $ddrStr }
+
+            $speedDisplay = if ($rawSpd -gt 0) { "$ddrStr ${rawSpd}MHz" } else { $ddrStr }
+
+            # 5. Tên khe cắm vật lý chuẩn (Ưu tiên DeviceLocator như ChannelA-DIMM0, DIMM 1)
+            $devLoc = if ($stick.DeviceLocator) { ([string]$stick.DeviceLocator).Trim() } else { "" }
+            $bankLbl = if ($stick.BankLabel) { ([string]$stick.BankLabel).Trim() } else { "" }
+            $slotName = if ($devLoc -and $devLoc -notmatch "^(Unknown|None)$") { $devLoc } `
+                        elseif ($bankLbl) { $bankLbl } `
+                        else { "#$stickIndex" }
+            $slotName = ($slotName -replace "^Slot\s*", "").Trim()
+
+            $ramDetails += @{
+                Slot         = $slotName
+                Capacity     = $capStr
+                Type         = $ddrStr
+                Speed        = $speedDisplay
+                Manufacturer = $mfgDisplay
+                PartNumber   = $partNum
             }
         }
     } catch {}
 
-    if ($ramDetails.Count -eq 0 -and $ramGB -gt 0) {
-        $ramDetails += @{ Slot = "Slot 1"; Capacity = "${ramGB}GB"; Speed = "Standard"; Manufacturer = "System RAM" }
+    # 6. Tính tổng dung lượng RAM vật lý chuẩn xác (Ưu tiên tổng các thanh RAM vật lý để không bị hụt do iGPU share RAM)
+    $ramGB = 0
+    if ($sumStickBytes -gt 0) {
+        $ramGB = [int][math]::Round($sumStickBytes / 1GB, 0)
     }
-    Write-Host " OK (${ramGB}GB)" -ForegroundColor Green
+    if ($compBytes -gt 0) {
+        $rawCompGB = $compBytes / 1GB
+        # Nếu không đọc được từng thanh RAM hoặc máy hàn chết RAM không báo đầy đủ trong SMBIOS
+        if ($ramGB -le 0 -or $rawCompGB -gt ($ramGB + 0.8)) {
+            if ($rawCompGB -gt 2.8 -and $rawCompGB -le 4.1) { $ramGB = 4 }
+            elseif ($rawCompGB -gt 5.1 -and $rawCompGB -le 6.1) { $ramGB = 6 }
+            elseif ($rawCompGB -gt 6.5 -and $rawCompGB -le 8.2) { $ramGB = 8 }
+            elseif ($rawCompGB -gt 10.5 -and $rawCompGB -le 12.2) { $ramGB = 12 }
+            elseif ($rawCompGB -gt 13.8 -and $rawCompGB -le 16.5) { $ramGB = 16 }
+            elseif ($rawCompGB -gt 22.0 -and $rawCompGB -le 24.5) { $ramGB = 24 }
+            elseif ($rawCompGB -gt 28.0 -and $rawCompGB -le 32.5) { $ramGB = 32 }
+            elseif ($rawCompGB -gt 60.0 -and $rawCompGB -le 64.5) { $ramGB = 64 }
+            else { $ramGB = [int][math]::Round($rawCompGB, 0) }
+        }
+    }
+
+    if (-not $detectedRamType) {
+        $detectedRamType = Resolve-RamTypeFromCpu $cpuName
+    }
+
+    if ($ramDetails.Count -eq 0 -and $ramGB -gt 0) {
+        $ramDetails += @{
+            Slot         = "1"
+            Capacity     = "${ramGB}GB"
+            Type         = $detectedRamType
+            Speed        = $detectedRamType
+            Manufacturer = "System RAM"
+            PartNumber   = ""
+        }
+    }
+    Write-Host " OK (${ramGB}GB $detectedRamType)" -ForegroundColor Green
 
     # E. GPU
     Write-Host "[4/8] Quet GPU..." -NoNewline
@@ -745,8 +931,10 @@ try {
     }
 
     # 5. Chẩn đoán Sức khỏe RAM
-    $totalRamGB = [math]::Round($comp.TotalPhysicalMemory / 1GB, 1)
-    $freeRamGB  = if ($os.FreePhysicalMemory) { [math]::Round(($os.FreePhysicalMemory * 1KB) / 1GB, 1) } else { [math]::Round($totalRamGB * 0.4, 1) }
+    $totalRamGB = if ($compBytes -gt 0) { [math]::Round($compBytes / 1GB, 1) } else { [double]$ramGB }
+    $freeRamGB  = if ($os -and $os.FreePhysicalMemory) { [math]::Round(($os.FreePhysicalMemory * 1KB) / 1GB, 1) } `
+                  elseif ($ciObj -and $ciObj.AvailablePhysicalMemory) { [math]::Round($ciObj.AvailablePhysicalMemory / 1GB, 1) } `
+                  else { [math]::Round($totalRamGB * 0.4, 1) }
     $usedRamGB  = [math]::Max(0, [math]::Round($totalRamGB - $freeRamGB, 1))
     $ramUsagePct = if ($totalRamGB -gt 0) { [int][math]::Round(($usedRamGB / $totalRamGB) * 100, 0) } else { 50 }
 
@@ -756,7 +944,7 @@ try {
         $ramHealthStatus = "WARNING"
         $ramHealthText   = "Day RAM (${ramUsagePct}% - Can nang cap)"
         $hardwareAlerts += "RAM dang su dung ${ramUsagePct}% (${usedRamGB}/${totalRamGB} GB) - De gay treo lag may"
-    } elseif ($ramUsagePct -ge 85 -or $totalRamGB -lt 4) {
+    } elseif ($ramUsagePct -ge 85 -or $ramGB -lt 4) {
         $ramHealthStatus = "WARNING"
         $ramHealthText   = "Su dung cao (${ramUsagePct}%)"
     }
@@ -764,6 +952,8 @@ try {
     $ramHealth = @{
         status       = $ramHealthStatus
         statusText   = $ramHealthText
+        ramType      = [string]$detectedRamType
+        installedGB  = [int]$ramGB
         totalGB      = $totalRamGB
         usedGB       = $usedRamGB
         freeGB       = $freeRamGB
@@ -944,6 +1134,7 @@ try {
         osVersion    = [string]$osVersion
         cpuName      = [string]$cpuName
         ramGB        = [int]$ramGB
+        ramType      = [string]$detectedRamType
         
         ramDetails       = $ramDetails      
         gpus             = $gpuList         

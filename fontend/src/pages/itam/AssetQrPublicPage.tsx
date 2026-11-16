@@ -28,6 +28,71 @@ import {
 } from '@ant-design/icons';
 import axiosClient from '../../api/axiosClient';
 
+const JEDEC_RAM_BRAND_MAP: Record<string, string> = {
+  '04CD': 'G.Skill',
+  'CD04': 'G.Skill',
+  '0198': 'Kingston',
+  '9801': 'Kingston',
+  '7F98': 'Kingston',
+  '80AD': 'SK Hynix',
+  'AD80': 'SK Hynix',
+  '00AD': 'SK Hynix',
+  '80CE': 'Samsung',
+  'CE80': 'Samsung',
+  '00CE': 'Samsung',
+  '802C': 'Micron',
+  '2C80': 'Micron',
+  '002C': 'Micron',
+  '859B': 'Crucial',
+  '9B85': 'Crucial',
+  '059B': 'Crucial',
+  '029E': 'Corsair',
+  '9E02': 'Corsair',
+  '04CB': 'ADATA',
+  'CB04': 'ADATA',
+  '04EF': 'TeamGroup',
+  '014F': 'Transcend',
+  '02FE': 'Elpida',
+  '830B': 'Nanya',
+  '075D': 'Lexar',
+  '86F1': 'Lexar',
+  '017A': 'Apacer',
+  '0420': 'Patriot',
+  '8502': 'Patriot',
+  '0443': 'GeIL',
+  '8313': 'Silicon Power',
+  '0B92': 'Kingbank',
+};
+
+const inferDdrFromStickOrCpu = (stick?: any, cpuStr?: string): string => {
+  if (stick?.Type && /DDR\d/i.test(stick.Type)) return stick.Type.toUpperCase();
+  const spdStr = String(stick?.Speed || '');
+  const ddrMatch = spdStr.match(/L?PDDR\d|DDR\d/i);
+  if (ddrMatch) return ddrMatch[0].toUpperCase();
+  const mhzMatch = spdStr.match(/(\d{3,4})/);
+  if (mhzMatch) {
+    const mhz = parseInt(mhzMatch[1], 10);
+    if (mhz >= 3800) return 'DDR5';
+    if (mhz >= 1867) return 'DDR4';
+    if (mhz >= 800) return 'DDR3';
+    if (mhz >= 400) return /i[357]-/i.test(cpuStr || '') ? 'DDR3' : 'DDR2';
+  }
+  const cpu = String(cpuStr || '');
+  if (/i[3579]-1[234]\d{2}|Core Ultra|Ryzen [3579] [789]\d{3}/i.test(cpu)) return 'DDR4/DDR5';
+  if (/i[3579]-(6|7|8|9|10|11)\d{2}|Ryzen [3579] [12345]\d{3}|Pentium.*G[456]\d{3}|Celeron.*G[3456]\d{3}/i.test(cpu)) return 'DDR4';
+  if (/i[357]-[2345]\d{2}|i[357]-\d{3}\b|Pentium.*G[6823]\d{2}|Celeron.*G1\d{2}/i.test(cpu)) return 'DDR3';
+  if (/Core\(TM\)2|Pentium\(R\) Dual/i.test(cpu)) return 'DDR2';
+  return '';
+};
+
+const formatRamManufacturer = (rawMfg?: string): string => {
+  const m = String(rawMfg || '').trim();
+  if (!m) return 'System RAM';
+  const upper4 = m.toUpperCase().slice(0, 4);
+  if (JEDEC_RAM_BRAND_MAP[upper4]) return JEDEC_RAM_BRAND_MAP[upper4];
+  return m;
+};
+
 const AssetQrPublicPage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
@@ -429,7 +494,17 @@ const AssetQrPublicPage: React.FC = () => {
                 )}
               </div>
               <div className="font-bold text-slate-800 mt-0.5">
-                {specs.ram || 'N/A'}
+                {(() => {
+                  const rawRam = specs.ram || '';
+                  if (!rawRam) return 'N/A';
+                  if (/DDR\d/i.test(rawRam)) return rawRam;
+                  const ddr =
+                    specs.ramType ||
+                    (Array.isArray(specs.ramDetails) && specs.ramDetails.length > 0
+                      ? inferDdrFromStickOrCpu(specs.ramDetails[0], specs.cpu)
+                      : inferDdrFromStickOrCpu(undefined, specs.cpu));
+                  return ddr ? `${rawRam} (${ddr})` : rawRam;
+                })()}
                 {hwHealth?.ram && (
                   <span className="text-xs font-normal text-gray-500 ml-1">
                     (Trống {hwHealth.ram.freeGB} GB / {hwHealth.ram.totalGB} GB)
@@ -438,11 +513,20 @@ const AssetQrPublicPage: React.FC = () => {
               </div>
               {Array.isArray(specs.ramDetails) && specs.ramDetails.length > 0 && (
                 <div className="text-[11px] text-gray-500 mt-1 space-y-0.5">
-                  {specs.ramDetails.map((r: any, idx: number) => (
-                    <div key={idx}>
-                      • {r.Slot}: <b>{r.Capacity}</b> ({r.Speed}) - {r.Manufacturer}
-                    </div>
-                  ))}
+                  {specs.ramDetails.map((r: any, idx: number) => {
+                    const stickDdr = inferDdrFromStickOrCpu(r, specs.cpu);
+                    const spdStr = String(r.Speed || '');
+                    const speedLabel = /DDR\d/i.test(spdStr)
+                      ? spdStr
+                      : stickDdr && spdStr && spdStr !== 'Unknown' && spdStr !== 'Standard'
+                      ? `${stickDdr} ${spdStr}`
+                      : stickDdr || spdStr;
+                    return (
+                      <div key={idx}>
+                        • {r.Slot}: <b>{r.Capacity}</b> ({speedLabel}) - {formatRamManufacturer(r.Manufacturer)}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

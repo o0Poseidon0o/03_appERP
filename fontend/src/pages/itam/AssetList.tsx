@@ -26,13 +26,16 @@ import useMediaQuery from '../../hooks/useMediaQuery';
 interface AssetSpecs {
   cpu?: string;
   ram?: string;
+  ramType?: string;
   disk?: string;
   lastAgentSync?: string;
   ramDetails?: Array<{
     Slot: string;
     Capacity: string;
+    Type?: string;
     Speed: string;
     Manufacturer: string;
+    PartNumber?: string;
   }>;
   gpus?: Array<{
     Name: string;
@@ -40,6 +43,71 @@ interface AssetSpecs {
     DriverVersion: string;
   }>;
 }
+
+const JEDEC_RAM_BRAND_MAP: Record<string, string> = {
+  '04CD': 'G.Skill',
+  'CD04': 'G.Skill',
+  '0198': 'Kingston',
+  '9801': 'Kingston',
+  '7F98': 'Kingston',
+  '80AD': 'SK Hynix',
+  'AD80': 'SK Hynix',
+  '00AD': 'SK Hynix',
+  '80CE': 'Samsung',
+  'CE80': 'Samsung',
+  '00CE': 'Samsung',
+  '802C': 'Micron',
+  '2C80': 'Micron',
+  '002C': 'Micron',
+  '859B': 'Crucial',
+  '9B85': 'Crucial',
+  '059B': 'Crucial',
+  '029E': 'Corsair',
+  '9E02': 'Corsair',
+  '04CB': 'ADATA',
+  'CB04': 'ADATA',
+  '04EF': 'TeamGroup',
+  '014F': 'Transcend',
+  '02FE': 'Elpida',
+  '830B': 'Nanya',
+  '075D': 'Lexar',
+  '86F1': 'Lexar',
+  '017A': 'Apacer',
+  '0420': 'Patriot',
+  '8502': 'Patriot',
+  '0443': 'GeIL',
+  '8313': 'Silicon Power',
+  '0B92': 'Kingbank',
+};
+
+const inferDdrFromStickOrCpu = (stick?: any, cpuStr?: string): string => {
+  if (stick?.Type && /DDR\d/i.test(stick.Type)) return stick.Type.toUpperCase();
+  const spdStr = String(stick?.Speed || '');
+  const ddrMatch = spdStr.match(/L?PDDR\d|DDR\d/i);
+  if (ddrMatch) return ddrMatch[0].toUpperCase();
+  const mhzMatch = spdStr.match(/(\d{3,4})/);
+  if (mhzMatch) {
+    const mhz = parseInt(mhzMatch[1], 10);
+    if (mhz >= 3800) return 'DDR5';
+    if (mhz >= 1867) return 'DDR4';
+    if (mhz >= 800) return 'DDR3';
+    if (mhz >= 400) return /i[357]-/i.test(cpuStr || '') ? 'DDR3' : 'DDR2';
+  }
+  const cpu = String(cpuStr || '');
+  if (/i[3579]-1[234]\d{2}|Core Ultra|Ryzen [3579] [789]\d{3}/i.test(cpu)) return 'DDR4/DDR5';
+  if (/i[3579]-(6|7|8|9|10|11)\d{2}|Ryzen [3579] [12345]\d{3}|Pentium.*G[456]\d{3}|Celeron.*G[3456]\d{3}/i.test(cpu)) return 'DDR4';
+  if (/i[357]-[2345]\d{2}|i[357]-\d{3}\b|Pentium.*G[6823]\d{2}|Celeron.*G1\d{2}/i.test(cpu)) return 'DDR3';
+  if (/Core\(TM\)2|Pentium\(R\) Dual/i.test(cpu)) return 'DDR2';
+  return '';
+};
+
+const formatRamManufacturer = (rawMfg?: string): string => {
+  const m = String(rawMfg || '').trim();
+  if (!m) return 'System RAM';
+  const upper4 = m.toUpperCase().slice(0, 4);
+  if (JEDEC_RAM_BRAND_MAP[upper4]) return JEDEC_RAM_BRAND_MAP[upper4];
+  return m;
+};
 
 const AssetList = () => {
   const [data, setData] = useState<IAsset[]>([]);
@@ -418,15 +486,39 @@ const AssetList = () => {
           const specs = record.customSpecs as AssetSpecs;
           const { cpu, ram, disk, ramDetails, gpus } = specs;
 
+          const detectedRamType =
+              specs.ramType ||
+              (Array.isArray(ramDetails) && ramDetails.length > 0
+                  ? inferDdrFromStickOrCpu(ramDetails[0], cpu)
+                  : inferDdrFromStickOrCpu(undefined, cpu));
+
+          const ramLabel = ram
+              ? /DDR\d/i.test(ram)
+                  ? ram
+                  : detectedRamType
+                  ? `${ram} (${detectedRamType})`
+                  : ram
+              : 'N/A';
+
           const ramContent = (
-              <div className="text-xs min-w-[200px]">
-                  <div className="font-bold border-b mb-2 pb-1 text-blue-600">Chi tiết RAM ({ram})</div>
-                  {Array.isArray(ramDetails) && ramDetails.length > 0 ? ramDetails.map((r: any, idx: number) => (
-                      <div key={idx} className="mb-1 text-slate-600 flex justify-between gap-2">
-                          <span>Slot {r.Slot}: <b>{r.Capacity}</b></span>
-                          <span className="text-gray-400">({r.Speed}) - {r.Manufacturer}</span>
-                      </div>
-                  )) : <div className="text-gray-400 italic">Không có thông tin chi tiết</div>}
+              <div className="text-xs min-w-[230px]">
+                  <div className="font-bold border-b mb-2 pb-1 text-blue-600">Chi tiết RAM ({ramLabel})</div>
+                  {Array.isArray(ramDetails) && ramDetails.length > 0 ? ramDetails.map((r: any, idx: number) => {
+                      const stickDdr = inferDdrFromStickOrCpu(r, cpu);
+                      const spdStr = String(r.Speed || '');
+                      const speedLabel = /DDR\d/i.test(spdStr)
+                          ? spdStr
+                          : stickDdr && spdStr && spdStr !== 'Unknown' && spdStr !== 'Standard'
+                          ? `${stickDdr} ${spdStr}`
+                          : stickDdr || spdStr;
+                      const slotClean = String(r.Slot || idx + 1).replace(/^Slot\s*/i, '');
+                      return (
+                          <div key={idx} className="mb-1 text-slate-600 flex justify-between gap-2">
+                              <span>Slot {slotClean}: <b>{r.Capacity}</b></span>
+                              <span className="text-gray-500">({speedLabel}) - {formatRamManufacturer(r.Manufacturer)}</span>
+                          </div>
+                      );
+                  }) : <div className="text-gray-400 italic">Không có thông tin chi tiết</div>}
               </div>
           );
 
@@ -521,7 +613,7 @@ const AssetList = () => {
                 
                 <div className="flex items-center gap-1.5 flex-wrap">
                     <Popover content={ramContent} title={null} placement="top">
-                        <Tag color="blue" bordered={false} className="cursor-help m-0 hover:opacity-80 transition-opacity">RAM: {ram}</Tag>
+                        <Tag color="blue" bordered={false} className="cursor-help m-0 hover:opacity-80 transition-opacity">RAM: {ramLabel}</Tag>
                     </Popover>
                     {Array.isArray(gpus) && gpus.length > 0 && (
                         <Popover content={gpuContent} title={null} placement="top">

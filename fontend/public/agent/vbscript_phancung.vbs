@@ -273,33 +273,127 @@ ElseIf wmiOK Then
     On Error GoTo 0
 End If
 
-' --- 7. RAM CHI TIET ---
-WScript.Echo "[3/8] Quet RAM..."
+' --- 7. RAM CHI TIET, LOAI DDR (DDR3/DDR4/DDR5) & DUNG LUONG CHINH XAC ---
+WScript.Echo "[3/8] Quet RAM (Dung luong & DDR Generation)..."
 Dim ramDetailsArr()
-Dim ramSlotCount
+Dim ramSlotCount, sumStickBytes, detectedRamType
 ramSlotCount = 0
+sumStickBytes = 0
+detectedRamType = ""
 
 If wmiOK Then
     On Error Resume Next
     Dim colMem, objMem
-    Set colMem = objWMI.ExecQuery("SELECT BankLabel,Capacity,Speed,Manufacturer FROM Win32_PhysicalMemory")
+    Set colMem = objWMI.ExecQuery("SELECT * FROM Win32_PhysicalMemory")
     For Each objMem In colMem
-        ReDim Preserve ramDetailsArr(ramSlotCount)
-        Dim capGB
-        capGB = 0
-        If objMem.Capacity > 0 Then capGB = Int(CDbl(objMem.Capacity) / 1073741824 + 0.5)
-        Dim spd
-        spd = "Unknown"
-        If objMem.Speed > 0 Then spd = S(objMem.Speed)
-        ramDetailsArr(ramSlotCount) = "{""Slot"":""" & EscJson(S(objMem.BankLabel)) & """,""Capacity"":""" & capGB & "GB"",""Speed"":""" & spd & "MHz"",""Manufacturer"":""" & EscJson(S(objMem.Manufacturer)) & """}"
-        ramSlotCount = ramSlotCount + 1
+        Dim capBytes, capStr
+        capBytes = 0
+        If objMem.Capacity > 0 Then capBytes = CDbl(objMem.Capacity)
+        If capBytes > 0 Then
+            sumStickBytes = sumStickBytes + capBytes
+            If capBytes >= 1073741824 Then
+                capStr = CStr(Int(capBytes / 1073741824 + 0.5)) & "GB"
+            Else
+                capStr = CStr(Int(capBytes / 1048576 + 0.5)) & "MB"
+            End If
+
+            Dim partNum, rawMfg, mfgDisplay
+            partNum = Trim(S(objMem.PartNumber))
+            If LCase(partNum) = "unknown" Or LCase(partNum) = "none" Or partNum = "00000000" Or LCase(partNum) = "array" Then partNum = ""
+            rawMfg = Trim(S(objMem.Manufacturer))
+            mfgDisplay = ResolveRamMfg(rawMfg, partNum)
+
+            Dim rawSpd, smbiosT, memT, ddrStr, speedDisplay
+            rawSpd = 0
+            smbiosT = 0
+            memT = 0
+            Err.Clear
+            If objMem.ConfiguredClockSpeed > 0 Then rawSpd = CInt(objMem.ConfiguredClockSpeed)
+            Err.Clear
+            If rawSpd <= 0 And objMem.Speed > 0 Then rawSpd = CInt(objMem.Speed)
+            Err.Clear
+            If objMem.SMBIOSMemoryType > 0 Then smbiosT = CInt(objMem.SMBIOSMemoryType)
+            Err.Clear
+            If objMem.MemoryType > 0 Then memT = CInt(objMem.MemoryType)
+            Err.Clear
+
+            ddrStr = ResolveRamType(smbiosT, memT, rawSpd, partNum, cpuName)
+
+            ' Chuan hoa xung nhip neu BIOS tra ve Half-Rate I/O Clock
+            If InStr(ddrStr, "DDR3") > 0 And (rawSpd = 533 Or rawSpd = 667 Or rawSpd = 933) Then
+                rawSpd = rawSpd * 2
+                If rawSpd = 1334 Then rawSpd = 1333
+            ElseIf InStr(ddrStr, "DDR4") > 0 And rawSpd >= 933 And rawSpd <= 1800 Then
+                rawSpd = rawSpd * 2
+                If rawSpd = 2132 Or rawSpd = 2134 Then rawSpd = 2133
+                If rawSpd = 2668 Then rawSpd = 2666
+                If rawSpd = 2932 Or rawSpd = 2934 Then rawSpd = 2933
+            ElseIf InStr(ddrStr, "DDR5") > 0 And rawSpd >= 2000 And rawSpd <= 3600 Then
+                rawSpd = rawSpd * 2
+            End If
+
+            If Len(detectedRamType) = 0 And Len(ddrStr) > 0 Then detectedRamType = ddrStr
+            If rawSpd > 0 Then
+                speedDisplay = ddrStr & " " & rawSpd & "MHz"
+            Else
+                speedDisplay = ddrStr
+            End If
+
+            Dim devLoc, bankLbl, slotName
+            devLoc = Trim(S(objMem.DeviceLocator))
+            bankLbl = Trim(S(objMem.BankLabel))
+            If Len(devLoc) > 0 And LCase(devLoc) <> "unknown" And LCase(devLoc) <> "none" Then
+                slotName = devLoc
+            ElseIf Len(bankLbl) > 0 Then
+                slotName = bankLbl
+            Else
+                slotName = "#" & (ramSlotCount + 1)
+            End If
+            If LCase(Left(slotName, 5)) = "slot " Then slotName = Trim(Mid(slotName, 6))
+
+            ReDim Preserve ramDetailsArr(ramSlotCount)
+            ramDetailsArr(ramSlotCount) = "{""Slot"":""" & EscJson(slotName) & """,""Capacity"":""" & capStr & """,""Type"":""" & EscJson(ddrStr) & """,""Speed"":""" & EscJson(speedDisplay) & """,""Manufacturer"":""" & EscJson(mfgDisplay) & """,""PartNumber"":""" & EscJson(partNum) & """}"
+            ramSlotCount = ramSlotCount + 1
+        End If
     Next
     On Error GoTo 0
 End If
 
+' Tinh tong dung luong RAM vat ly chinh xac (uu tien tong cac thanh RAM vat ly de khong bi hut do iGPU share RAM)
+If sumStickBytes > 0 Then
+    ramGB = Int(sumStickBytes / 1073741824 + 0.5)
+End If
+If ramTotalGB > 0 Then
+    If ramGB <= 0 Or ramTotalGB > (ramGB + 0.8) Then
+        If ramTotalGB > 2.8 And ramTotalGB <= 4.1 Then
+            ramGB = 4
+        ElseIf ramTotalGB > 5.1 And ramTotalGB <= 6.1 Then
+            ramGB = 6
+        ElseIf ramTotalGB > 6.5 And ramTotalGB <= 8.2 Then
+            ramGB = 8
+        ElseIf ramTotalGB > 10.5 And ramTotalGB <= 12.2 Then
+            ramGB = 12
+        ElseIf ramTotalGB > 13.8 And ramTotalGB <= 16.5 Then
+            ramGB = 16
+        ElseIf ramTotalGB > 22.0 And ramTotalGB <= 24.5 Then
+            ramGB = 24
+        ElseIf ramTotalGB > 28.0 And ramTotalGB <= 32.5 Then
+            ramGB = 32
+        ElseIf ramTotalGB > 60.0 And ramTotalGB <= 64.5 Then
+            ramGB = 64
+        Else
+            ramGB = Int(ramTotalGB + 0.5)
+        End If
+    End If
+End If
+
+If Len(detectedRamType) = 0 Then
+    detectedRamType = ResolveRamType(0, 0, 0, "", cpuName)
+End If
+
 If ramSlotCount = 0 And ramGB > 0 Then
     ReDim ramDetailsArr(0)
-    ramDetailsArr(0) = "{""Slot"":""Slot 1"",""Capacity"":""" & ramGB & "GB"",""Speed"":""Standard"",""Manufacturer"":""System RAM""}"
+    ramDetailsArr(0) = "{""Slot"":""1"",""Capacity"":""" & ramGB & "GB"",""Type"":""" & EscJson(detectedRamType) & """,""Speed"":""" & EscJson(detectedRamType) & """,""Manufacturer"":""System RAM"",""PartNumber"":""""}"
     ramSlotCount = 1
 End If
 
@@ -310,6 +404,7 @@ Else
 End If
 
 ' Suc khoe RAM
+If ramTotalGB <= 0 And ramGB > 0 Then ramTotalGB = CDbl(ramGB)
 ramUsedGB = Round(ramTotalGB - ramFreeGB, 1)
 If ramUsedGB < 0 Then ramUsedGB = 0
 If ramTotalGB > 0 Then
@@ -318,16 +413,16 @@ End If
 
 Dim ramHealthStatus, ramHealthText
 ramHealthStatus = "GOOD"
-ramHealthText = "Tot (Con trong " & ramFreeGB & " GB)"
+ramHealthText = "Tot (Con trong " & Num(ramFreeGB) & " GB)"
 If ramUsagePct >= 95 Then
     ramHealthStatus = "WARNING"
     ramHealthText = "Day RAM (" & ramUsagePct & "% - Can nang cap)"
-ElseIf ramUsagePct >= 85 Or ramTotalGB < 4 Then
+ElseIf ramUsagePct >= 85 Or ramGB < 4 Then
     ramHealthStatus = "WARNING"
     ramHealthText = "Su dung cao (" & ramUsagePct & "%)"
 End If
 
-WScript.Echo "  -> RAM: " & ramGB & " GB"
+WScript.Echo "  -> RAM: " & ramGB & " GB " & detectedRamType
 
 ' --- 8. GPU ---
 WScript.Echo "[4/8] Quet GPU..."
@@ -610,6 +705,7 @@ jsonPayload = "{" & _
     """osVersion"":""" & EscJson(osVersion) & """," & _
     """cpuName"":""" & EscJson(cpuName) & """," & _
     """ramGB"":" & ramGB & "," & _
+    """ramType"":""" & EscJson(detectedRamType) & """," & _
     """ramDetails"":" & ramDetails & "," & _
     """gpus"":" & gpuInfo & "," & _
     """peripherals"":" & peripheralInfo & "," & _
@@ -699,6 +795,162 @@ WScript.Echo "HOAN TAT!"
 ' ===========================================================================
 ' HAM HO TRO
 ' ===========================================================================
+' Giai ma hang san xuat RAM tu ma JEDEC Hex hoac PartNumber
+Function ResolveRamMfg(rawMfg, partNum)
+    Dim uMfg, uPart, mfgName, code4
+    uMfg = UCase(Trim(rawMfg))
+    uPart = UCase(Trim(partNum))
+    mfgName = ""
+    code4 = Left(uMfg, 4)
+
+    Select Case code4
+        Case "04CD", "CD04": mfgName = "G.Skill"
+        Case "0198", "9801", "7F98": mfgName = "Kingston"
+        Case "80AD", "AD80", "00AD", "AD00": mfgName = "SK Hynix"
+        Case "80CE", "CE80", "00CE", "CE00": mfgName = "Samsung"
+        Case "802C", "2C80", "002C", "2C00": mfgName = "Micron"
+        Case "859B", "9B85", "059B": mfgName = "Crucial"
+        Case "029E", "9E02": mfgName = "Corsair"
+        Case "04CB", "CB04": mfgName = "ADATA"
+        Case "04EF", "EF04": mfgName = "TeamGroup"
+        Case "014F", "4F01": mfgName = "Transcend"
+        Case "02FE", "FE02": mfgName = "Elpida"
+        Case "830B", "0B83", "030B": mfgName = "Nanya"
+        Case "075D", "86F1": mfgName = "Lexar"
+        Case "017A", "7A01": mfgName = "Apacer"
+        Case "8551", "0551", "80C1", "00C1": mfgName = "Infineon"
+        Case "0420", "8502", "0502": mfgName = "Patriot"
+        Case "0443": mfgName = "GeIL"
+        Case "8313": mfgName = "Silicon Power"
+        Case "0B92", "8B92": mfgName = "Kingbank"
+        Case "07E9": mfgName = "Netac"
+        Case "86D3": mfgName = "Puskill"
+    End Select
+
+    If Len(mfgName) = 0 Then
+        If Len(uMfg) > 0 And uMfg <> "UNDEFINED" And uMfg <> "UNKNOWN" And Left(uMfg, 4) <> "0000" And Left(uMfg, 12) <> "MANUFACTURER" Then
+            ' Kiem tra xem co phai chuoi Hex 4 ky tu khong
+            Dim isHex, hi, hc
+            isHex = (Len(uMfg) = 4 Or Len(uMfg) = 8 Or Len(uMfg) = 12)
+            For hi = 1 To Len(uMfg)
+                hc = Mid(uMfg, hi, 1)
+                If InStr("0123456789ABCDEF", hc) = 0 Then isHex = False
+            Next
+            If Not isHex Then mfgName = rawMfg
+        End If
+    End If
+
+    If Len(mfgName) = 0 And Len(uPart) > 0 Then
+        If Left(uPart, 3) = "F2-" Or Left(uPart, 3) = "F3-" Or Left(uPart, 3) = "F4-" Or Left(uPart, 3) = "F5-" Or Left(uPart, 3) = "FA-" Then
+            mfgName = "G.Skill"
+        ElseIf Left(uPart, 3) = "KVR" Or Left(uPart, 3) = "KHX" Or Left(uPart, 2) = "HX" Or Left(uPart, 2) = "KF" Or Left(uPart, 3) = "ACR" Then
+            mfgName = "Kingston"
+        ElseIf Left(uPart, 4) = "M378" Or Left(uPart, 4) = "M471" Or Left(uPart, 4) = "M393" Or Left(uPart, 4) = "M323" Or Left(uPart, 4) = "M425" Then
+            mfgName = "Samsung"
+        ElseIf Left(uPart, 3) = "HMT" Or Left(uPart, 3) = "HMA" Or Left(uPart, 4) = "HMCG" Or Left(uPart, 4) = "HYMP" Then
+            mfgName = "SK Hynix"
+        ElseIf Left(uPart, 2) = "CT" Or Left(uPart, 2) = "BL" Then
+            mfgName = "Crucial"
+        ElseIf Left(uPart, 2) = "MT" Then
+            mfgName = "Micron"
+        ElseIf Left(uPart, 2) = "CM" Then
+            mfgName = "Corsair"
+        ElseIf Left(uPart, 2) = "AX" Or Left(uPart, 2) = "AD" Then
+            mfgName = "ADATA"
+        ElseIf Left(uPart, 3) = "TED" Or Left(uPart, 3) = "TLZ" Or Left(uPart, 2) = "TF" Then
+            mfgName = "TeamGroup"
+        ElseIf Left(uPart, 2) = "TS" Or Left(uPart, 2) = "JM" Then
+            mfgName = "Transcend"
+        ElseIf Left(uPart, 2) = "NT" Then
+            mfgName = "Nanya"
+        End If
+    End If
+
+    If Len(mfgName) = 0 Then mfgName = "Generic RAM"
+    If Len(partNum) > 0 Then
+        ResolveRamMfg = mfgName & " (" & partNum & ")"
+    Else
+        ResolveRamMfg = mfgName
+    End If
+End Function
+
+' Xac dinh the he RAM (DDR2 / DDR3 / DDR4 / DDR5 / LPDDR)
+Function ResolveRamType(smbiosT, memT, rawSpd, partNum, cpuStr)
+    Dim ddr, uPart, uCpu
+    ddr = ""
+    uPart = UCase(Trim(partNum))
+    uCpu = UCase(Trim(cpuStr))
+
+    Select Case smbiosT
+        Case 34: ddr = "DDR5"
+        Case 35: ddr = "LPDDR5"
+        Case 26: ddr = "DDR4"
+        Case 30: ddr = "LPDDR4"
+        Case 24: ddr = "DDR3"
+        Case 29: ddr = "LPDDR3"
+        Case 21, 22: ddr = "DDR2"
+        Case 28: ddr = "LPDDR2"
+        Case 20: ddr = "DDR"
+    End Select
+
+    If Len(ddr) = 0 Then
+        Select Case memT
+            Case 26: ddr = "DDR4"
+            Case 24: ddr = "DDR3"
+            Case 21, 22: ddr = "DDR2"
+            Case 20: ddr = "DDR"
+        End Select
+    End If
+
+    If Len(ddr) = 0 And Len(uPart) > 0 Then
+        If InStr(uPart, "DDR5") > 0 Or InStr(uPart, "PC5") > 0 Or Left(uPart, 3) = "F5-" Or Left(uPart, 3) = "KF5" Or Left(uPart, 4) = "M323" Or Left(uPart, 4) = "HMCG" Then
+            ddr = "DDR5"
+        ElseIf InStr(uPart, "DDR4") > 0 Or InStr(uPart, "PC4") > 0 Or Left(uPart, 3) = "F4-" Or Left(uPart, 3) = "KF4" Or Left(uPart, 3) = "HX4" Or Left(uPart, 5) = "M378A" Or Left(uPart, 5) = "M471A" Or Left(uPart, 4) = "HMA8" Or Left(uPart, 4) = "HMAA" Or Left(uPart, 3) = "MTA" Then
+            ddr = "DDR4"
+        ElseIf InStr(uPart, "DDR3") > 0 Or InStr(uPart, "PC3") > 0 Or Left(uPart, 3) = "F3-" Or Left(uPart, 4) = "KHX1" Or Left(uPart, 3) = "HX3" Or Left(uPart, 5) = "M378B" Or Left(uPart, 5) = "M471B" Or Left(uPart, 3) = "HMT" Or Left(uPart, 4) = "KVR1" Then
+            ddr = "DDR3"
+        ElseIf InStr(uPart, "DDR2") > 0 Or InStr(uPart, "PC2") > 0 Or Left(uPart, 3) = "F2-" Or Left(uPart, 5) = "M378T" Or Left(uPart, 4) = "HYMP" Then
+            ddr = "DDR2"
+        End If
+    End If
+
+    If Len(ddr) = 0 And rawSpd > 0 Then
+        If rawSpd >= 3800 Then
+            ddr = "DDR5"
+        ElseIf rawSpd >= 1867 Then
+            ddr = "DDR4"
+        ElseIf rawSpd >= 800 Then
+            If rawSpd = 800 And (InStr(uCpu, "CORE(TM)2") > 0 Or InStr(uCpu, "PENTIUM(R) DUAL") > 0) Then
+                ddr = "DDR2"
+            Else
+                ddr = "DDR3"
+            End If
+        ElseIf rawSpd >= 400 Then
+            If InStr(uCpu, "I3-") > 0 Or InStr(uCpu, "I5-") > 0 Or InStr(uCpu, "I7-") > 0 Then
+                ddr = "DDR3"
+            Else
+                ddr = "DDR2"
+            End If
+        Else
+            ddr = "DDR"
+        End If
+    End If
+
+    If Len(ddr) = 0 Then
+        If InStr(uCpu, "-12") > 0 Or InStr(uCpu, "-13") > 0 Or InStr(uCpu, "-14") > 0 Or InStr(uCpu, "CORE ULTRA") > 0 Then
+            ddr = "DDR4/DDR5"
+        ElseIf InStr(uCpu, "-6") > 0 Or InStr(uCpu, "-7") > 0 Or InStr(uCpu, "-8") > 0 Or InStr(uCpu, "-9") > 0 Or InStr(uCpu, "-10") > 0 Or InStr(uCpu, "-11") > 0 Or InStr(uCpu, "RYZEN") > 0 Then
+            ddr = "DDR4"
+        ElseIf InStr(uCpu, "CORE(TM)2") > 0 Or InStr(uCpu, "PENTIUM(R) DUAL") > 0 Then
+            ddr = "DDR2"
+        Else
+            ddr = "DDR3"
+        End If
+    End If
+
+    ResolveRamType = ddr
+End Function
+
 ' Chuyen gia tri WMI (co the Null/Empty) thanh chuoi an toan - CStr(Null) gay loi
 Function S(v)
     If IsNull(v) Or IsEmpty(v) Then

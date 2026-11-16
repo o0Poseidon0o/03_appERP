@@ -152,6 +152,8 @@ for line in meminfo.splitlines():
         break
 
 ram_details = []
+detected_ram_type = ""
+sum_stick_gb = 0
 dmi_mem = run_cmd("dmidecode -t memory")
 if dmi_mem and "Memory Device" in dmi_mem:
     for block in dmi_mem.split("Memory Device")[1:]:
@@ -163,24 +165,49 @@ if dmi_mem and "Memory Device" in dmi_mem:
             continue
         # Chuyen MB -> GB neu can
         cap_str = size_val
+        stick_gb = 0
         m_mb = re.match(r"^(\d+)\s*MB", size_val, re.I)
         if m_mb:
-            cap_str = f"{round(int(m_mb.group(1)) / 1024)}GB"
+            stick_gb = round(int(m_mb.group(1)) / 1024)
+            cap_str = f"{stick_gb}GB"
         else:
             m_gb = re.match(r"^(\d+)\s*GB", size_val, re.I)
             if m_gb:
-                cap_str = f"{m_gb.group(1)}GB"
+                stick_gb = int(m_gb.group(1))
+                cap_str = f"{stick_gb}GB"
+        sum_stick_gb += stick_gb
 
         slot_m = re.search(r"^\s*Locator:\s*(.+)$", block, re.M)
-        speed_m = re.search(r"^\s*Speed:\s*(.+)$", block, re.M)
+        type_m = re.search(r"^\s*Type:\s*(.+)$", block, re.M)
+        speed_m = re.search(r"^\s*Configured Memory Speed:\s*(\d+\s*(?:MT/s|MHz))", block, re.M) or re.search(r"^\s*Speed:\s*(\d+\s*(?:MT/s|MHz))", block, re.M)
         mfg_m = re.search(r"^\s*Manufacturer:\s*(.+)$", block, re.M)
+        part_m = re.search(r"^\s*Part Number:\s*(.+)$", block, re.M)
+
+        ddr_t = type_m.group(1).strip() if type_m else ""
+        if ddr_t.lower() in ("unknown", "other", "ram"):
+            ddr_t = ""
+        if ddr_t and not detected_ram_type:
+            detected_ram_type = ddr_t
+
+        spd_raw = speed_m.group(1).strip().replace(" ", "").replace("MT/s", "MHz") if speed_m else ""
+        spd_display = f"{ddr_t} {spd_raw}".strip() if (ddr_t or spd_raw) else "Unknown"
+        mfg_str = mfg_m.group(1).strip() if mfg_m else "Generic RAM"
+        part_str = part_m.group(1).strip() if part_m else ""
+        if part_str and part_str.lower() not in ("unknown", "not specified", "none"):
+            mfg_str = f"{mfg_str} ({part_str})"
+
         ram_details.append({
             "Slot": slot_m.group(1).strip() if slot_m else "Slot",
             "Capacity": cap_str,
-            "Speed": speed_m.group(1).strip().replace(" ", "") if speed_m else "Unknown",
-            "Manufacturer": mfg_m.group(1).strip() if mfg_m else "Unknown"
+            "Type": ddr_t or "DDR",
+            "Speed": spd_display,
+            "Manufacturer": mfg_str,
+            "PartNumber": part_str
         })
-print(" OK")
+
+if sum_stick_gb > 0:
+    ram_gb = sum_stick_gb
+print(f" OK ({ram_gb}GB {detected_ram_type})".rstrip())
 
 # 4. GPU
 print("[4/7] Quet GPU...", end="", flush=True)
@@ -472,6 +499,7 @@ payload = {
     "osVersion": os_version,
     "cpuName": cpu_name,
     "ramGB": ram_gb,
+    "ramType": detected_ram_type,
     "ramDetails": ram_details,
     "gpus": gpu_list,
     "peripherals": peripheral_list,
