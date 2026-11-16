@@ -19,7 +19,6 @@ import {
   AlertOutlined,
   SafetyCertificateOutlined,
   ShopOutlined,
-  EyeOutlined,
   LaptopOutlined,
   UserOutlined,
   FileExcelOutlined,
