@@ -1,170 +1,388 @@
 import { Request, Response } from "express";
 import prisma from "../../config/prisma";
 
+const STATUS_LABEL_MAP: Record<string, string> = {
+  IN_USE: "Đang sử dụng",
+  NEW: "Mới tiếp nhận",
+  REPAIR: "Đang sửa chữa",
+  BROKEN: "Đang báo hỏng",
+  STORAGE: "Lưu kho",
+  LIQUIDATED: "Đã thanh lý",
+  LOST: "Thất lạc",
+};
+
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
-    // [UPDATE] Đã đổi thành lấy mốc thời gian 60 ngày trước để test
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     const [
-      totalAssets, 
-      totalComputingAssets, 
-      brokenAssets, 
-      allComputers, 
-      offlineAssets, 
-      statusGroups, 
+      totalAssets,
+      allComputers,
+      brokenAssets,
+      componentGroups,
+      faultyComponentsCount,
+      statusGroups,
       typeGroups,
       factoryGroups,
-      // Chứa kết quả truy vấn lịch sử nâng cấp
-      upgradedAssetsLogs 
+      upgradedAssetsLogs,
+      types,
+      expiringKeysCount,
     ] = await Promise.all([
       prisma.asset.count(),
-      
-      prisma.asset.count({
-          where: { type: { code: { in: ['PC', 'LAPTOP', 'SERVER'] } } }
-      }),
 
-      // 2. Lấy danh sách máy đang sửa/hỏng
-      prisma.asset.findMany({ 
-          where: { status: { in: ['BROKEN', 'REPAIR'] } },
-          include: { 
-              factory: true, 
-              department: true, 
-              // Lấy thông tin User và include luôn Department của User đó
-              users: {
-                  include: {
-                      department: true 
-                  }
-              } 
-          }, 
-          orderBy: { updatedAt: 'desc' }
-      }),
-
-      // 3. Lấy danh sách PC/Laptop để lọc RAM yếu
       prisma.asset.findMany({
-        where: { type: { code: { in: ['PC', 'LAPTOP'] } } },
-        select: { 
-            id: true, name: true, modelName: true, status: true,
-            customSpecs: true, domainUser: true, 
-            factory: { select: { name: true } },
-            department: { select: { name: true } }, 
-            
-            users: { 
-                select: { 
-                    id: true, 
-                    fullName: true, 
-                    email: true,
-                    department: { select: { name: true } } 
-                } 
-            } 
-        }
+        where: { type: { code: { in: ["PC", "LAPTOP", "SERVER"] } } },
+        select: {
+          id: true,
+          name: true,
+          serialNumber: true,
+          ipAddress: true,
+          osName: true,
+          osVersion: true,
+          modelName: true,
+          manufacturer: true,
+          status: true,
+          lastSeen: true,
+          domainUser: true,
+          customSpecs: true,
+          type: { select: { code: true, name: true } },
+          factory: { select: { name: true } },
+          department: { select: { name: true } },
+          components: {
+            select: {
+              id: true,
+              type: true,
+              name: true,
+              status: true,
+              specs: true,
+            },
+          },
+          users: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              department: { select: { name: true } },
+            },
+          },
+        },
+        orderBy: { lastSeen: "desc" },
       }),
 
-      prisma.asset.count({
-        where: { lastSeen: { lt: new Date(new Date().setDate(new Date().getDate() - 30)) } }
+      prisma.asset.findMany({
+        where: { status: { in: ["BROKEN", "REPAIR"] } },
+        include: {
+          factory: true,
+          department: true,
+          users: { include: { department: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+      }),
+
+      prisma.assetComponent.groupBy({
+        by: ["type"],
+        _count: { type: true },
+      }),
+
+      prisma.assetComponent.count({
+        where: { status: "FAULTY" },
       }),
 
       prisma.asset.groupBy({
-        by: ['status'],
-        _count: { status: true }
+        by: ["status"],
+        _count: { status: true },
       }),
 
       prisma.asset.groupBy({
-        by: ['typeId'],
-        _count: { typeId: true }
+        by: ["typeId"],
+        _count: { typeId: true },
       }),
 
       prisma.factory.findMany({
         select: {
-            name: true,
-            _count: {
-                select: {
-                    assets: {
-                        where: {
-                            type: { code: { in: ['PC', 'LAPTOP'] } }
-                        }
-                    }
-                }
-            }
-        }
+          name: true,
+          _count: {
+            select: {
+              assets: {
+                where: { type: { code: { in: ["PC", "LAPTOP", "SERVER"] } } },
+              },
+            },
+          },
+        },
       }),
 
-      // [UPDATE] Truy vấn bảng MaintenanceLog lấy các máy thay đổi phần cứng trong 60 ngày
       prisma.maintenanceLog.findMany({
-          where: {
-              type: 'UPGRADE', // Lọc đúng loại log là nâng cấp/thay đổi
-              startDate: { gte: sixtyDaysAgo } // Trong vòng 60 ngày qua
+        where: {
+          type: "UPGRADE",
+          startDate: { gte: sixtyDaysAgo },
+        },
+        include: {
+          asset: {
+            include: {
+              factory: true,
+              department: true,
+              users: { include: { department: true } },
+            },
           },
-          include: {
-              asset: { // Include thông tin máy tính để hiển thị lên bảng
-                  include: {
-                      factory: true,
-                      department: true,
-                      users: {
-                          include: { department: true }
-                      }
-                  }
-              }
-          },
-          orderBy: { startDate: 'desc' } // Sắp xếp mới nhất lên đầu
-      })
+        },
+        orderBy: { startDate: "desc" },
+      }),
+
+      prisma.assetType.findMany(),
+
+      prisma.softwareLicenseKey.count({
+        where: {
+          status: "ACTIVE",
+          expiredAt: { lte: thirtyDaysFromNow },
+        },
+      }),
     ]);
 
-    // --- XỬ LÝ DỮ LIỆU ---
+    // --- 1. TỔNG HỢP LINH KIỆN & NGOẠI VI THỰC TẾ ---
+    const componentCountMap: Record<string, number> = {};
+    let totalComponentsReal = 0;
+    for (const cg of componentGroups) {
+      componentCountMap[cg.type] = cg._count.type;
+      totalComponentsReal += cg._count.type;
+    }
 
-    // 1. Lọc ra danh sách máy RAM < 8GB từ allComputers
-    const lowRamList = allComputers.filter((a: any) => {
-        if (a.customSpecs && a.customSpecs.ram) {
-            const ramNum = parseInt(a.customSpecs.ram.replace(/\D/g, ''));
-            return !isNaN(ramNum) && ramNum < 8 && ramNum > 0;
+    // --- 2. PHÂN TÍCH SỨC KHỎE, KẾT NỐI, CẤU HÌNH, BẢN QUYỀN & HỆ ĐIỀU HÀNH ---
+    const lowRamList: any[] = [];
+    const healthWarningList: any[] = [];
+    const offlineList: any[] = [];
+    const unlicensedOsList: any[] = [];
+
+    let online24hCount = 0;
+    let active7dCount = 0;
+    let offline7dCount = 0;
+    let offline30dCount = 0;
+
+    let healthGoodCount = 0;
+    let healthWarningCount = 0;
+    let healthCriticalCount = 0;
+
+    let licensedOsCount = 0;
+    let unlicensedOsCount = 0;
+
+    const osDistribution: Record<string, number> = {
+      "Windows 11": 0,
+      "Windows 10": 0,
+      "Windows 7 / 8": 0,
+      "Windows Server": 0,
+      "Ubuntu / Linux": 0,
+      "Khác": 0,
+    };
+
+    const ramGenDistribution: Record<string, number> = {
+      DDR5: 0,
+      DDR4: 0,
+      DDR3: 0,
+      "DDR2 / Cũ": 0,
+    };
+
+    let ssdMachineCount = 0;
+    let hddOnlyMachineCount = 0;
+
+    for (const comp of allComputers) {
+      const specs: any = comp.customSpecs || {};
+      const rawRamStr = String(specs.ram || "");
+      // Sửa lỗi parseInt: chỉ lấy số đứng đầu (VD: "4 GB DDR4" -> 4, không bị gộp số 4 của DDR4 thành 44)
+      const ramMatch = rawRamStr.match(/^(\d+)/);
+      const ramNum = ramMatch ? parseInt(ramMatch[1], 10) : 0;
+
+      const diskComps = (comp.components || []).filter((c: any) => c.type === "HARD_DISK");
+      const hasSsd =
+        diskComps.some((d: any) => /SSD|NVMe/i.test(String(d.specs?.type || d.name || ""))) ||
+        /SSD|NVMe/i.test(String(specs.disk || ""));
+      const hasDiskInfo = diskComps.length > 0 || Boolean(specs.disk && specs.disk !== "N/A");
+
+      if (hasSsd) ssdMachineCount++;
+      else if (hasDiskInfo) hddOnlyMachineCount++;
+
+      // Máy cấu hình yếu: RAM < 8GB (trên PC/Laptop)
+      if (comp.type?.code !== "SERVER" && ramNum > 0 && ramNum < 8) {
+        lowRamList.push({
+          ...comp,
+          upgradeReason:
+            !hasSsd && hasDiskInfo
+              ? `RAM thấp (${rawRamStr}) + Đang dùng ổ HDD cơ`
+              : `RAM thấp (${rawRamStr})`,
+        });
+      }
+
+      // Phân loại thế hệ RAM (DDR3 / DDR4 / DDR5)
+      const firstStick = Array.isArray(specs.ramDetails) ? specs.ramDetails[0] : null;
+      const ddrCombined = `${specs.ramType || ""} ${rawRamStr} ${firstStick?.Type || ""} ${firstStick?.Speed || ""}`;
+      if (/DDR5/i.test(ddrCombined)) ramGenDistribution["DDR5"]++;
+      else if (/DDR4/i.test(ddrCombined)) ramGenDistribution["DDR4"]++;
+      else if (/DDR3/i.test(ddrCombined)) ramGenDistribution["DDR3"]++;
+      else if (/DDR2/i.test(ddrCombined)) ramGenDistribution["DDR2 / Cũ"]++;
+      else if (specs.cpu) {
+        if (/i[3579]-(6|7|8|9|10|11|12|13|14)\d{2}|Ryzen/i.test(specs.cpu)) ramGenDistribution["DDR4"]++;
+        else if (/i[357]-[2345]\d{2}|i[357]-\d{3}/i.test(specs.cpu)) ramGenDistribution["DDR3"]++;
+      }
+
+      // Phân loại Hệ điều hành
+      const os = String(comp.osName || "");
+      if (/Server/i.test(os)) osDistribution["Windows Server"]++;
+      else if (/Windows 11/i.test(os)) osDistribution["Windows 11"]++;
+      else if (/Windows 10/i.test(os)) osDistribution["Windows 10"]++;
+      else if (/Windows (7|8|XP|Vista)/i.test(os)) osDistribution["Windows 7 / 8"]++;
+      else if (/Ubuntu|Linux|Debian|CentOS|RedHat/i.test(os)) osDistribution["Ubuntu / Linux"]++;
+      else if (os) osDistribution["Khác"]++;
+
+      // Phân loại trạng thái kết nối Agent
+      const lastSeenDate = comp.lastSeen ? new Date(comp.lastSeen) : null;
+      if (lastSeenDate && lastSeenDate >= twentyFourHoursAgo) {
+        online24hCount++;
+      } else if (lastSeenDate && lastSeenDate >= sevenDaysAgo) {
+        active7dCount++;
+      } else {
+        offline7dCount++;
+        offlineList.push(comp);
+        if (!lastSeenDate || lastSeenDate < thirtyDaysAgo) {
+          offline30dCount++;
         }
-        return false;
+      }
+
+      // Phân loại Sức khỏe phần cứng (S.M.A.R.T / CPU / RAM / Ổ đĩa)
+      const hwHealth = specs.hardwareHealth || null;
+      const hasFaultyDisk = diskComps.some(
+        (d: any) => d.status === "FAULTY" || d.specs?.healthStatus === "CRITICAL"
+      );
+
+      if (
+        comp.status === "BROKEN" ||
+        hasFaultyDisk ||
+        hwHealth?.overallStatus === "CRITICAL"
+      ) {
+        healthCriticalCount++;
+        healthWarningList.push({
+          ...comp,
+          healthLevel: "CRITICAL",
+          healthSummary:
+            hwHealth?.alerts?.join("; ") ||
+            hwHealth?.overallText ||
+            "Lỗi phần cứng nghiêm trọng (Ổ cứng S.M.A.R.T / Thiết bị báo hỏng)",
+        });
+      } else if (
+        comp.status === "REPAIR" ||
+        hwHealth?.overallStatus === "WARNING" ||
+        (ramNum > 0 && ramNum <= 4)
+      ) {
+        healthWarningCount++;
+        healthWarningList.push({
+          ...comp,
+          healthLevel: "WARNING",
+          healthSummary:
+            hwHealth?.alerts?.join("; ") ||
+            hwHealth?.overallText ||
+            (ramNum <= 4 ? `RAM thấp (${rawRamStr})` : "Cần chú ý dung lượng ổ đĩa / tải RAM"),
+        });
+      } else {
+        healthGoodCount++;
+      }
+
+      // Kiểm tra Bản quyền Hệ điều hành
+      const osLic = specs.osLicense || null;
+      if (/Ubuntu|Linux/i.test(os)) {
+        licensedOsCount++;
+      } else if (osLic?.status === "LICENSED") {
+        licensedOsCount++;
+      } else if (osLic?.status === "UNLICENSED") {
+        unlicensedOsCount++;
+        unlicensedOsList.push({
+          ...comp,
+          licenseNote: `Windows chưa kích hoạt (${osLic.channel || "UNLICENSED"})`,
+        });
+      }
+    }
+
+    // --- 3. DỮ LIỆU BIỂU ĐỒ ---
+    const typeStats = typeGroups.map((g) => {
+      const typeInfo = types.find((t) => t.id === g.typeId);
+      return {
+        name: typeInfo?.name || "Khác",
+        code: typeInfo?.code || "OTHER",
+        value: g._count.typeId,
+      };
     });
 
-    // 2. Map tên Loại tài sản
-    const types = await prisma.assetType.findMany();
-    const typeStats = typeGroups.map(g => {
-        const typeInfo = types.find(t => t.id === g.typeId);
-        return { name: typeInfo?.name || 'Khác', value: g._count.typeId };
-    });
-
-    // 3. Map Trạng thái
-    const statusStats = statusGroups.map(g => ({
-        name: g.status, value: g._count.status
+    const statusStats = statusGroups.map((g) => ({
+      code: g.status,
+      name: STATUS_LABEL_MAP[g.status] || g.status,
+      value: g._count.status,
     }));
 
-    // 4. Map Nhà máy
-    const factoryStats = factoryGroups.map(f => ({
-        name: f.name,
-        value: f._count.assets
+    const factoryStats = factoryGroups.map((f) => ({
+      name: f.name,
+      value: f._count.assets,
     }));
+
+    const osChartData = Object.entries(osDistribution)
+      .filter(([_, count]) => count > 0)
+      .map(([name, value]) => ({ name, value }));
+
+    const ramGenChartData = Object.entries(ramGenDistribution)
+      .filter(([_, count]) => count > 0)
+      .map(([name, value]) => ({ name, value }));
 
     res.status(200).json({
       status: "success",
       data: {
         cards: {
-            total: totalAssets,
-            totalComputing: totalComputingAssets, 
-            totalComponents: totalAssets - totalComputingAssets, 
-            broken: brokenAssets.length, 
-            lowRam: lowRamList.length, 
-            offline: offlineAssets,
-            upgraded: upgradedAssetsLogs.length // Tổng số máy thay đổi
+          total: totalAssets,
+          totalComputing: allComputers.length,
+          totalComponents: totalComponentsReal,
+          monitorsCount: componentCountMap["MONITOR"] || 0,
+          disksCount: componentCountMap["HARD_DISK"] || 0,
+          peripheralsCount:
+            (componentCountMap["MOUSE"] || 0) +
+            (componentCountMap["KEYBOARD"] || 0) +
+            (componentCountMap["PERIPHERAL"] || 0),
+          faultyComponents: faultyComponentsCount,
+          broken: brokenAssets.length,
+          lowRam: lowRamList.length,
+          hddOnly: hddOnlyMachineCount,
+          ssdMachines: ssdMachineCount,
+          offline: offline30dCount,
+          offline7d: offline7dCount,
+          online24h: online24hCount,
+          active7d: active7dCount,
+          upgraded: upgradedAssetsLogs.length,
+          healthGood: healthGoodCount,
+          healthWarning: healthWarningCount,
+          healthCritical: healthCriticalCount,
+          licensedOs: licensedOsCount,
+          unlicensedOs: unlicensedOsCount,
+          expiringKeys: expiringKeysCount,
         },
         lists: {
-            broken: brokenAssets,
-            lowRam: lowRamList,
-            upgraded: upgradedAssetsLogs // Danh sách chi tiết
+          broken: brokenAssets,
+          lowRam: lowRamList,
+          upgraded: upgradedAssetsLogs,
+          offline: offlineList,
+          healthAlerts: healthWarningList,
+          unlicensed: unlicensedOsList,
         },
         charts: {
-            byStatus: statusStats,
-            byType: typeStats,
-            byFactory: factoryStats
-        }
-      }
+          byStatus: statusStats,
+          byType: typeStats,
+          byFactory: factoryStats,
+          byOs: osChartData,
+          byRamGen: ramGenChartData,
+          storageSummary: [
+            { name: "Đã có SSD/NVMe", value: ssdMachineCount },
+            { name: "Chỉ có HDD cơ", value: hddOnlyMachineCount },
+          ].filter((x) => x.value > 0),
+        },
+      },
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ status: "error", message: "Lỗi tải thống kê Dashboard" });
