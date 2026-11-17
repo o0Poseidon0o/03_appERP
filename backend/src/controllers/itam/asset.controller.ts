@@ -614,13 +614,18 @@ export const getAllAssets = async (req: Request, res: Response) => {
         { modelName: { contains: searchString, mode: "insensitive" } },
         { domainUser: { contains: searchString, mode: "insensitive" } },
         { ipAddress: { contains: searchString } },
+        { department: { name: { contains: searchString, mode: "insensitive" } } },
+        { factory: { name: { contains: searchString, mode: "insensitive" } } },
         {
           users: {
             some: {
-              fullName: { contains: searchString, mode: "insensitive" }
-            }
-          }
-        }
+              OR: [
+                { fullName: { contains: searchString, mode: "insensitive" } },
+                { department: { name: { contains: searchString, mode: "insensitive" } } },
+              ],
+            },
+          },
+        },
       ];
     }
 
@@ -654,7 +659,14 @@ export const getAllAssets = async (req: Request, res: Response) => {
           type: true, 
           factory: true,
           department: true,
-          users: { select: { id: true, fullName: true, email: true } },
+          users: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              department: { select: { id: true, name: true } },
+            },
+          },
           parent: { select: { id: true, name: true } },
           _count: { select: { children: true, softwares: true } },
           components: {

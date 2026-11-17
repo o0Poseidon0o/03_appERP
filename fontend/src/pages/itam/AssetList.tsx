@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Table, Button, Input, Tag, Space, Popconfirm, message, Tooltip, Badge, Popover, Modal, Radio } from 'antd'; 
+import { Table, Button, Input, Tag, Space, Popconfirm, message, Tooltip, Badge, Popover, Modal, Radio, Select } from 'antd'; 
 import { 
   ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined, 
   DesktopOutlined, WindowsOutlined, AuditOutlined, 
@@ -113,6 +113,8 @@ const AssetList = () => {
   const [data, setData] = useState<IAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [selectedFactoryFilter, setSelectedFactoryFilter] = useState<string>('ALL');
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>('ALL');
   const { hasPermission } = useHasPermission();
   const isTabletOrMobile = useMediaQuery('(max-width: 1024px)');
 
@@ -183,6 +185,69 @@ const AssetList = () => {
     message.success('Đã xuất file Excel chuẩn nạp vào phần mềm máy in nhãn P-touch Editor!');
   };
 
+  const getItemDeptNames = (item: any): string[] => {
+    const names = new Set<string>();
+    if (item.department?.name) names.add(item.department.name);
+    if (Array.isArray(item.users)) {
+      item.users.forEach((u: any) => {
+        if (u.department?.name) names.add(u.department.name);
+      });
+    }
+    return Array.from(names);
+  };
+
+  const factoryOptions = Array.from(
+    new Set(data.map((item) => item.factory?.name).filter(Boolean) as string[])
+  ).sort((a, b) => a.localeCompare(b, 'vi'));
+
+  const departmentOptions = Array.from(
+    new Set(
+      data
+        .filter(
+          (item) =>
+            selectedFactoryFilter === 'ALL' || item.factory?.name === selectedFactoryFilter
+        )
+        .flatMap((item) => getItemDeptNames(item))
+    )
+  ).sort((a, b) => a.localeCompare(b, 'vi'));
+
+  const filteredData = data.filter((item: any) => {
+    if (selectedFactoryFilter !== 'ALL' && item.factory?.name !== selectedFactoryFilter) {
+      return false;
+    }
+    const itemDepts = getItemDeptNames(item);
+    if (selectedDeptFilter !== 'ALL' && !itemDepts.includes(selectedDeptFilter)) {
+      return false;
+    }
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+
+    const specs = item.customSpecs || {};
+    const usersStr = (item.users || []).map((u: any) => u.fullName || '').join(' ');
+    const deptsStr = itemDepts.join(' ');
+    const combined = [
+      item.name,
+      item.serialNumber,
+      item.ipAddress,
+      item.macAddress,
+      item.domainUser,
+      item.manufacturer,
+      item.modelName,
+      item.osName,
+      item.factory?.name,
+      deptsStr,
+      usersStr,
+      specs.cpu,
+      specs.ram,
+      specs.disk,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    return combined.includes(q);
+  });
+
   const handleOpenBatchPrintQR = (assetsToPrint?: IAsset[]) => {
     if (assetsToPrint && assetsToPrint.length > 0) {
       setQrAssetsToPrint(assetsToPrint);
@@ -197,9 +262,9 @@ const AssetList = () => {
       setQrPrintModalOpen(true);
       return;
     }
-    if (data.length > 0) {
-      setQrAssetsToPrint(data);
-      setQrLayoutMode(data.length === 1 ? 'TAPE_24mm_1UP' : 'TAPE_24mm_2UP');
+    if (filteredData.length > 0) {
+      setQrAssetsToPrint(filteredData);
+      setQrLayoutMode(filteredData.length === 1 ? 'TAPE_24mm_1UP' : 'TAPE_24mm_2UP');
       setQrPrintModalOpen(true);
       return;
     }
@@ -355,7 +420,7 @@ const AssetList = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await assetService.getAll({ page: 1, limit: 1000, search: searchText });
+      const res = await assetService.getAll({ page: 1, limit: 1000 });
       const allAssets = res.data.data || [];
       const computingAssets = allAssets.filter((item: IAsset) => 
           ['PC', 'LAPTOP', 'SERVER'].includes(item.type?.code || '')
@@ -413,7 +478,7 @@ const AssetList = () => {
 
   // --- HÀM XUẤT EXCEL (.XLSX CHUẨN) ---
   const exportToExcel = () => {
-    if (!data || data.length === 0) {
+    if (!filteredData || filteredData.length === 0) {
         message.warning("Không có dữ liệu để xuất");
         return;
     }
@@ -426,7 +491,7 @@ const AssetList = () => {
       DISPOSED: 'Thanh lý',
     };
 
-    const excelRows = data.map((item: any, idx: number) => {
+    const excelRows = filteredData.map((item: any, idx: number) => {
         const specs = item.customSpecs || {};
         const users = item.users?.map((u: any) => u.fullName).join(" & ") || "Chưa cấp phát";
         const factory = item.factory?.name || "Chưa gán";
@@ -906,20 +971,47 @@ const AssetList = () => {
                     <Badge status={isConnected ? "success" : "default"} />
                     <span className="text-xs text-gray-500">{isConnected ? "Kết nối Realtime" : "Mất kết nối"}</span>
                     <span className="text-gray-300 text-xs">|</span>
-                    <span className="text-xs text-slate-500 font-medium">Tổng: {data.length} thiết bị</span>
+                    <span className="text-xs text-slate-500 font-medium">
+                        Hiển thị: <b>{filteredData.length}</b> / {data.length} thiết bị
+                    </span>
                 </div>
             </div>
          </div>
          
-         <div className="flex flex-col sm:flex-row w-full lg:w-auto gap-3">
+         <div className="flex flex-col sm:flex-row flex-wrap w-full lg:w-auto gap-2.5">
             <Input
-                placeholder="Tìm tên máy, IP, người dùng..." 
+                placeholder="Tìm tên máy, phòng ban, IP, người dùng..." 
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                onPressEnter={() => fetchData()} 
                 prefix={<SearchOutlined className="text-gray-400" />}
-                className="w-full sm:w-64"
+                className="w-full sm:w-60"
                 allowClear
+            />
+
+            <Select
+                value={selectedFactoryFilter}
+                onChange={(val) => {
+                    setSelectedFactoryFilter(val);
+                    setSelectedDeptFilter('ALL');
+                }}
+                className="w-full sm:w-40"
+                options={[
+                    { value: 'ALL', label: '🏭 Tất cả Nhà máy' },
+                    ...factoryOptions.map((f) => ({ value: f, label: `Nhà máy: ${f}` })),
+                ]}
+            />
+
+            <Select
+                showSearch
+                optionFilterProp="label"
+                value={selectedDeptFilter}
+                onChange={(val) => setSelectedDeptFilter(val)}
+                className="w-full sm:w-48"
+                placeholder="🏢 Chọn Phòng ban"
+                options={[
+                    { value: 'ALL', label: '🏢 Tất cả Phòng ban' },
+                    ...departmentOptions.map((d) => ({ value: d, label: `Phòng: ${d}` })),
+                ]}
             />
             
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -993,7 +1085,7 @@ const AssetList = () => {
               onChange: (keys) => setSelectedRowKeys(keys),
             }}
             columns={columns} 
-            dataSource={data} 
+            dataSource={filteredData} 
             rowKey="id" 
             loading={loading} 
             scroll={{ x: 1200, y: isTabletOrMobile ? undefined : 'calc(100vh - 340px)' }} 
