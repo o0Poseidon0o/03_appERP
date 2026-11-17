@@ -40,7 +40,16 @@ const PeripheralList = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [qrPrintModalOpen, setQrPrintModalOpen] = useState(false);
   const [qrAssetsToPrint, setQrAssetsToPrint] = useState<IAsset[]>([]);
-  const [qrLayoutMode, setQrLayoutMode] = useState<'THERMAL_50x30' | 'A4_GRID'>('THERMAL_50x30');
+  const [qrLayoutMode, setQrLayoutMode] = useState<
+    'TAPE_24x50' | 'TAPE_24x38' | 'THERMAL_50x30' | 'A4_GRID'
+  >('TAPE_24x50');
+  const [qrBaseUrl, setQrBaseUrl] = useState<string>(() => {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return 'http://192.168.20.17:90';
+    }
+    return window.location.origin;
+  });
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   const qrPrintAreaRef = useRef<HTMLDivElement>(null);
 
@@ -64,41 +73,91 @@ const PeripheralList = () => {
     message.warning('Chưa có thiết bị nào để in tem QR!');
   };
 
+  const handleExportPtouchPeripheral = () => {
+    if (!qrAssetsToPrint || qrAssetsToPrint.length === 0) return;
+    const cleanBase = (qrBaseUrl || window.location.origin).replace(/\/+$/, '');
+    const rows = qrAssetsToPrint.map((asset, idx) => ({
+      STT: idx + 1,
+      Ten_Thiet_Bi: asset.name || '',
+      Loai: asset.type?.name || '',
+      QR_Link: `${cleanBase}/qr/asset/${encodeURIComponent(asset.serialNumber || asset.name)}`,
+      Serial_Number: asset.serialNumber || 'N/A',
+      Gan_May: asset.parent?.name || '',
+      Bo_Phan: asset.department?.name || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Data_In_Nhan_24mm');
+    XLSX.writeFile(wb, `Data_In_Nhan_Ngoai_Vi_24mm_Ptouch.xlsx`);
+    message.success('Đã xuất file Excel nạp vào P-touch Editor!');
+  };
+
   const handleExecutePrintQR = () => {
     if (!qrPrintAreaRef.current) return;
     const printContents = qrPrintAreaRef.current.innerHTML;
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    const printWindow = window.open('', '_blank', 'width=850,height=650');
     if (!printWindow) {
       message.error('Trình duyệt đã chặn Pop-up. Vui lòng cho phép Pop-up để in tem.');
       return;
     }
-    const pageCss =
-      qrLayoutMode === 'THERMAL_50x30'
-        ? `@page { size: 50mm 30mm; margin: 0; }
-           body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-           .qr-label-card { width: 50mm; height: 30mm; box-sizing: border-box; padding: 2mm; display: flex; align-items: center; gap: 2.5mm; page-break-after: always; }
-           .qr-svg-wrap { width: 24mm; height: 24mm; flex-shrink: 0; }
-           .qr-svg-wrap svg { width: 100%; height: 100%; }
-           .qr-info { flex: 1; overflow: hidden; line-height: 1.25; }
-           .qr-company { font-size: 7pt; font-weight: bold; color: #333; }
-           .qr-hostname { font-size: 9pt; font-weight: 800; color: #000; font-family: monospace; }
-           .qr-meta { font-size: 6.5pt; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`
-        : `@page { size: A4; margin: 8mm; }
-           body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-           .qr-grid-wrap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
-           .qr-label-card { border: 1px dashed #666; border-radius: 4px; padding: 3mm; display: flex; align-items: center; gap: 3mm; page-break-inside: avoid; }
-           .qr-svg-wrap { width: 22mm; height: 22mm; flex-shrink: 0; }
-           .qr-svg-wrap svg { width: 100%; height: 100%; }
-           .qr-info { flex: 1; overflow: hidden; line-height: 1.3; }
-           .qr-company { font-size: 7.5pt; font-weight: bold; color: #1d4ed8; }
-           .qr-hostname { font-size: 9.5pt; font-weight: 800; color: #000; font-family: monospace; }
-           .qr-meta { font-size: 7.5pt; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
+    let pageCss = '';
+    if (qrLayoutMode === 'TAPE_24x50') {
+      pageCss = `@page { size: 50mm 24mm; margin: 0; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        html, body { margin: 0; padding: 0; width: 50mm; font-family: Arial, sans-serif; background: #fff; }
+        .qr-label-card { width: 50mm; height: 24mm; padding: 2mm 2.2mm; display: flex; align-items: center; gap: 2.2mm; page-break-after: always; break-after: page; overflow: hidden; border: none; }
+        .qr-svg-wrap { width: 18.5mm; height: 18.5mm; padding: 0.6mm; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .qr-svg-wrap svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
+        .qr-info { flex: 1; min-width: 0; overflow: hidden; line-height: 1.18; }
+        .qr-company { font-size: 6.5pt; font-weight: 800; color: #000; }
+        .qr-hostname { font-size: 9.5pt; font-weight: 900; color: #000; font-family: Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .qr-meta { font-size: 6.5pt; font-weight: 600; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
+    } else if (qrLayoutMode === 'TAPE_24x38') {
+      pageCss = `@page { size: 38mm 24mm; margin: 0; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        html, body { margin: 0; padding: 0; width: 38mm; font-family: Arial, sans-serif; background: #fff; }
+        .qr-label-card { width: 38mm; height: 24mm; padding: 2mm 1.8mm; display: flex; align-items: center; gap: 1.8mm; page-break-after: always; break-after: page; overflow: hidden; border: none; }
+        .qr-svg-wrap { width: 18mm; height: 18mm; padding: 0.5mm; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .qr-svg-wrap svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
+        .qr-info { flex: 1; min-width: 0; overflow: hidden; line-height: 1.15; }
+        .qr-company { font-size: 6pt; font-weight: 800; color: #000; }
+        .qr-hostname { font-size: 9pt; font-weight: 900; color: #000; font-family: Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .qr-meta { font-size: 6pt; font-weight: 600; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
+    } else if (qrLayoutMode === 'THERMAL_50x30') {
+      pageCss = `@page { size: 50mm 30mm; margin: 0; }
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        .qr-label-card { width: 50mm; height: 30mm; box-sizing: border-box; padding: 2mm; display: flex; align-items: center; gap: 2.5mm; page-break-after: always; }
+        .qr-svg-wrap { width: 23mm; height: 23mm; flex-shrink: 0; }
+        .qr-svg-wrap svg { width: 100%; height: 100%; }
+        .qr-info { flex: 1; overflow: hidden; line-height: 1.25; }
+        .qr-company { font-size: 7pt; font-weight: bold; color: #000; }
+        .qr-hostname { font-size: 9pt; font-weight: 800; color: #000; font-family: monospace; }
+        .qr-meta { font-size: 6.5pt; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
+    } else {
+      pageCss = `@page { size: A4; margin: 8mm; }
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        .qr-grid-wrap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+        .qr-label-card { border: 1px dashed #666; border-radius: 4px; padding: 2.5mm; display: flex; align-items: center; gap: 2.5mm; page-break-inside: avoid; }
+        .qr-svg-wrap { width: 19mm; height: 19mm; flex-shrink: 0; }
+        .qr-svg-wrap svg { width: 100%; height: 100%; }
+        .qr-info { flex: 1; overflow: hidden; line-height: 1.25; }
+        .qr-company { font-size: 7pt; font-weight: bold; color: #1d4ed8; }
+        .qr-hostname { font-size: 9.5pt; font-weight: 800; color: #000; font-family: monospace; }
+        .qr-meta { font-size: 7pt; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
+    }
 
     printWindow.document.write(`
       <html>
         <head><title>In Tem QR Ngoại Vi</title><style>${pageCss}</style></head>
-        <body onload="window.print(); window.close();">
+        <body>
           <div class="${qrLayoutMode === 'A4_GRID' ? 'qr-grid-wrap' : ''}">${printContents}</div>
+          <script>
+            window.onafterprint = function() { window.close(); };
+            setTimeout(function() {
+              window.focus();
+              window.print();
+            }, 300);
+          </script>
         </body>
       </html>
     `);
@@ -442,28 +501,50 @@ const PeripheralList = () => {
         title={`In tem QR Thiết bị Ngoại vi (${qrAssetsToPrint.length} thiết bị)`}
         open={qrPrintModalOpen}
         onCancel={() => setQrPrintModalOpen(false)}
-        width={760}
+        width={820}
         footer={[
           <Button key="close" onClick={() => setQrPrintModalOpen(false)}>Đóng</Button>,
+          <Button
+            key="ptouch"
+            icon={<FileExcelOutlined />}
+            onClick={handleExportPtouchPeripheral}
+            className="text-emerald-700 border-emerald-300 bg-emerald-50"
+          >
+            Xuất file cho P-touch Editor (.xlsx)
+          </Button>,
           <Button key="print" type="primary" icon={<PrinterOutlined />} onClick={handleExecutePrintQR}>
             In {qrAssetsToPrint.length} Tem Ngay
           </Button>,
         ]}
       >
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2.5 rounded border">
-          <span className="text-xs font-medium">Chọn khổ giấy in tem:</span>
-          <Radio.Group value={qrLayoutMode} onChange={(e) => setQrLayoutMode(e.target.value)} buttonStyle="solid" size="small">
-            <Radio.Button value="THERMAL_50x30">Tem nhãn 50x30mm</Radio.Button>
-            <Radio.Button value="A4_GRID">Giấy A4 (Lưới 3 cột)</Radio.Button>
-          </Radio.Group>
+        <div className="mb-3 space-y-2 bg-slate-50 p-3 rounded-lg border text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-bold">1. Chọn khổ băng nhãn / giấy in:</span>
+            <Radio.Group value={qrLayoutMode} onChange={(e) => setQrLayoutMode(e.target.value)} buttonStyle="solid" size="small">
+              <Radio.Button value="TAPE_24x50">🏷️ Nhãn 24mm (24x50mm)</Radio.Button>
+              <Radio.Button value="TAPE_24x38">🏷️ Nhãn 24mm Ngắn (24x38mm)</Radio.Button>
+              <Radio.Button value="THERMAL_50x30">Tem 50x30mm</Radio.Button>
+              <Radio.Button value="A4_GRID">Giấy A4 (3 cột)</Radio.Button>
+            </Radio.Group>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <span className="font-semibold text-slate-600 shrink-0">Địa chỉ Server trong QR:</span>
+            <Input
+              size="small"
+              value={qrBaseUrl}
+              onChange={(e) => setQrBaseUrl(e.target.value)}
+              placeholder="http://192.168.20.17:90"
+            />
+          </div>
         </div>
         <div ref={qrPrintAreaRef} className="max-h-[400px] overflow-y-auto p-3 border rounded grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {qrAssetsToPrint.map((asset) => {
-            const qrUrl = `${window.location.origin}/qr/asset/${encodeURIComponent(asset.serialNumber || asset.name)}`;
+            const cleanBase = (qrBaseUrl || window.location.origin).replace(/\/+$/, '');
+            const qrUrl = `${cleanBase}/qr/asset/${encodeURIComponent(asset.serialNumber || asset.name)}`;
             return (
               <div key={asset.id} className="qr-label-card border border-dashed rounded p-2 flex items-center gap-2.5 bg-white">
                 <div className="qr-svg-wrap flex-shrink-0">
-                  <QRCodeSVG value={qrUrl} size={72} level="M" />
+                  <QRCodeSVG value={qrUrl} size={72} level="M" marginSize={1} />
                 </div>
                 <div className="qr-info flex-1 min-w-0">
                   <div className="qr-company text-[10px] font-bold text-blue-700 uppercase">
@@ -471,9 +552,11 @@ const PeripheralList = () => {
                   </div>
                   <div className="qr-hostname text-xs font-bold font-mono truncate">{asset.name}</div>
                   <div className="qr-meta text-[11px] text-gray-600 truncate">SN: {asset.serialNumber || 'N/A'}</div>
-                  <div className="qr-meta text-[11px] text-gray-500 truncate">
-                    {asset.parent?.name ? `Máy: ${asset.parent.name}` : asset.department?.name || ''}
-                  </div>
+                  {qrLayoutMode !== 'TAPE_24x38' && (
+                    <div className="qr-meta text-[11px] text-gray-500 truncate">
+                      {asset.parent?.name ? `Máy: ${asset.parent.name}` : asset.department?.name || ''}
+                    </div>
+                  )}
                 </div>
               </div>
             );
