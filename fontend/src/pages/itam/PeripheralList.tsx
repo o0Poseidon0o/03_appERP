@@ -40,9 +40,9 @@ const PeripheralList = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [qrPrintModalOpen, setQrPrintModalOpen] = useState(false);
   const [qrAssetsToPrint, setQrAssetsToPrint] = useState<IAsset[]>([]);
-  const [qrLayoutMode, setQrLayoutMode] = useState<'TAPE_24mm' | 'THERMAL_50x30' | 'A4_GRID'>(
-    'TAPE_24mm'
-  );
+  const [qrLayoutMode, setQrLayoutMode] = useState<
+    'TAPE_24mm_2UP' | 'TAPE_24mm_1UP' | 'THERMAL_50x30' | 'A4_GRID'
+  >('TAPE_24mm_2UP');
   const [qrBaseUrl, setQrBaseUrl] = useState<string>(() => {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
@@ -94,24 +94,51 @@ const PeripheralList = () => {
 
   const handleExecutePrintQR = () => {
     if (!qrPrintAreaRef.current) return;
-    const printContents = qrPrintAreaRef.current.innerHTML;
     const printWindow = window.open('', '_blank', 'width=850,height=650');
     if (!printWindow) {
       message.error('Trình duyệt đã chặn Pop-up. Vui lòng cho phép Pop-up để in tem.');
       return;
     }
+
+    const cardNodes = Array.from(qrPrintAreaRef.current.querySelectorAll('.qr-label-card'));
+    let bodyHtml = '';
+    if (qrLayoutMode === 'TAPE_24mm_2UP') {
+      for (let i = 0; i < cardNodes.length; i += 2) {
+        const firstCard = cardNodes[i]?.outerHTML || '';
+        const secondCard = cardNodes[i + 1]?.outerHTML || '<div class="qr-label-card"></div>';
+        bodyHtml += `<div class="qr-strip-pair">${firstCard}${secondCard}</div>`;
+      }
+    } else if (qrLayoutMode === 'A4_GRID') {
+      bodyHtml = `<div class="qr-grid-wrap">${qrPrintAreaRef.current.innerHTML}</div>`;
+    } else {
+      bodyHtml = qrPrintAreaRef.current.innerHTML;
+    }
+
     let pageCss = '';
-    if (qrLayoutMode === 'TAPE_24mm') {
-      pageCss = `@page { margin: 0; }
+    if (qrLayoutMode === 'TAPE_24mm_2UP') {
+      pageCss = `@page { size: landscape; margin: 0; }
         * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         html, body { margin: 0; padding: 0; width: 100%; font-family: Arial, sans-serif; background: #fff; }
-        .qr-label-card { width: 100%; height: 22mm; padding: 1mm 1.5mm; display: flex; align-items: center; justify-content: flex-start; gap: 2mm; page-break-after: always; break-after: page; overflow: hidden; border: none; }
-        .qr-svg-wrap { width: 19mm; height: 19mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .qr-strip-pair { width: 100%; height: 22mm; display: flex; flex-direction: row; align-items: center; justify-content: space-between; page-break-after: always; break-after: page; overflow: hidden; }
+        .qr-label-card { width: 50%; height: 22mm; padding: 1mm 2mm; display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 2mm; overflow: hidden; border: none; }
+        .qr-label-card:first-child { border-right: 1px dashed #666; }
+        .qr-svg-wrap { width: 18.5mm; height: 18.5mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
         .qr-svg-wrap svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
         .qr-info { flex: 1; min-width: 0; overflow: hidden; line-height: 1.2; }
         .qr-company { font-size: 6.5pt; font-weight: 800; color: #000; white-space: nowrap; }
         .qr-hostname { font-size: 9.5pt; font-weight: 900; color: #000; font-family: Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .qr-meta { font-size: 6.5pt; font-weight: 600; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
+    } else if (qrLayoutMode === 'TAPE_24mm_1UP') {
+      pageCss = `@page { size: landscape; margin: 0; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        html, body { margin: 0; padding: 0; width: 100%; font-family: Arial, sans-serif; background: #fff; }
+        .qr-label-card { width: 100%; height: 22mm; padding: 1mm 2mm; display: flex; align-items: center; justify-content: flex-start; gap: 2.5mm; page-break-after: always; break-after: page; overflow: hidden; border: none; }
+        .qr-svg-wrap { width: 19mm; height: 19mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .qr-svg-wrap svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
+        .qr-info { flex: 1; min-width: 0; overflow: hidden; line-height: 1.25; }
+        .qr-company { font-size: 7pt; font-weight: 800; color: #000; white-space: nowrap; }
+        .qr-hostname { font-size: 10.5pt; font-weight: 900; color: #000; font-family: Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .qr-meta { font-size: 7pt; font-weight: 600; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
     } else if (qrLayoutMode === 'THERMAL_50x30') {
       pageCss = `@page { size: 50mm 30mm; margin: 0; }
         body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
@@ -139,7 +166,7 @@ const PeripheralList = () => {
       <html>
         <head><title>In Tem QR Ngoại Vi</title><style>${pageCss}</style></head>
         <body>
-          <div class="${qrLayoutMode === 'A4_GRID' ? 'qr-grid-wrap' : ''}">${printContents}</div>
+          ${bodyHtml}
           <script>
             window.onafterprint = function() { window.close(); };
             setTimeout(function() {
@@ -510,7 +537,8 @@ const PeripheralList = () => {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-bold">1. Chọn khổ băng nhãn / giấy in:</span>
             <Radio.Group value={qrLayoutMode} onChange={(e) => setQrLayoutMode(e.target.value)} buttonStyle="solid" size="small">
-              <Radio.Button value="TAPE_24mm">🏷️ Máy in nhãn 24mm (Brother PT-E500)</Radio.Button>
+              <Radio.Button value="TAPE_24mm_2UP">🏷️ Nhãn 24mm (Ghép 2 tem/dải)</Radio.Button>
+              <Radio.Button value="TAPE_24mm_1UP">🏷️ Nhãn 24mm (1 tem/dải)</Radio.Button>
               <Radio.Button value="THERMAL_50x30">Tem 50x30mm</Radio.Button>
               <Radio.Button value="A4_GRID">Giấy A4 (3 cột)</Radio.Button>
             </Radio.Group>
