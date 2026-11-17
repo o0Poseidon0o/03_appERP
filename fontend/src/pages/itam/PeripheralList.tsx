@@ -40,9 +40,9 @@ const PeripheralList = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [qrPrintModalOpen, setQrPrintModalOpen] = useState(false);
   const [qrAssetsToPrint, setQrAssetsToPrint] = useState<IAsset[]>([]);
-  const [qrLayoutMode, setQrLayoutMode] = useState<
-    'TAPE_24x50' | 'TAPE_24x38' | 'THERMAL_50x30' | 'A4_GRID'
-  >('TAPE_24x50');
+  const [qrLayoutMode, setQrLayoutMode] = useState<'TAPE_24mm' | 'THERMAL_50x30' | 'A4_GRID'>(
+    'TAPE_24mm'
+  );
   const [qrBaseUrl, setQrBaseUrl] = useState<string>(() => {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
@@ -101,28 +101,17 @@ const PeripheralList = () => {
       return;
     }
     let pageCss = '';
-    if (qrLayoutMode === 'TAPE_24x50') {
-      pageCss = `@page { size: 50mm 24mm; margin: 0; }
+    if (qrLayoutMode === 'TAPE_24mm') {
+      pageCss = `@page { margin: 0; }
         * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        html, body { margin: 0; padding: 0; width: 50mm; font-family: Arial, sans-serif; background: #fff; }
-        .qr-label-card { width: 50mm; height: 24mm; padding: 2mm 2.2mm; display: flex; align-items: center; gap: 2.2mm; page-break-after: always; break-after: page; overflow: hidden; border: none; }
-        .qr-svg-wrap { width: 18.5mm; height: 18.5mm; padding: 0.6mm; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        html, body { margin: 0; padding: 0; width: 100%; font-family: Arial, sans-serif; background: #fff; }
+        .qr-label-card { width: 100%; height: 22mm; padding: 1mm 1.5mm; display: flex; align-items: center; justify-content: flex-start; gap: 2mm; page-break-after: always; break-after: page; overflow: hidden; border: none; }
+        .qr-svg-wrap { width: 19mm; height: 19mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
         .qr-svg-wrap svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
-        .qr-info { flex: 1; min-width: 0; overflow: hidden; line-height: 1.18; }
-        .qr-company { font-size: 6.5pt; font-weight: 800; color: #000; }
+        .qr-info { flex: 1; min-width: 0; overflow: hidden; line-height: 1.2; }
+        .qr-company { font-size: 6.5pt; font-weight: 800; color: #000; white-space: nowrap; }
         .qr-hostname { font-size: 9.5pt; font-weight: 900; color: #000; font-family: Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .qr-meta { font-size: 6.5pt; font-weight: 600; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
-    } else if (qrLayoutMode === 'TAPE_24x38') {
-      pageCss = `@page { size: 38mm 24mm; margin: 0; }
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        html, body { margin: 0; padding: 0; width: 38mm; font-family: Arial, sans-serif; background: #fff; }
-        .qr-label-card { width: 38mm; height: 24mm; padding: 2mm 1.8mm; display: flex; align-items: center; gap: 1.8mm; page-break-after: always; break-after: page; overflow: hidden; border: none; }
-        .qr-svg-wrap { width: 18mm; height: 18mm; padding: 0.5mm; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-        .qr-svg-wrap svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
-        .qr-info { flex: 1; min-width: 0; overflow: hidden; line-height: 1.15; }
-        .qr-company { font-size: 6pt; font-weight: 800; color: #000; }
-        .qr-hostname { font-size: 9pt; font-weight: 900; color: #000; font-family: Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .qr-meta { font-size: 6pt; font-weight: 600; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
     } else if (qrLayoutMode === 'THERMAL_50x30') {
       pageCss = `@page { size: 50mm 30mm; margin: 0; }
         body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
@@ -521,8 +510,7 @@ const PeripheralList = () => {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-bold">1. Chọn khổ băng nhãn / giấy in:</span>
             <Radio.Group value={qrLayoutMode} onChange={(e) => setQrLayoutMode(e.target.value)} buttonStyle="solid" size="small">
-              <Radio.Button value="TAPE_24x50">🏷️ Nhãn 24mm (24x50mm)</Radio.Button>
-              <Radio.Button value="TAPE_24x38">🏷️ Nhãn 24mm Ngắn (24x38mm)</Radio.Button>
+              <Radio.Button value="TAPE_24mm">🏷️ Máy in nhãn 24mm (Brother PT-E500)</Radio.Button>
               <Radio.Button value="THERMAL_50x30">Tem 50x30mm</Radio.Button>
               <Radio.Button value="A4_GRID">Giấy A4 (3 cột)</Radio.Button>
             </Radio.Group>
@@ -552,11 +540,9 @@ const PeripheralList = () => {
                   </div>
                   <div className="qr-hostname text-xs font-bold font-mono truncate">{asset.name}</div>
                   <div className="qr-meta text-[11px] text-gray-600 truncate">SN: {asset.serialNumber || 'N/A'}</div>
-                  {qrLayoutMode !== 'TAPE_24x38' && (
-                    <div className="qr-meta text-[11px] text-gray-500 truncate">
-                      {asset.parent?.name ? `Máy: ${asset.parent.name}` : asset.department?.name || ''}
-                    </div>
-                  )}
+                  <div className="qr-meta text-[11px] text-gray-500 truncate">
+                    {asset.parent?.name ? `Máy: ${asset.parent.name}` : asset.department?.name || ''}
+                  </div>
                 </div>
               </div>
             );

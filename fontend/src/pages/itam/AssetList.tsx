@@ -130,10 +130,9 @@ const AssetList = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [qrPrintModalOpen, setQrPrintModalOpen] = useState(false);
   const [qrAssetsToPrint, setQrAssetsToPrint] = useState<IAsset[]>([]);
-  const [qrLayoutMode, setQrLayoutMode] = useState<
-    'TAPE_24x50' | 'TAPE_24x38' | 'THERMAL_50x30' | 'A4_GRID'
-  >('TAPE_24x50');
-  const [qrContentMode, setQrContentMode] = useState<'URL' | 'SHORT_CODE'>('URL');
+  const [qrLayoutMode, setQrLayoutMode] = useState<'TAPE_24mm' | 'THERMAL_50x30' | 'A4_GRID'>(
+    'TAPE_24mm'
+  );
   const [qrBaseUrl, setQrBaseUrl] = useState<string>(() => {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
@@ -148,9 +147,6 @@ const AssetList = () => {
 
   const getAssetQrValue = (asset: IAsset) => {
     const code = asset.name || asset.serialNumber || asset.id;
-    if (qrContentMode === 'SHORT_CODE') {
-      return code;
-    }
     const cleanBase = (qrBaseUrl || window.location.origin).replace(/\/+$/, '');
     return `${cleanBase}/qr/asset/${encodeURIComponent(code)}`;
   };
@@ -217,54 +213,43 @@ const AssetList = () => {
     }
 
     let pageCss = '';
-    if (qrLayoutMode === 'TAPE_24x50') {
-      // Chuẩn Máy in nhãn cuộn 24mm (Brother P-touch 24mm x 50mm):
-      // Băng 24mm có vùng đầu nhiệt thực tế ~18-20mm, lề trên/dưới 2mm để không bao giờ bị cắt mất góc QR
-      pageCss = `@page { size: 50mm 24mm; margin: 0; }
+    if (qrLayoutMode === 'TAPE_24mm') {
+      // Chuẩn Máy in nhãn Brother PT-E500 (băng 24mm):
+      // Không ép cứng chiều ngang @page nhỏ hơn khổ giấy của driver để tránh Chrome tự căn giữa gây trống 2 đầu băng!
+      // Căn sát mép trái (margin: 0, padding-left: 1.5mm) để không tốn băng dán.
+      pageCss = `@page { margin: 0; }
         * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        html, body { margin: 0; padding: 0; width: 50mm; font-family: Arial, Helvetica, sans-serif; background: #fff; }
-        .qr-label-card { width: 50mm; height: 24mm; padding: 2mm 2.2mm; display: flex; align-items: center; gap: 2.2mm; page-break-after: always; break-after: page; overflow: hidden; border: none; }
-        .qr-svg-wrap { width: 18.5mm; height: 18.5mm; padding: 0.6mm; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        html, body { margin: 0; padding: 0; width: 100%; font-family: Arial, Helvetica, sans-serif; background: #fff; }
+        .qr-label-card { width: 100%; height: 22mm; padding: 1mm 1.5mm; display: flex; align-items: center; justify-content: flex-start; gap: 2mm; page-break-after: always; break-after: page; overflow: hidden; border: none; }
+        .qr-svg-wrap { width: 19mm; height: 19mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
         .qr-svg-wrap svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
-        .qr-info { flex: 1; min-width: 0; overflow: hidden; line-height: 1.18; }
-        .qr-company { font-size: 6.5pt; font-weight: 800; color: #000; letter-spacing: 0.3px; text-transform: uppercase; }
-        .qr-hostname { font-size: 10.5pt; font-weight: 900; color: #000; margin: 1px 0; font-family: Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .qr-info { flex: 1; min-width: 0; overflow: hidden; line-height: 1.2; }
+        .qr-company { font-size: 6.5pt; font-weight: 800; color: #000; letter-spacing: 0.2px; white-space: nowrap; }
+        .qr-hostname { font-size: 10pt; font-weight: 900; color: #000; margin: 0.5px 0; font-family: Consolas, monospace; white-space: nowrap; }
         .qr-meta { font-size: 6.5pt; font-weight: 600; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
-    } else if (qrLayoutMode === 'TAPE_24x38') {
-      // Nhãn cuộn 24mm bản ngắn tiết kiệm băng (24mm x 38mm)
-      pageCss = `@page { size: 38mm 24mm; margin: 0; }
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        html, body { margin: 0; padding: 0; width: 38mm; font-family: Arial, Helvetica, sans-serif; background: #fff; }
-        .qr-label-card { width: 38mm; height: 24mm; padding: 2mm 1.8mm; display: flex; align-items: center; gap: 1.8mm; page-break-after: always; break-after: page; overflow: hidden; border: none; }
-        .qr-svg-wrap { width: 18mm; height: 18mm; padding: 0.5mm; background: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-        .qr-svg-wrap svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
-        .qr-info { flex: 1; min-width: 0; overflow: hidden; line-height: 1.15; }
-        .qr-company { font-size: 6pt; font-weight: 800; color: #000; }
-        .qr-hostname { font-size: 9.5pt; font-weight: 900; color: #000; margin: 1px 0; font-family: Consolas, monospace; word-break: break-all; }
-        .qr-meta { font-size: 6pt; font-weight: 600; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
     } else if (qrLayoutMode === 'THERMAL_50x30') {
       pageCss = `@page { size: 50mm 30mm; margin: 0; }
         * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        html, body { margin: 0; padding: 0; width: 50mm; font-family: Arial, sans-serif; }
+        html, body { margin: 0; padding: 0; width: 100%; font-family: Arial, sans-serif; }
         .qr-label-card { width: 50mm; height: 30mm; padding: 2mm; display: flex; align-items: center; gap: 2.5mm; page-break-after: always; break-after: page; border: none; }
-        .qr-svg-wrap { width: 23mm; height: 23mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .qr-svg-wrap { width: 24mm; height: 24mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
         .qr-svg-wrap svg { width: 100%; height: 100%; shape-rendering: crispEdges; }
         .qr-info { flex: 1; overflow: hidden; line-height: 1.25; }
         .qr-company { font-size: 7pt; font-weight: bold; color: #000; letter-spacing: 0.5px; }
-        .qr-hostname { font-size: 10pt; font-weight: 900; color: #000; margin: 1px 0; font-family: monospace; word-break: break-all; }
-        .qr-meta { font-size: 6.5pt; font-weight: 600; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
+        .qr-hostname { font-size: 9.5pt; font-weight: 800; color: #000; margin: 1px 0; font-family: monospace; word-break: break-all; }
+        .qr-meta { font-size: 6.5pt; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
     } else {
       pageCss = `@page { size: A4; margin: 8mm; }
         * { box-sizing: border-box; }
         body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-        .qr-grid-wrap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3.5mm; }
-        .qr-label-card { border: 1px dashed #444; border-radius: 3px; height: 24mm; padding: 2mm 2.5mm; display: flex; align-items: center; gap: 2.5mm; page-break-inside: avoid; }
-        .qr-svg-wrap { width: 19mm; height: 19mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .qr-grid-wrap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+        .qr-label-card { border: 1px dashed #666; border-radius: 4px; padding: 3mm; display: flex; align-items: center; gap: 3mm; page-break-inside: avoid; }
+        .qr-svg-wrap { width: 22mm; height: 22mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
         .qr-svg-wrap svg { width: 100%; height: 100%; shape-rendering: crispEdges; }
-        .qr-info { flex: 1; overflow: hidden; line-height: 1.25; }
-        .qr-company { font-size: 7pt; font-weight: bold; color: #1d4ed8; }
-        .qr-hostname { font-size: 10pt; font-weight: 800; color: #000; margin: 1px 0; font-family: monospace; }
-        .qr-meta { font-size: 7pt; color: #222; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
+        .qr-info { flex: 1; overflow: hidden; line-height: 1.3; }
+        .qr-company { font-size: 7.5pt; font-weight: bold; color: #1d4ed8; }
+        .qr-hostname { font-size: 10pt; font-weight: 800; color: #000; margin: 2px 0; font-family: monospace; }
+        .qr-meta { font-size: 7.5pt; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`;
     }
 
     printWindow.document.write(`
@@ -1162,64 +1147,42 @@ const AssetList = () => {
       >
         <div className="space-y-3 mb-4 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <span className="font-bold text-slate-700">1. Chọn khổ băng nhãn / giấy in:</span>
+            <span className="font-bold text-slate-700">Chọn khổ giấy / nhãn in:</span>
             <Radio.Group
               value={qrLayoutMode}
               onChange={(e) => setQrLayoutMode(e.target.value)}
               buttonStyle="solid"
               size="small"
             >
-              <Radio.Button value="TAPE_24x50">
-                🏷️ Nhãn 24mm (Chuẩn 24x50mm)
-              </Radio.Button>
-              <Radio.Button value="TAPE_24x38">
-                🏷️ Nhãn 24mm Ngắn (24x38mm)
+              <Radio.Button value="TAPE_24mm">
+                🏷️ Máy in nhãn 24mm (Brother PT-E500)
               </Radio.Button>
               <Radio.Button value="THERMAL_50x30">
-                Tem 50x30mm
+                Tem nhiệt 50x30mm
               </Radio.Button>
               <Radio.Button value="A4_GRID">
-                Giấy A4 (3 cột)
+                Giấy A4 (Lưới 3 cột)
               </Radio.Button>
             </Radio.Group>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
-            <div>
-              <div className="font-semibold text-slate-600 mb-1">
-                2. Kiểu dữ liệu trong Mã QR:
-              </div>
-              <Radio.Group
-                value={qrContentMode}
-                onChange={(e) => setQrContentMode(e.target.value)}
-                size="small"
-              >
-                <Radio value="URL">Link Web tra cứu cấu hình & phần mềm</Radio>
-                <Radio value="SHORT_CODE">Chỉ mã tên máy (QR siêu nét)</Radio>
-              </Radio.Group>
-            </div>
-
-            {qrContentMode === 'URL' && (
-              <div>
-                <div className="font-semibold text-slate-600 mb-1">
-                  3. Địa chỉ Server mở trên điện thoại khi quét QR:
-                </div>
-                <Input
-                  size="small"
-                  value={qrBaseUrl}
-                  onChange={(e) => setQrBaseUrl(e.target.value)}
-                  placeholder="http://192.168.20.17:90"
-                />
-              </div>
-            )}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-slate-200">
+            <span className="font-semibold text-slate-600 shrink-0">
+              Địa chỉ Server trong Mã QR (Quét mở đầy đủ cấu hình & phần mềm):
+            </span>
+            <Input
+              size="small"
+              value={qrBaseUrl}
+              onChange={(e) => setQrBaseUrl(e.target.value)}
+              placeholder="http://192.168.20.17:90"
+              className="flex-1"
+            />
           </div>
 
-          {(qrLayoutMode === 'TAPE_24x50' || qrLayoutMode === 'TAPE_24x38') && (
+          {qrLayoutMode === 'TAPE_24mm' && (
             <div className="bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2 rounded-lg text-[11px] leading-relaxed">
-              💡 <b>Mẹo in chuẩn trên máy in nhãn 24mm (Brother P-touch):</b> Mã QR đã được co chuẩn{' '}
-              <b>18mm x 18mm</b> (nằm gọn trong vùng đầu nhiệt 20mm của băng 24mm, không bị mất góc). Khi hộp thoại in hiện ra, ở mục{' '}
-              <b>More settings (Cài đặt thêm)</b> hãy chọn <b>Margins: None (Lề: Không)</b> và <b>Scale: 100%</b>. Hoặc bấm nút{' '}
-              <b>&ldquo;Xuất file cho P-touch Editor&rdquo;</b> ở dưới để nạp vào phần mềm Brother P-touch Editor in tự động cắt nhãn.
+              💡 <b>Cách chống tốn băng trắng 2 bên trên máy Brother PT-E500:</b> Nội dung tem đã được đẩy sát về mép trái (không còn căn giữa gây dư băng trắng). Trong cửa sổ In của trình duyệt, bạn bấm vào{' '}
+              <b>&ldquo;Chế độ cài đặt khác&rdquo; (More settings)</b> &rarr; chọn <b>Lề (Margins): Không (None)</b> và chỉnh chiều dài nhãn trong <b>Brother PT-E500 Preferences</b> về <b>42mm - 45mm</b> (mặc định máy in đang để 80mm-100mm nên dư khúc đuôi trắng).
             </div>
           )}
         </div>
@@ -1228,43 +1191,34 @@ const AssetList = () => {
           ref={qrPrintAreaRef}
           className="max-h-[420px] overflow-y-auto p-3 bg-white border rounded-lg grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"
         >
-          {qrAssetsToPrint.map((asset) => {
-            const locText =
-              [asset.factory?.name, asset.department?.name].filter(Boolean).join(' • ') ||
-              asset.modelName ||
-              'ITAM';
-            return (
-              <div
-                key={asset.id}
-                className="qr-label-card border border-dashed border-gray-300 rounded-lg p-2 flex items-center gap-2.5 bg-white"
-              >
-                <div className="qr-svg-wrap flex-shrink-0">
-                  <QRCodeSVG
-                    value={getAssetQrValue(asset)}
-                    size={72}
-                    level="M"
-                    marginSize={1}
-                  />
+          {qrAssetsToPrint.map((asset) => (
+            <div
+              key={asset.id}
+              className="qr-label-card border border-dashed border-gray-300 rounded-lg p-2.5 flex items-center gap-3 bg-white"
+            >
+              <div className="qr-svg-wrap flex-shrink-0">
+                <QRCodeSVG
+                  value={getAssetQrValue(asset)}
+                  size={76}
+                  level="M"
+                />
+              </div>
+              <div className="qr-info flex-1 min-w-0">
+                <div className="qr-company text-[10px] font-bold text-blue-700 uppercase">
+                  TOWA IT ASSET
                 </div>
-                <div className="qr-info flex-1 min-w-0">
-                  <div className="qr-company text-[10px] font-bold text-blue-700 uppercase">
-                    TOWA IT ASSET
-                  </div>
-                  <div className="qr-hostname text-sm font-extrabold font-mono text-slate-900 truncate">
-                    {asset.name}
-                  </div>
-                  <div className="qr-meta text-[11px] text-gray-700 font-medium truncate">
-                    {locText}
-                  </div>
-                  {qrLayoutMode !== 'TAPE_24x38' && (
-                    <div className="qr-meta text-[10px] text-gray-500 truncate">
-                      SN: {asset.serialNumber || 'N/A'}
-                    </div>
-                  )}
+                <div className="qr-hostname text-sm font-extrabold font-mono text-slate-900 truncate">
+                  {asset.name}
+                </div>
+                <div className="qr-meta text-[11px] text-gray-600 truncate">
+                  SN: {asset.serialNumber || 'N/A'}
+                </div>
+                <div className="qr-meta text-[11px] text-gray-500 truncate">
+                  {asset.department?.name || asset.factory?.name || asset.modelName || 'ITAM'}
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </Modal>
 
