@@ -531,6 +531,75 @@ const AssetQrPublicPage: React.FC = () => {
               )}
             </div>
 
+            {hwHealth?.battery?.hasBattery && (
+              <div className="bg-slate-50 p-2.5 rounded-lg border">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400 text-xs">🔋 Pin Laptop (Tuổi thọ & Số lần sạc)</span>
+                  <Tag
+                    color={
+                      hwHealth.battery.status === 'CRITICAL'
+                        ? 'error'
+                        : hwHealth.battery.status === 'WARNING'
+                        ? 'warning'
+                        : 'success'
+                    }
+                    className="m-0 text-[10px]"
+                  >
+                    {hwHealth.battery.status === 'CRITICAL'
+                      ? `🪫 Cần thay pin (Chai ${hwHealth.battery.wearLevelPercent ?? '?'}%)`
+                      : hwHealth.battery.status === 'WARNING'
+                      ? `⚠️ Chai ${hwHealth.battery.wearLevelPercent ?? '?'}%`
+                      : `✓ Pin Tốt (${hwHealth.battery.healthPercent ?? 100}%)`}
+                  </Tag>
+                </div>
+                <div className="font-bold text-slate-800 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span>
+                    Tuổi thọ:{' '}
+                    {hwHealth.battery.healthPercent != null
+                      ? `${hwHealth.battery.healthPercent}% (Chai ${hwHealth.battery.wearLevelPercent}%)`
+                      : 'N/A'}
+                  </span>
+                  <span className="text-xs font-semibold text-blue-700">
+                    • Chu kỳ sạc:{' '}
+                    {hwHealth.battery.cycleCount != null
+                      ? `${hwHealth.battery.cycleCount} lần`
+                      : 'N/A'}
+                  </span>
+                </div>
+                {hwHealth.battery.healthPercent != null && (
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                    <div
+                      className={`h-1.5 rounded-full ${
+                        hwHealth.battery.healthPercent < 50
+                          ? 'bg-red-500'
+                          : hwHealth.battery.healthPercent < 75
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(0, hwHealth.battery.healthPercent))}%` }}
+                    />
+                  </div>
+                )}
+                <div className="text-[11px] text-gray-500 mt-1.5 flex flex-wrap justify-between gap-2">
+                  {hwHealth.battery.designCapacityMWh > 0 && hwHealth.battery.fullChargeCapacityMWh > 0 && (
+                    <span>
+                      Dung lượng thực / Gốc:{' '}
+                      <b className="font-mono text-slate-700">
+                        {hwHealth.battery.fullChargeCapacityMWh.toLocaleString()} /{' '}
+                        {hwHealth.battery.designCapacityMWh.toLocaleString()} mWh
+                      </b>
+                    </span>
+                  )}
+                  {hwHealth.battery.chargePercent != null && (
+                    <span>
+                      Mức pin: <b>{hwHealth.battery.chargePercent}%</b>{' '}
+                      {hwHealth.battery.isCharging ? '⚡ Đang sạc' : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="bg-slate-50 p-2.5 rounded-lg border">
               <div className="flex items-center justify-between">
                 <span className="text-gray-400 text-xs">Ổ cứng lưu trữ (S.M.A.R.T)</span>

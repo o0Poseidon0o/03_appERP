@@ -456,10 +456,82 @@ except Exception:
     cpu_load_pct = 10
     cpu_cores = 1
 
-overall_status = "WARNING" if (any_disk_warn or ram_status == "WARNING" or cpu_load_pct >= 90) else "GOOD"
+# Battery health (Laptop Ubuntu)
+battery_health = None
+try:
+    ps_dir = "/sys/class/power_supply"
+    if os.path.isdir(ps_dir):
+        bat_dirs = sorted([d for d in os.listdir(ps_dir) if d.startswith("BAT")])
+        if bat_dirs:
+            bp = os.path.join(ps_dir, bat_dirs[0])
+            if device_type == "PC":
+                device_type = "LAPTOP"
+            def read_int(fname):
+                val = read_file(os.path.join(bp, fname))
+                try:
+                    return int(val)
+                except Exception:
+                    return 0
+            e_design = read_int("energy_full_design") or read_int("charge_full_design")
+            e_full = read_int("energy_full") or read_int("charge_full")
+            design_mwh = int(round(e_design / 1000)) if e_design > 100000 else e_design
+            full_mwh = int(round(e_full / 1000)) if e_full > 100000 else e_full
+            cycle_cnt = read_int("cycle_count")
+            cap_now = read_int("capacity")
+            bat_st_raw = read_file(os.path.join(bp, "status"))
+            is_charging = bat_st_raw.lower() in ("charging", "full")
+            bat_mfg = read_file(os.path.join(bp, "manufacturer"))
+            bat_model = read_file(os.path.join(bp, "model_name")) or bat_dirs[0]
+            bat_sn = read_file(os.path.join(bp, "serial_number"))
+
+            health_pct = None
+            wear_pct = None
+            if e_design > 0 and e_full > 0:
+                health_pct = max(0, min(100, int(round((e_full / e_design) * 100))))
+                wear_pct = 100 - health_pct
+
+            b_status = "GOOD"
+            b_text = f"Pin Tot (Tuoi tho {health_pct}%)" if health_pct is not None else "Pin Tot"
+            if (health_pct is not None and health_pct < 50) or cycle_cnt >= 800:
+                b_status = "CRITICAL"
+                b_text = f"Can thay pin (Chai {wear_pct}%)" if wear_pct is not None else f"Can thay pin ({cycle_cnt} lan sac)"
+                hw_alerts.append(f"Pin Laptop chai nang (Tuoi tho con {health_pct}%, chai {wear_pct}%) - Can thay pin!")
+            elif (health_pct is not None and health_pct < 75) or cycle_cnt >= 500:
+                b_status = "WARNING"
+                b_text = f"Pin da chai {wear_pct}% (Can chu y)" if wear_pct is not None else f"So lan sac cao ({cycle_cnt} lan)"
+                hw_alerts.append(f"Pin Laptop da chai {wear_pct}% (Tuoi tho con {health_pct}%)")
+
+            battery_health = {
+                "hasBattery": True,
+                "name": bat_model,
+                "manufacturer": bat_mfg,
+                "serialNumber": bat_sn,
+                "designCapacityMWh": design_mwh,
+                "fullChargeCapacityMWh": full_mwh,
+                "healthPercent": health_pct,
+                "wearLevelPercent": wear_pct,
+                "cycleCount": cycle_cnt if cycle_cnt > 0 else None,
+                "chargePercent": cap_now if cap_now >= 0 else None,
+                "isCharging": is_charging,
+                "status": b_status,
+                "statusText": b_text
+            }
+except Exception:
+    pass
+
+if battery_health and battery_health["status"] == "CRITICAL":
+    overall_status = "CRITICAL"
+    overall_text = "CAN THAY PIN: Pin Laptop da chai nang!"
+elif any_disk_warn or ram_status == "WARNING" or cpu_load_pct >= 90 or (battery_health and battery_health["status"] == "WARNING"):
+    overall_status = "WARNING"
+    overall_text = "Can chu y (O dia / RAM / Pin Laptop)"
+else:
+    overall_status = "GOOD"
+    overall_text = "Phan cung hoat dong Tot"
+
 hardware_health = {
     "overallStatus": overall_status,
-    "overallText": "Can chu y dung luong/tai" if overall_status == "WARNING" else "Phan cung hoat dong Tot",
+    "overallText": overall_text,
     "cpu": {
         "status": "WARNING" if cpu_load_pct >= 90 else "GOOD",
         "statusText": f"Tai {cpu_load_pct}%",
@@ -478,6 +550,7 @@ hardware_health = {
         "usagePercent": ram_usage_pct,
         "slotsUsed": len(ram_details)
     },
+    "battery": battery_health,
     "diskStatus": "WARNING" if any_disk_warn else "GOOD",
     "diskText": "Can don dep dung luong" if any_disk_warn else "Tot (S.M.A.R.T OK)",
     "logicalVolumes": logical_volumes,

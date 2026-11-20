@@ -510,6 +510,11 @@ const AssetList = () => {
             .map((p: any) => `${p.type === 'MOUSE' ? 'Chuột' : 'Phím'}: ${p.name.replace('Device', '').trim()}`)
             .join(" + ");
 
+        const bat = specs.hardwareHealth?.battery?.hasBattery ? specs.hardwareHealth.battery : null;
+        const batSummary = bat
+            ? `Tuổi thọ ${bat.healthPercent ?? 'N/A'}% (Chai ${bat.wearLevelPercent ?? 'N/A'}%)${bat.cycleCount ? ` - ${bat.cycleCount} lần sạc` : ''}`
+            : "Không có (PC)";
+
         return {
             "STT": idx + 1,
             "Tên Thiết Bị": item.name || "",
@@ -523,6 +528,7 @@ const AssetList = () => {
             "CPU": specs.cpu || "",
             "RAM": specs.ram || "",
             "Ổ Cứng": specs.disk || "",
+            "Pin Laptop (Tuổi thọ / Lần sạc)": batSummary,
             "Màn Hình": monitors || "Không có",
             "Thiết Bị Ngoại Vi": peripherals || "Không có",
             "Số Phần Mềm": item._count?.softwares || 0,
@@ -720,10 +726,53 @@ const AssetList = () => {
               isFallback: true,
           };
 
+          const batInfo = hwHealth?.battery?.hasBattery ? hwHealth.battery : null;
+
+          const batteryPopoverContent = batInfo ? (
+              <div className="text-xs min-w-[240px] space-y-1.5">
+                  <div className="font-bold border-b pb-1 text-emerald-700">
+                      🔋 Tình trạng & Tuổi thọ Pin Laptop
+                  </div>
+                  <div className="flex justify-between gap-3">
+                      <span className="text-gray-500">Tuổi thọ pin còn lại:</span>
+                      <b className={batInfo.status === 'CRITICAL' ? 'text-red-600' : batInfo.status === 'WARNING' ? 'text-amber-600' : 'text-emerald-600'}>
+                          {batInfo.healthPercent != null ? `${batInfo.healthPercent}% (Chai ${batInfo.wearLevelPercent}%)` : 'N/A'}
+                      </b>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                      <span className="text-gray-500">Số chu kỳ sạc:</span>
+                      <b className="text-slate-800">
+                          {batInfo.cycleCount != null ? `${batInfo.cycleCount} lần sạc` : 'N/A (BIOS không báo)'}
+                      </b>
+                  </div>
+                  {batInfo.designCapacityMWh > 0 && batInfo.fullChargeCapacityMWh > 0 && (
+                      <div className="flex justify-between gap-3">
+                          <span className="text-gray-500">Dung lượng thực / Gốc:</span>
+                          <span className="font-mono text-[11px] text-slate-700">
+                              {batInfo.fullChargeCapacityMWh.toLocaleString()} / {batInfo.designCapacityMWh.toLocaleString()} mWh
+                          </span>
+                      </div>
+                  )}
+                  {batInfo.chargePercent != null && (
+                      <div className="flex justify-between gap-3">
+                          <span className="text-gray-500">Mức pin lúc quét:</span>
+                          <span>
+                              {batInfo.chargePercent}% {batInfo.isCharging ? '⚡ (Đang sạc)' : '(Đang dùng pin)'}
+                          </span>
+                      </div>
+                  )}
+                  {(batInfo.manufacturer || batInfo.name) && (
+                      <div className="text-[11px] text-gray-400 pt-1 border-t">
+                          Model pin: {batInfo.manufacturer ? `${batInfo.manufacturer} - ` : ''}{batInfo.name}
+                      </div>
+                  )}
+              </div>
+          ) : null;
+
           const healthPopoverContent = (
-              <div className="text-xs min-w-[260px] max-w-[330px] space-y-1.5">
+              <div className="text-xs min-w-[260px] max-w-[340px] space-y-1.5">
                   <div className="font-bold border-b pb-1 text-blue-700">
-                      🩺 Chẩn đoán Sức khỏe CPU / RAM / Ổ cứng
+                      🩺 Chẩn đoán Sức khỏe CPU / RAM / Ổ cứng {batInfo ? '/ Pin' : ''}
                   </div>
                   <div>
                       • <b>CPU:</b> {cpu || 'N/A'}{' '}
@@ -740,6 +789,15 @@ const AssetList = () => {
                   <div>
                       • <b>Ổ cứng (S.M.A.R.T):</b> {hwHealth.diskText || 'Tốt (S.M.A.R.T OK)'}
                   </div>
+                  {batInfo && (
+                      <div>
+                          • <b>Pin Laptop:</b>{' '}
+                          <span className={batInfo.status === 'CRITICAL' ? 'text-red-600 font-bold' : batInfo.status === 'WARNING' ? 'text-amber-600 font-semibold' : 'text-emerald-700 font-medium'}>
+                              Tuổi thọ {batInfo.healthPercent != null ? `${batInfo.healthPercent}% (Chai ${batInfo.wearLevelPercent}%)` : 'N/A'}
+                              {batInfo.cycleCount != null ? ` • ${batInfo.cycleCount} lần sạc` : ''}
+                          </span>
+                      </div>
+                  )}
                   {diskComps.length > 0 && (
                       <div className="pl-2 text-[11px] text-gray-500 space-y-0.5">
                           {diskComps.map((dc: any) => (
@@ -786,6 +844,18 @@ const AssetList = () => {
                     {Array.isArray(gpus) && gpus.length > 0 && (
                         <Popover content={gpuContent} title={null} placement="top">
                             <Tag color="volcano" bordered={false} className="cursor-help m-0 hover:opacity-80 transition-opacity">GPU</Tag>
+                        </Popover>
+                    )}
+                    {batInfo && (
+                        <Popover content={batteryPopoverContent} title={null} placement="top">
+                            <Tag
+                                color={batInfo.status === 'CRITICAL' ? 'error' : batInfo.status === 'WARNING' ? 'warning' : 'green'}
+                                className="cursor-help m-0 text-[10px] font-medium"
+                            >
+                                {batInfo.status === 'CRITICAL' ? '🪫' : '🔋'} Pin{' '}
+                                {batInfo.healthPercent != null ? `${batInfo.healthPercent}%` : ''}
+                                {batInfo.cycleCount != null ? ` (${batInfo.cycleCount} lần)` : ''}
+                            </Tag>
                         </Popover>
                     )}
                     <Popover content={healthPopoverContent} title={null} placement="top">

@@ -508,13 +508,141 @@ ElseIf anyDiskWarning Then
     diskHealthText = "Can don dep dung luong"
 End If
 
+' --- 9B. KIEM TRA PIN LAPTOP (TUOI THO PIN, DO CHAI & SO LAN SAC) ---
+Dim batteryHealthJson, batStatus, batStatusText
+batteryHealthJson = "null"
+batStatus = "GOOD"
+batStatusText = ""
+
+If wmiOK Then
+    On Error Resume Next
+    Dim colBat, objBat, hasBat
+    hasBat = False
+    Dim batName, batChargePct, batIsCharging
+    batName = "Laptop Battery"
+    batChargePct = -1
+    batIsCharging = False
+
+    Set colBat = objWMI.ExecQuery("SELECT * FROM Win32_Battery")
+    For Each objBat In colBat
+        hasBat = True
+        If Len(S(objBat.Name)) > 0 Then batName = Trim(S(objBat.Name))
+        If Not IsNull(objBat.EstimatedChargeRemaining) Then batChargePct = CInt(objBat.EstimatedChargeRemaining)
+        If Not IsNull(objBat.BatteryStatus) Then
+            Dim bs
+            bs = CInt(objBat.BatteryStatus)
+            If bs = 2 Or bs = 6 Or bs = 7 Or bs = 8 Or bs = 9 Then batIsCharging = True
+        End If
+        Exit For
+    Next
+
+    If hasBat Then
+        If deviceType = "PC" Then deviceType = "LAPTOP"
+        Dim objRootWMI, colBatStatic, objBatStatic, colBatFull, objBatFull, colBatCycle, objBatCycle
+        Dim batDesignCap, batFullCap, batCycleCount, batMfg, batSerial
+        batDesignCap = 0
+        batFullCap = 0
+        batCycleCount = 0
+        batMfg = ""
+        batSerial = ""
+
+        Set objRootWMI = GetObject("winmgmts:\\.\root\wmi")
+        If Err.Number = 0 Then
+            Set colBatStatic = objRootWMI.ExecQuery("SELECT * FROM BatteryStaticData")
+            For Each objBatStatic In colBatStatic
+                If objBatStatic.DesignedCapacity > 0 Then batDesignCap = CLng(objBatStatic.DesignedCapacity)
+                If Len(S(objBatStatic.ManufactureName)) > 0 Then batMfg = Trim(S(objBatStatic.ManufactureName))
+                If Len(S(objBatStatic.SerialNumber)) > 0 Then batSerial = Trim(S(objBatStatic.SerialNumber))
+                Exit For
+            Next
+            Err.Clear
+
+            Set colBatFull = objRootWMI.ExecQuery("SELECT * FROM BatteryFullChargedCapacity")
+            For Each objBatFull In colBatFull
+                If objBatFull.FullChargedCapacity > 0 Then batFullCap = CLng(objBatFull.FullChargedCapacity)
+                Exit For
+            Next
+            Err.Clear
+
+            Set colBatCycle = objRootWMI.ExecQuery("SELECT * FROM BatteryCycleCount")
+            For Each objBatCycle In colBatCycle
+                If objBatCycle.CycleCount > 0 Then batCycleCount = CLng(objBatCycle.CycleCount)
+                Exit For
+            Next
+            Err.Clear
+        End If
+
+        Dim batHealthPctStr, batWearPctStr, batHealthPctNum, batWearPctNum, batCycleJson, batChargeJson, batChargingJson
+        batHealthPctStr = "null"
+        batWearPctStr = "null"
+        batHealthPctNum = -1
+        batWearPctNum = -1
+        If batDesignCap > 0 And batFullCap > 0 Then
+            batHealthPctNum = Int((CDbl(batFullCap) / CDbl(batDesignCap)) * 100 + 0.5)
+            If batHealthPctNum > 100 Then batHealthPctNum = 100
+            If batHealthPctNum < 0 Then batHealthPctNum = 0
+            batWearPctNum = 100 - batHealthPctNum
+            batHealthPctStr = CStr(batHealthPctNum)
+            batWearPctStr = CStr(batWearPctNum)
+        End If
+
+        If batCycleCount > 0 Then
+            batCycleJson = CStr(batCycleCount)
+        Else
+            batCycleJson = "null"
+        End If
+
+        If batChargePct >= 0 Then
+            batChargeJson = CStr(batChargePct)
+        Else
+            batChargeJson = "null"
+        End If
+
+        If batIsCharging Then
+            batChargingJson = "true"
+        Else
+            batChargingJson = "false"
+        End If
+
+        batStatus = "GOOD"
+        batStatusText = "Pin Tot"
+        If (batHealthPctNum >= 0 And batHealthPctNum < 50) Or batCycleCount >= 800 Then
+            batStatus = "CRITICAL"
+            If batWearPctNum >= 0 Then
+                batStatusText = "Can thay pin (Chai " & batWearPctNum & "%)"
+            Else
+                batStatusText = "Can thay pin (" & batCycleCount & " lan sac)"
+            End If
+            hardwareAlerts = "[""Pin Laptop chai nang (Tuoi tho con " & batHealthPctNum & "%, chai " & batWearPctNum & "%) - Can thay pin!""]"
+        ElseIf (batHealthPctNum >= 0 And batHealthPctNum < 75) Or batCycleCount >= 500 Then
+            batStatus = "WARNING"
+            If batWearPctNum >= 0 Then
+                batStatusText = "Pin da chai " & batWearPctNum & "% (Can chu y)"
+            Else
+                batStatusText = "So lan sac cao (" & batCycleCount & " lan)"
+            End If
+            hardwareAlerts = "[""Pin Laptop da chai " & batWearPctNum & "% (Tuoi tho con " & batHealthPctNum & "%)""]"
+        ElseIf batHealthPctNum >= 0 Then
+            batStatusText = "Pin Tot (Tuoi tho " & batHealthPctNum & "%)"
+        End If
+
+        batteryHealthJson = "{""hasBattery"":true,""name"":""" & EscJson(batName) & """,""manufacturer"":""" & EscJson(batMfg) & """,""serialNumber"":""" & EscJson(batSerial) & """,""designCapacityMWh"":" & batDesignCap & ",""fullChargeCapacityMWh"":" & batFullCap & ",""healthPercent"":" & batHealthPctStr & ",""wearLevelPercent"":" & batWearPctStr & ",""cycleCount"":" & batCycleJson & ",""chargePercent"":" & batChargeJson & ",""isCharging"":" & batChargingJson & ",""status"":""" & batStatus & """,""statusText"":""" & EscJson(batStatusText) & """}"
+    End If
+    Err.Clear
+    On Error GoTo 0
+End If
+
 ' Overall health
-If anyDiskCritical Or cpuHealthStatus = "CRITICAL" Then
+If anyDiskCritical Or cpuHealthStatus = "CRITICAL" Or batStatus = "CRITICAL" Then
     overallHealth = "CRITICAL"
-    overallHealthText = "NGUY HIEM: Co loi phan cung!"
-ElseIf anyDiskWarning Or ramHealthStatus = "WARNING" Or cpuHealthStatus = "WARNING" Then
+    If anyDiskCritical Or cpuHealthStatus = "CRITICAL" Then
+        overallHealthText = "NGUY HIEM: Co loi phan cung!"
+    Else
+        overallHealthText = "CAN THAY PIN: Pin Laptop da chai nang!"
+    End If
+ElseIf anyDiskWarning Or ramHealthStatus = "WARNING" Or cpuHealthStatus = "WARNING" Or batStatus = "WARNING" Then
     overallHealth = "WARNING"
-    overallHealthText = "Can chu y (Day o dia / Tai RAM cao)"
+    overallHealthText = "Can chu y (O dia / RAM / Pin Laptop)"
 End If
 
 WScript.Echo "[5/8] Quet phan mem..."
@@ -692,7 +820,7 @@ Else
 End If
 
 Dim hardwareHealthJson
-hardwareHealthJson = "{""overallStatus"":""" & overallHealth & """,""overallText"":""" & overallHealthText & """,""cpu"":{""status"":""" & cpuHealthStatus & """,""statusText"":""" & cpuHealthText & """,""loadPercent"":" & cpuLoad & ",""cores"":" & cpuCores & ",""threads"":" & cpuCores & ",""clockSpeedMHz"":" & cpuClockMHz & ",""temperatureC"":" & cpuTempC & "},""ram"":{""status"":""" & ramHealthStatus & """,""statusText"":""" & ramHealthText & """,""totalGB"":" & Num(ramTotalGB) & ",""usedGB"":" & Num(ramUsedGB) & ",""freeGB"":" & Num(ramFreeGB) & ",""usagePercent"":" & ramUsagePct & ",""slotsUsed"":" & ramSlotCount & "},""diskStatus"":""" & diskHealthStatus & """,""diskText"":""" & diskHealthText & """,""logicalVolumes"":[],""alerts"":" & hardwareAlerts & ",""checkedAt"":""" & FormatDateTime_ISO() & """}"
+hardwareHealthJson = "{""overallStatus"":""" & overallHealth & """,""overallText"":""" & overallHealthText & """,""cpu"":{""status"":""" & cpuHealthStatus & """,""statusText"":""" & cpuHealthText & """,""loadPercent"":" & cpuLoad & ",""cores"":" & cpuCores & ",""threads"":" & cpuCores & ",""clockSpeedMHz"":" & cpuClockMHz & ",""temperatureC"":" & cpuTempC & "},""ram"":{""status"":""" & ramHealthStatus & """,""statusText"":""" & ramHealthText & """,""totalGB"":" & Num(ramTotalGB) & ",""usedGB"":" & Num(ramUsedGB) & ",""freeGB"":" & Num(ramFreeGB) & ",""usagePercent"":" & ramUsagePct & ",""slotsUsed"":" & ramSlotCount & "},""battery"":" & batteryHealthJson & ",""diskStatus"":""" & diskHealthStatus & """,""diskText"":""" & diskHealthText & """,""logicalVolumes"":[],""alerts"":" & hardwareAlerts & ",""checkedAt"":""" & FormatDateTime_ISO() & """}"
 
 Dim jsonPayload
 jsonPayload = "{" & _

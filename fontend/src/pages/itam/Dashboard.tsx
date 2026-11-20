@@ -256,6 +256,9 @@ const Dashboard = () => {
       RAM: specs.ram || '',
       'Chi tiết khe RAM': ramSticks,
       'Ổ cứng': specs.disk || '',
+      'Pin Laptop (Tuổi thọ / Lần sạc)': specs.hardwareHealth?.battery?.hasBattery
+        ? `Tuổi thọ ${specs.hardwareHealth.battery.healthPercent ?? 'N/A'}% (Chai ${specs.hardwareHealth.battery.wearLevelPercent ?? 'N/A'}%)${specs.hardwareHealth.battery.cycleCount ? ` - ${specs.hardwareHealth.battery.cycleCount} lần sạc` : ''}`
+        : 'Không có (PC)',
       'Màn hình đi kèm': monitors || 'Không có',
       'Chuột & Bàn phím': periphs || 'Không có',
       'Sức khỏe Phần cứng': specs.hardwareHealth?.overallText || 'Tốt',
@@ -927,8 +930,10 @@ const Dashboard = () => {
               <b>{healthCrit} máy</b>
             </div>
             <div className="flex justify-between text-amber-600">
-              <span>⚠️ Đầy ổ / RAM cao:</span>
-              <b>{healthWarn} máy</b>
+              <span>⚠️ Ổ đĩa / RAM / Pin chai:</span>
+              <b>
+                {healthWarn} máy{cards.batteryDegraded ? ` (${cards.batteryDegraded} pin)` : ''}
+              </b>
             </div>
           </div>
         </Card>

@@ -156,6 +156,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     const healthWarningList: any[] = [];
     const offlineList: any[] = [];
     const unlicensedOsList: any[] = [];
+    let batteryDegradedCount = 0;
 
     let online24hCount = 0;
     let active7dCount = 0;
@@ -250,8 +251,12 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         }
       }
 
-      // Phân loại Sức khỏe phần cứng (S.M.A.R.T / CPU / RAM / Ổ đĩa)
+      // Phân loại Sức khỏe phần cứng (S.M.A.R.T / CPU / RAM / Ổ đĩa / Pin Laptop)
       const hwHealth = specs.hardwareHealth || null;
+      const batInfo = hwHealth?.battery?.hasBattery ? hwHealth.battery : null;
+      if (batInfo && (batInfo.status === "CRITICAL" || batInfo.status === "WARNING")) {
+        batteryDegradedCount++;
+      }
       const hasFaultyDisk = diskComps.some(
         (d: any) => d.status === "FAULTY" || d.specs?.healthStatus === "CRITICAL"
       );
@@ -259,7 +264,8 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       if (
         comp.status === "BROKEN" ||
         hasFaultyDisk ||
-        hwHealth?.overallStatus === "CRITICAL"
+        hwHealth?.overallStatus === "CRITICAL" ||
+        batInfo?.status === "CRITICAL"
       ) {
         healthCriticalCount++;
         healthWarningList.push({
@@ -267,12 +273,14 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           healthLevel: "CRITICAL",
           healthSummary:
             hwHealth?.alerts?.join("; ") ||
+            batInfo?.statusText ||
             hwHealth?.overallText ||
-            "Lỗi phần cứng nghiêm trọng (Ổ cứng S.M.A.R.T / Thiết bị báo hỏng)",
+            "Lỗi phần cứng nghiêm trọng (Ổ cứng S.M.A.R.T / Pin chai nặng / Thiết bị báo hỏng)",
         });
       } else if (
         comp.status === "REPAIR" ||
         hwHealth?.overallStatus === "WARNING" ||
+        batInfo?.status === "WARNING" ||
         (ramNum > 0 && ramNum <= 4)
       ) {
         healthWarningCount++;
@@ -281,8 +289,9 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           healthLevel: "WARNING",
           healthSummary:
             hwHealth?.alerts?.join("; ") ||
+            batInfo?.statusText ||
             hwHealth?.overallText ||
-            (ramNum <= 4 ? `RAM thấp (${rawRamStr})` : "Cần chú ý dung lượng ổ đĩa / tải RAM"),
+            (ramNum <= 4 ? `RAM thấp (${rawRamStr})` : "Cần chú ý dung lượng ổ đĩa / RAM / Pin Laptop"),
         });
       } else {
         healthGoodCount++;
@@ -422,6 +431,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           healthGood: healthGoodCount,
           healthWarning: healthWarningCount,
           healthCritical: healthCriticalCount,
+          batteryDegraded: batteryDegradedCount,
           licensedOs: licensedOsCount,
           unlicensedOs: unlicensedOsCount,
           expiringKeys: expiringKeysCount,

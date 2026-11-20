@@ -961,15 +961,131 @@ try {
         slotsUsed    = $ramDetails.Count
     }
 
+    # 5B. Chẩn đoán Sức khỏe Pin Laptop (Tuổi thọ pin, % Độ chai & Số lần sạc Cycle Count)
+    $batteryHealth = $null
+    try {
+        $wmiBat = @(Get-WmiObject Win32_Battery -ErrorAction SilentlyContinue)[0]
+        if ($null -ne $wmiBat) {
+            # Nếu máy có Pin vật lý thì chắc chắn là Laptop/Mobile
+            if ($detectedType -eq "PC") { $detectedType = "LAPTOP" }
+
+            $designCap = 0
+            $fullCap = 0
+            $cycleCount = -1
+            $batMfg = ""
+            $batSerial = ""
+            $batName = if ($wmiBat.Name) { ([string]$wmiBat.Name).Trim() } else { "Laptop Battery" }
+            $chargePct = if ($null -ne $wmiBat.EstimatedChargeRemaining) { [int]$wmiBat.EstimatedChargeRemaining } else { $null }
+            $isCharging = ($wmiBat.BatteryStatus -eq 2 -or $wmiBat.BatteryStatus -eq 6 -or $wmiBat.BatteryStatus -eq 7 -or $wmiBat.BatteryStatus -eq 8 -or $wmiBat.BatteryStatus -eq 9)
+
+            # Tầng 1: Đọc trực tiếp từ WMI root\wmi (Chạy tốt trên cả Windows 7, 8, 10, 11)
+            try {
+                $batStatic = @(Get-WmiObject -Namespace root\wmi -Class BatteryStaticData -ErrorAction SilentlyContinue)[0]
+                if ($batStatic) {
+                    if ($batStatic.DesignedCapacity -gt 0) { $designCap = [int]$batStatic.DesignedCapacity }
+                    if ($batStatic.ManufactureName) { $batMfg = ([string]$batStatic.ManufactureName).Trim() }
+                    if ($batStatic.SerialNumber) { $batSerial = ([string]$batStatic.SerialNumber).Trim() }
+                }
+            } catch {}
+
+            try {
+                $batFull = @(Get-WmiObject -Namespace root\wmi -Class BatteryFullChargedCapacity -ErrorAction SilentlyContinue)[0]
+                if ($batFull -and $batFull.FullChargedCapacity -gt 0) {
+                    $fullCap = [int]$batFull.FullChargedCapacity
+                }
+            } catch {}
+
+            try {
+                $batCycle = @(Get-WmiObject -Namespace root\wmi -Class BatteryCycleCount -ErrorAction SilentlyContinue)[0]
+                if ($batCycle -and $batCycle.CycleCount -gt 0) {
+                    $cycleCount = [int]$batCycle.CycleCount
+                }
+            } catch {}
+
+            # Tầng 2: Dự phòng qua powercfg /batteryreport /xml (Rất chuẩn trên Dell/HP/Lenovo Win 8/10/11 khi WMI không báo CycleCount)
+            if ($designCap -le 0 -or $fullCap -le 0 -or $cycleCount -le 0) {
+                try {
+                    $tmpBatXml = Join-Path $env:TEMP "towa_bat_report.xml"
+                    if (Test-Path $tmpBatXml) { Remove-Item $tmpBatXml -Force -ErrorAction SilentlyContinue }
+                    $proc = Start-Process -FilePath "powercfg.exe" -ArgumentList "/batteryreport /xml /output `"$tmpBatXml`"" -WindowStyle Hidden -PassThru -ErrorAction SilentlyContinue
+                    if ($proc) {
+                        $proc.WaitForExit(5000) | Out-Null
+                    }
+                    if (Test-Path $tmpBatXml) {
+                        [xml]$batXml = Get-Content -Path $tmpBatXml -ErrorAction SilentlyContinue
+                        $xmlBatteries = $batXml.BatteryReport.Batteries.Battery
+                        $firstXmlBat = if ($xmlBatteries -is [System.Array]) { $xmlBatteries[0] } else { $xmlBatteries }
+                        if ($firstXmlBat) {
+                            if ($designCap -le 0 -and $firstXmlBat.DesignCapacity) { $designCap = [int]$firstXmlBat.DesignCapacity }
+                            if ($fullCap -le 0 -and $firstXmlBat.FullChargeCapacity) { $fullCap = [int]$firstXmlBat.FullChargeCapacity }
+                            if ($cycleCount -le 0 -and $firstXmlBat.CycleCount) {
+                                $parsedCycle = 0
+                                if ([int]::TryParse([string]$firstXmlBat.CycleCount, [ref]$parsedCycle) -and $parsedCycle -gt 0) {
+                                    $cycleCount = $parsedCycle
+                                }
+                            }
+                            if (-not $batMfg -and $firstXmlBat.Manufacturer) { $batMfg = ([string]$firstXmlBat.Manufacturer).Trim() }
+                            if (-not $batSerial -and $firstXmlBat.SerialNumber) { $batSerial = ([string]$firstXmlBat.SerialNumber).Trim() }
+                            if ($firstXmlBat.Id) { $batName = ([string]$firstXmlBat.Id).Trim() }
+                        }
+                        Remove-Item $tmpBatXml -Force -ErrorAction SilentlyContinue
+                    }
+                } catch {}
+            }
+
+            $batHealthPct = $null
+            $wearPct = $null
+            if ($designCap -gt 0 -and $fullCap -gt 0) {
+                $rawPct = [int][math]::Round(($fullCap / $designCap) * 100, 0)
+                if ($rawPct -gt 100) { $rawPct = 100 }
+                if ($rawPct -lt 0) { $rawPct = 0 }
+                $batHealthPct = $rawPct
+                $wearPct = 100 - $rawPct
+            }
+
+            $batStatus = "GOOD"
+            $batStatusText = "Pin Tot"
+            if (($null -ne $batHealthPct -and $batHealthPct -lt 50) -or ($cycleCount -ge 800)) {
+                $batStatus = "CRITICAL"
+                $batStatusText = if ($null -ne $wearPct) { "Can thay pin (Chai ${wearPct}%)" } else { "Can thay pin (${cycleCount} lan sac)" }
+                $cycleNote = if ($cycleCount -gt 0) { ", ${cycleCount} chu ky sac" } else { "" }
+                $hardwareAlerts += "Pin Laptop chai nang (Tuoi tho con ${batHealthPct}%, chai ${wearPct}%${cycleNote}) - Can thay pin!"
+            } elseif (($null -ne $batHealthPct -and $batHealthPct -lt 75) -or ($cycleCount -ge 500)) {
+                $batStatus = "WARNING"
+                $batStatusText = if ($null -ne $wearPct) { "Pin da chai ${wearPct}% (Can chu y)" } else { "So lan sac cao (${cycleCount} lan)" }
+                $cycleNote = if ($cycleCount -gt 0) { ", ${cycleCount} chu ky sac" } else { "" }
+                $hardwareAlerts += "Pin Laptop da chai ${wearPct}% (Tuoi tho con ${batHealthPct}%${cycleNote})"
+            } elseif ($null -ne $batHealthPct) {
+                $batStatusText = "Pin Tot (Tuoi tho ${batHealthPct}%)"
+            }
+
+            $batteryHealth = @{
+                hasBattery             = $true
+                name                   = $batName
+                manufacturer           = $batMfg
+                serialNumber           = $batSerial
+                designCapacityMWh      = $designCap
+                fullChargeCapacityMWh  = $fullCap
+                healthPercent          = $batHealthPct
+                wearLevelPercent       = $wearPct
+                cycleCount             = if ($cycleCount -gt 0) { $cycleCount } else { $null }
+                chargePercent          = $chargePct
+                isCharging             = $isCharging
+                status                 = $batStatus
+                statusText             = $batStatusText
+            }
+        }
+    } catch {}
+
     # 6. Tổng hợp Sức khỏe Toàn máy (Overall Hardware Health)
     $overallHealthStatus = "GOOD"
     $overallHealthText   = "Phan cung hoat dong Tot"
-    if ($anyDiskCritical -or $cpuHealthStatus -eq "CRITICAL") {
+    if ($anyDiskCritical -or $cpuHealthStatus -eq "CRITICAL" -or ($batteryHealth -and $batteryHealth.status -eq "CRITICAL")) {
         $overallHealthStatus = "CRITICAL"
-        $overallHealthText   = "NGUY HIEM: Co loi phan cung (O cung/CPU)!"
-    } elseif ($anyDiskWarning -or $ramHealthStatus -eq "WARNING" -or $cpuHealthStatus -eq "WARNING") {
+        $overallHealthText   = if ($anyDiskCritical -or $cpuHealthStatus -eq "CRITICAL") { "NGUY HIEM: Co loi phan cung (O cung/CPU)!" } else { "CAN THAY PIN: Pin Laptop da chai nang!" }
+    } elseif ($anyDiskWarning -or $ramHealthStatus -eq "WARNING" -or $cpuHealthStatus -eq "WARNING" -or ($batteryHealth -and $batteryHealth.status -eq "WARNING")) {
         $overallHealthStatus = "WARNING"
-        $overallHealthText   = "Can chu y (Day o dia / Tai RAM cao)"
+        $overallHealthText   = "Can chu y (O dia / RAM / Pin Laptop)"
     }
 
     $diskOverallStatus = if ($anyDiskCritical) { "CRITICAL" } elseif ($anyDiskWarning) { "WARNING" } else { "GOOD" }
@@ -980,6 +1096,7 @@ try {
         overallText    = $overallHealthText
         cpu            = $cpuHealth
         ram            = $ramHealth
+        battery        = $batteryHealth
         diskStatus     = $diskOverallStatus
         diskText       = $diskOverallText
         logicalVolumes = $logicalVolumes
