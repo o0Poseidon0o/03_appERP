@@ -262,30 +262,186 @@ for block in input_devs.split("\n\n"):
             })
 print(" OK")
 
-# 6. O cung & Man hinh
+# 6. O cung & Man hinh (Ho tro chan doan S.M.A.R.T chi tiet qua smartctl + kernel log)
 print("[6/7] Quet O cung & Man hinh...", end="", flush=True)
 disk_list = []
+disk_smart_alerts = []
+any_disk_critical = False
+any_disk_smart_warn = False
+
+# Doc kernel log 30 ngay gan nhat de tim loi I/O o cung (khong can smartmontools)
+kern_disk_logs = run_cmd("journalctl -k --since '30 days ago' -p err --no-pager 2>/dev/null | grep -iE 'I/O error|blk_update_request|reset|medium error|unrecovered read' | tail -n 500")
+if not kern_disk_logs:
+    kern_disk_logs = run_cmd("dmesg -T 2>/dev/null | grep -iE 'I/O error|blk_update_request|medium error|unrecovered read' | tail -n 300")
+
 lsblk_json = run_cmd("lsblk -J -b -d -o NAME,MODEL,SIZE,ROTA,TRAN,SERIAL,TYPE")
 if lsblk_json:
     try:
         parsed_blk = json.loads(lsblk_json)
         idx = 0
         for d in parsed_blk.get("blockdevices", []):
-            if d.get("type") != "disk" or str(d.get("name", "")).startswith(("loop", "ram", "sr", "zram")):
+            dev_name = str(d.get("name", ""))
+            if d.get("type") != "disk" or dev_name.startswith(("loop", "ram", "sr", "zram")):
                 continue
             size_bytes = int(d.get("size") or 0)
             size_gb = round(size_bytes / (1024 ** 3))
             if size_gb <= 0:
                 continue
             rota = d.get("rota")
-            is_ssd = (rota is False or str(rota) == "0" or "nvme" in str(d.get("name", "")))
+            is_ssd = (rota is False or str(rota) == "0" or "nvme" in dev_name)
+            d_model = (d.get("model") or dev_name or "Linux Disk").strip()
+
+            # Chan doan S.M.A.R.T chi tiet qua smartctl (neu co cai smartmontools)
+            temp_c = None
+            wear_pct = None
+            life_pct = None
+            poh = None
+            realloc_cnt = None
+            pending_cnt = None
+            uncorr_cnt = None
+            crc_cnt = None
+            ev_bad = 0
+            ev_retry = 0
+            ev_reset = 0
+            d_issues = []
+            d_status = "GOOD"
+
+            smart_raw = run_cmd(f"smartctl -A -H -j /dev/{dev_name} 2>/dev/null")
+            if smart_raw:
+                try:
+                    sj = json.loads(smart_raw)
+                    if sj.get("smart_status", {}).get("passed") is False:
+                        d_status = "CRITICAL"
+                        d_issues.append("S.M.A.R.T bao FAILED - O cung sap hong, can sao luu du lieu ngay!")
+                    if isinstance(sj.get("temperature", {}).get("current"), (int, float)):
+                        temp_c = int(sj["temperature"]["current"])
+                    if isinstance(sj.get("power_on_time", {}).get("hours"), (int, float)):
+                        poh = int(sj["power_on_time"]["hours"])
+
+                    # NVMe SMART log
+                    nvme_log = sj.get("nvme_smart_health_information_log")
+                    if isinstance(nvme_log, dict):
+                        if "percentage_used" in nvme_log:
+                            wear_pct = int(nvme_log["percentage_used"])
+                            life_pct = max(0, 100 - wear_pct)
+                        if "media_errors" in nvme_log:
+                            uncorr_cnt = int(nvme_log["media_errors"])
+                        if temp_c is None and isinstance(nvme_log.get("temperature"), (int, float)):
+                            temp_c = int(nvme_log["temperature"])
+
+                    # SATA/ATA SMART attributes
+                    ata_table = sj.get("ata_smart_attributes", {}).get("table", [])
+                    for attr in ata_table:
+                        aid = attr.get("id")
+                        aval = attr.get("value")
+                        araw = attr.get("raw", {}).get("value")
+                        if aid == 5 and isinstance(araw, int):
+                            realloc_cnt = araw
+                        elif aid == 197 and isinstance(araw, int):
+                            pending_cnt = araw
+                        elif aid == 198 and isinstance(araw, int):
+                            uncorr_cnt = araw
+                        elif aid == 199 and isinstance(araw, int):
+                            crc_cnt = araw
+                        elif aid == 9 and poh is None and isinstance(araw, int):
+                            poh = araw
+                        elif aid in (194, 190) and temp_c is None and isinstance(araw, int):
+                            t_lo = araw & 0xFF
+                            if 5 < t_lo < 110:
+                                temp_c = t_lo
+                        elif aid in (231, 233) and life_pct is None and isinstance(aval, int) and 0 <= aval <= 100:
+                            life_pct = aval
+                            wear_pct = 100 - aval
+                except Exception:
+                    pass
+
+            # Kiem tra kernel log cho o dia nay
+            if kern_disk_logs:
+                for line in kern_disk_logs.splitlines():
+                    low = line.lower()
+                    if f"dev {dev_name}" in low or f"/{dev_name}" in low or f"{dev_name}:" in low:
+                        if "medium error" in low or "unrecovered read" in low:
+                            ev_bad += 1
+                        elif "i/o error" in low or "blk_update_request" in low:
+                            ev_retry += 1
+                        elif "reset" in low:
+                            ev_reset += 1
+
+            # Danh gia chi tiet tung nguyen nhan loi
+            if realloc_cnt and realloc_cnt > 0:
+                d_status = "CRITICAL" if realloc_cnt >= 10 else ("WARNING" if d_status != "CRITICAL" else d_status)
+                d_issues.append(f"Phat hien {realloc_cnt} Bad Sector da thay the (S.M.A.R.T ID 05)")
+            if pending_cnt and pending_cnt > 0:
+                d_status = "CRITICAL"
+                d_issues.append(f"Co {pending_cnt} Sector cho xu ly loi doc (Pending Sector ID C5)")
+            if uncorr_cnt and uncorr_cnt > 0:
+                d_status = "CRITICAL"
+                d_issues.append(f"Co {uncorr_cnt} loi doc khong the phuc hoi (Uncorrectable / Media Errors)")
+            if crc_cnt and crc_cnt > 0:
+                if d_status != "CRITICAL":
+                    d_status = "WARNING"
+                d_issues.append(f"Loi cap SATA / cong Mainboard (CRC ID C7: {crc_cnt} lan)")
+            if life_pct is not None and life_pct <= 20:
+                d_status = "CRITICAL"
+                d_issues.append(f"SSD sap het tuoi tho (Con {life_pct}%, hao mon {wear_pct}%) - Can thay the!")
+            elif life_pct is not None and life_pct <= 50:
+                if d_status != "CRITICAL":
+                    d_status = "WARNING"
+                d_issues.append(f"SSD da hao mon {wear_pct}% (Tuoi tho con {life_pct}%)")
+            if temp_c is not None and temp_c >= 55:
+                if d_status != "CRITICAL":
+                    d_status = "WARNING"
+                d_issues.append(f"Nhiet do o cung cao ({temp_c}C)")
+            if ev_bad > 0:
+                d_status = "CRITICAL"
+                d_issues.append(f"Linux Kernel ghi nhan {ev_bad} loi Bad Block vat ly (30 ngay)")
+            if ev_retry >= 5:
+                d_status = "CRITICAL"
+                d_issues.append(f"Linux Kernel ghi nhan {ev_retry} loi I/O doc/ghi o cung (30 ngay)")
+            elif ev_retry > 0:
+                if d_status != "CRITICAL":
+                    d_status = "WARNING"
+                d_issues.append(f"Co {ev_retry} canh bao I/O tren o cung (30 ngay)")
+            if ev_reset > 0:
+                if d_status != "CRITICAL":
+                    d_status = "WARNING"
+                d_issues.append(f"Co {ev_reset} lan Reset cong o cung (30 ngay)")
+
+            if d_status == "CRITICAL":
+                any_disk_critical = True
+                d_text = f"NGUY HIEM: {d_issues[0]}" if d_issues else "NGUY HIEM: Loi o cung"
+                disk_smart_alerts.append(f"O /dev/{dev_name} ({d_model}): {d_issues[0]}" if d_issues else f"O /dev/{dev_name} ({d_model}) loi S.M.A.R.T")
+            elif d_status == "WARNING":
+                any_disk_smart_warn = True
+                d_text = f"Canh bao: {d_issues[0]}" if d_issues else "Canh bao o cung"
+                disk_smart_alerts.append(f"O /dev/{dev_name} ({d_model}): {d_issues[0]}" if d_issues else f"O /dev/{dev_name} ({d_model}) canh bao")
+            else:
+                d_text = "Tot (S.M.A.R.T OK)"
+
             disk_list.append({
                 "Index": idx,
-                "Model": (d.get("model") or d.get("name") or "Linux Disk").strip(),
+                "Model": d_model,
                 "MediaType": "SSD" if is_ssd else "HDD",
                 "SizeGB": size_gb,
                 "Interface": (d.get("tran") or "SATA/NVMe").upper(),
-                "SerialNumber": (d.get("serial") or "N/A").strip()
+                "SerialNumber": (d.get("serial") or "N/A").strip(),
+                "HealthStatus": d_status,
+                "HealthText": d_text,
+                "TemperatureC": temp_c,
+                "WearPercent": wear_pct,
+                "LifeRemainingPercent": life_pct,
+                "PowerOnHours": poh,
+                "ReadErrors": None,
+                "WriteErrors": None,
+                "ReallocatedSectors": realloc_cnt,
+                "PendingSectors": pending_cnt,
+                "UncorrectableSectors": uncorr_cnt,
+                "CrcErrors": crc_cnt,
+                "EventBadBlocks": ev_bad,
+                "EventIoRetries": ev_retry,
+                "EventDiskResets": ev_reset,
+                "EventNtfsErrors": 0,
+                "HealthIssues": d_issues
             })
             idx += 1
     except Exception:
@@ -519,15 +675,27 @@ try:
 except Exception:
     pass
 
-if battery_health and battery_health["status"] == "CRITICAL":
+hw_alerts = disk_smart_alerts + hw_alerts
+
+if any_disk_critical:
+    overall_status = "CRITICAL"
+    overall_text = "NGUY HIEM: Phat hien loi o cung (S.M.A.R.T / Kernel Log)!"
+elif battery_health and battery_health["status"] == "CRITICAL":
     overall_status = "CRITICAL"
     overall_text = "CAN THAY PIN: Pin Laptop da chai nang!"
-elif any_disk_warn or ram_status == "WARNING" or cpu_load_pct >= 90 or (battery_health and battery_health["status"] == "WARNING"):
+elif any_disk_warn or any_disk_smart_warn or ram_status == "WARNING" or cpu_load_pct >= 90 or (battery_health and battery_health["status"] == "WARNING"):
     overall_status = "WARNING"
     overall_text = "Can chu y (O dia / RAM / Pin Laptop)"
 else:
     overall_status = "GOOD"
     overall_text = "Phan cung hoat dong Tot"
+
+disk_overall_status = "CRITICAL" if any_disk_critical else ("WARNING" if (any_disk_warn or any_disk_smart_warn) else "GOOD")
+disk_overall_text = (
+    "NGUY HIEM: Phat hien loi o cung!"
+    if any_disk_critical
+    else ("Canh bao: O cung co dau hieu bat thuong / sap day" if (any_disk_warn or any_disk_smart_warn) else "Tot (S.M.A.R.T OK)")
+)
 
 hardware_health = {
     "overallStatus": overall_status,
@@ -551,16 +719,12 @@ hardware_health = {
         "slotsUsed": len(ram_details)
     },
     "battery": battery_health,
-    "diskStatus": "WARNING" if any_disk_warn else "GOOD",
-    "diskText": "Can don dep dung luong" if any_disk_warn else "Tot (S.M.A.R.T OK)",
+    "diskStatus": disk_overall_status,
+    "diskText": disk_overall_text,
     "logicalVolumes": logical_volumes,
     "alerts": hw_alerts,
     "checkedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 }
-
-for d in disk_list:
-    d["HealthStatus"] = "GOOD"
-    d["HealthText"] = "Tot (S.M.A.R.T OK)"
 
 payload = {
     "serialNumber": serial_number,

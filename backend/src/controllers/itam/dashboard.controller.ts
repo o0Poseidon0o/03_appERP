@@ -251,7 +251,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         }
       }
 
-      // Phân loại Sức khỏe phần cứng (S.M.A.R.T / CPU / RAM / Ổ đĩa / Pin Laptop)
+      // Phân loại Sức khỏe phần cứng (S.M.A.R.T / EventLog / CPU / RAM / Ổ đĩa / Pin Laptop)
       const hwHealth = specs.hardwareHealth || null;
       const batInfo = hwHealth?.battery?.hasBattery ? hwHealth.battery : null;
       if (batInfo && (batInfo.status === "CRITICAL" || batInfo.status === "WARNING")) {
@@ -260,6 +260,32 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       const hasFaultyDisk = diskComps.some(
         (d: any) => d.status === "FAULTY" || d.specs?.healthStatus === "CRITICAL"
       );
+      const hasWarningDisk = diskComps.some(
+        (d: any) => d.specs?.healthStatus === "WARNING"
+      );
+
+      // Thu thập chi tiết nguyên nhân lỗi cụ thể từng ổ cứng (Bad Sector, CRC cáp SATA, SSD hao mòn, EventLog 30 ngày)
+      const diskIssueMessages: string[] = [];
+      for (const dc of diskComps) {
+        const ds: any = dc.specs || {};
+        if (Array.isArray(ds.healthIssues) && ds.healthIssues.length > 0) {
+          diskIssueMessages.push(`${dc.name}: ${ds.healthIssues.join(" | ")}`);
+        } else if (dc.status === "FAULTY" || ds.healthStatus === "CRITICAL" || ds.healthStatus === "WARNING") {
+          diskIssueMessages.push(`${dc.name}: ${ds.healthText || "Phát hiện lỗi ổ cứng"}`);
+        }
+      }
+
+      const combinedAlerts: string[] = [];
+      for (const msg of diskIssueMessages) {
+        if (!combinedAlerts.includes(msg)) combinedAlerts.push(msg);
+      }
+      if (Array.isArray(hwHealth?.alerts)) {
+        for (const al of hwHealth.alerts) {
+          if (al && !combinedAlerts.some((c) => c.includes(al) || al.includes(c))) {
+            combinedAlerts.push(al);
+          }
+        }
+      }
 
       if (
         comp.status === "BROKEN" ||
@@ -272,13 +298,14 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           ...comp,
           healthLevel: "CRITICAL",
           healthSummary:
-            hwHealth?.alerts?.join("; ") ||
+            combinedAlerts.join("; ") ||
             batInfo?.statusText ||
             hwHealth?.overallText ||
             "Lỗi phần cứng nghiêm trọng (Ổ cứng S.M.A.R.T / Pin chai nặng / Thiết bị báo hỏng)",
         });
       } else if (
         comp.status === "REPAIR" ||
+        hasWarningDisk ||
         hwHealth?.overallStatus === "WARNING" ||
         batInfo?.status === "WARNING" ||
         (ramNum > 0 && ramNum <= 4)
@@ -288,7 +315,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           ...comp,
           healthLevel: "WARNING",
           healthSummary:
-            hwHealth?.alerts?.join("; ") ||
+            combinedAlerts.join("; ") ||
             batInfo?.statusText ||
             hwHealth?.overallText ||
             (ramNum <= 4 ? `RAM thấp (${rawRamStr})` : "Cần chú ý dung lượng ổ đĩa / RAM / Pin Laptop"),

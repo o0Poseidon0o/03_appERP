@@ -777,95 +777,344 @@ try {
     $softwareList = @($softwareMap.Values | Sort-Object { $_.Name })
     Write-Host " OK ($($softwareList.Count) apps)" -ForegroundColor Green
 
-    # H. Ổ CỨNG, SỨC KHỎE PHẦN CỨNG (CPU/RAM/DISK S.M.A.R.T) & MÀN HÌNH
-    Write-Host "[7/8] Quet Suc khoe CPU, RAM, O cung (S.M.A.R.T) & Man hinh..." -NoNewline
+    # H. Ổ CỨNG, SỨC KHỎE PHẦN CỨNG CHUYÊN SÂU (S.M.A.R.T ATTRIBUTES + RELIABILITY + EVENT LOG 30 NGÀY)
+    Write-Host "[7/8] Quet Suc khoe CPU, RAM, O cung (S.M.A.R.T Chi tiet & EventLog) & Man hinh..." -NoNewline
     $hardwareAlerts = @()
 
-    # 1. Kiểm tra S.M.A.R.T PredictFailure từ WMI (Hoạt động trên cả Win 7, 10, 11)
-    $smartFailureDetected = $false
+    # 1A. Quét WMI Win32_DiskDrive để ánh xạ PNPDeviceID <-> Disk Index
+    $wmiDiskByIndex = @{}
+    try {
+        $allWmiDrives = @(Get-WmiObject Win32_DiskDrive -ErrorAction SilentlyContinue)
+        foreach ($wd in $allWmiDrives) {
+            if ($null -ne $wd) { $wmiDiskByIndex[[int]$wd.Index] = $wd }
+        }
+    } catch {}
+
+    # 1B. Quét S.M.A.R.T PredictFailure theo từng ổ (root\wmi)
+    $smartFailByInstance = @{}
+    $anyGlobalSmartFail = $false
     try {
         $smartStatuses = @(Get-WmiObject -Namespace root\wmi -Class MSStorageDriver_FailurePredictStatus -ErrorAction SilentlyContinue)
         foreach ($st in $smartStatuses) {
             if ($null -ne $st -and $st.PredictFailure -eq $true) {
-                $smartFailureDetected = $true
+                $anyGlobalSmartFail = $true
+                if ($st.InstanceName) { $smartFailByInstance[[string]$st.InstanceName] = $true }
             }
         }
     } catch {}
 
-    # 2. Quét danh sách Ổ cứng vật lý + Trạng thái Sức khỏe từng ổ
+    # 1C. Giải mã chi tiết Raw S.M.A.R.T Attributes (ID 05 Bad Sector, C5 Pending, C6 Uncorrectable, C7 Cáp SATA, 09 Giờ chạy, C2 Nhiệt độ, E7/E9 Tuổi thọ SSD)
+    $smartDataList = @()
+    try {
+        $rawSmartRows = @(Get-WmiObject -Namespace root\wmi -Class MSStorageDriver_ATAPISmartData -ErrorAction SilentlyContinue)
+        foreach ($row in $rawSmartRows) {
+            $vs = $row.VendorSpecific
+            if (-not $vs -or $vs.Length -lt 362) { continue }
+            $parsed = @{
+                InstanceName         = [string]$row.InstanceName
+                ReallocatedSectors   = 0
+                PendingSectors       = 0
+                UncorrectableSectors = 0
+                CrcErrors            = 0
+                ReportedUncorrect    = 0
+                PowerOnHours         = 0
+                TemperatureC         = $null
+                SsdLifeRemainingPct  = $null
+            }
+            for ($idxB = 2; $idxB -lt 362; $idxB += 12) {
+                $attrId = [int]$vs[$idxB]
+                if ($attrId -eq 0) { continue }
+                $curVal = [int]$vs[$idxB + 3]
+                $rawVal = [uint64]$vs[$idxB + 5] + ([uint64]$vs[$idxB + 6] * 256) + ([uint64]$vs[$idxB + 7] * 65536) + ([uint64]$vs[$idxB + 8] * 16777216)
+
+                if ($attrId -eq 5)   { $parsed.ReallocatedSectors   = [int][math]::Min($rawVal, 1000000) }
+                elseif ($attrId -eq 9)   { $parsed.PowerOnHours     = [int][math]::Min($rawVal, 500000) }
+                elseif ($attrId -eq 187) { $parsed.ReportedUncorrect = [int][math]::Min($rawVal, 1000000) }
+                elseif ($attrId -eq 197) { $parsed.PendingSectors   = [int][math]::Min($rawVal, 1000000) }
+                elseif ($attrId -eq 198) { $parsed.UncorrectableSectors = [int][math]::Min($rawVal, 1000000) }
+                elseif ($attrId -eq 199) { $parsed.CrcErrors        = [int][math]::Min($rawVal, 1000000) }
+                elseif ($attrId -eq 194 -or $attrId -eq 190) {
+                    $tByte = [int]($vs[$idxB + 5])
+                    if ($tByte -ge 10 -and $tByte -le 95) { $parsed.TemperatureC = $tByte }
+                }
+                elseif ($attrId -eq 231 -or $attrId -eq 233) {
+                    if ($curVal -gt 0 -and $curVal -le 100 -and $null -eq $parsed.SsdLifeRemainingPct) {
+                        $parsed.SsdLifeRemainingPct = $curVal
+                    }
+                }
+            }
+            $smartDataList += $parsed
+        }
+    } catch {}
+
+    # 1D. Quét Windows System Event Log 30 ngày qua tìm bằng chứng lỗi ổ cứng thực tế (Chạy được cả khi không có quyền Admin!)
+    # ID 7: Bad Block | ID 153 & 51: Lỗi đọc/ghi thử lại | ID 129 & 11: Treo ổ đĩa / Reset cổng | ID 55: Hỏng NTFS
+    $diskEventsByIdx = @{}
+    $globalDiskResets = 0
+    $globalNtfsErrors = 0
+    try {
+        $since30d = (Get-Date).AddDays(-30)
+        $sysEvents = @()
+        if (Get-Command Get-WinEvent -ErrorAction SilentlyContinue) {
+            $sysEvents = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; StartTime = $since30d; Id = @(7, 11, 51, 55, 129, 153) } -MaxEvents 1500 -ErrorAction SilentlyContinue)
+        } else {
+            $sysEvents = @(Get-EventLog -LogName System -After $since30d -EntryType Error,Warning -ErrorAction SilentlyContinue | Where-Object {
+                $_.EventID -eq 7 -or $_.EventID -eq 11 -or $_.EventID -eq 51 -or $_.EventID -eq 55 -or $_.EventID -eq 129 -or $_.EventID -eq 153
+            })
+        }
+
+        foreach ($ev in $sysEvents) {
+            $prov = if ($ev.ProviderName) { [string]$ev.ProviderName } elseif ($ev.Source) { [string]$ev.Source } else { "" }
+            if ($prov -notmatch "disk|ntfs|storahci|stornvme|iaStor|nvme|atapi|partmgr|volmgr") { continue }
+            $eid = if ($null -ne $ev.Id) { [int]$ev.Id } else { [int]$ev.EventID }
+            $msg = if ($ev.Message) { [string]$ev.Message } else { "" }
+
+            $targetDiskIdx = -1
+            if ($msg -match "Harddisk(\d+)" -or $msg -match "Disk\s+(\d+)") {
+                $targetDiskIdx = [int]$matches[1]
+            }
+
+            if ($targetDiskIdx -ge 0) {
+                if (-not $diskEventsByIdx.ContainsKey($targetDiskIdx)) {
+                    $diskEventsByIdx[$targetDiskIdx] = @{ BadBlocks = 0; IoRetries = 0; Resets = 0; NtfsErrors = 0 }
+                }
+                if ($eid -eq 7) { $diskEventsByIdx[$targetDiskIdx].BadBlocks++ }
+                elseif ($eid -eq 153 -or $eid -eq 51) { $diskEventsByIdx[$targetDiskIdx].IoRetries++ }
+                elseif ($eid -eq 129 -or $eid -eq 11) { $diskEventsByIdx[$targetDiskIdx].Resets++ }
+                elseif ($eid -eq 55) { $diskEventsByIdx[$targetDiskIdx].NtfsErrors++ }
+            } else {
+                if ($eid -eq 129 -or $eid -eq 11) { $globalDiskResets++ }
+                elseif ($eid -eq 55) { $globalNtfsErrors++ }
+                elseif ($eid -eq 7 -or $eid -eq 153 -or $eid -eq 51) {
+                    if (-not $diskEventsByIdx.ContainsKey(0)) {
+                        $diskEventsByIdx[0] = @{ BadBlocks = 0; IoRetries = 0; Resets = 0; NtfsErrors = 0 }
+                    }
+                    if ($eid -eq 7) { $diskEventsByIdx[0].BadBlocks++ }
+                    else { $diskEventsByIdx[0].IoRetries++ }
+                }
+            }
+        }
+    } catch {}
+
+    function Find-SmartForDisk {
+        param ([int]$DiskIdx, [string]$ModelName)
+        $pnpId = ""
+        if ($wmiDiskByIndex.ContainsKey($DiskIdx) -and $wmiDiskByIndex[$DiskIdx].PNPDeviceID) {
+            $pnpId = ([string]$wmiDiskByIndex[$DiskIdx].PNPDeviceID).ToUpper()
+        }
+        foreach ($sd in $smartDataList) {
+            $inst = $sd.InstanceName.ToUpper()
+            if ($pnpId -and $inst.Contains($pnpId.Split('\')[-1])) { return $sd }
+        }
+        if ($smartDataList.Count -gt 0 -and $DiskIdx -lt $smartDataList.Count) {
+            return $smartDataList[$DiskIdx]
+        }
+        return $null
+    }
+
+    # 2. Quét danh sách Ổ cứng vật lý + Chẩn đoán chuyên sâu từng lỗi cụ thể cho từng ổ
     $diskList = @()
     $usedPhysicalDisk = $false
     $anyDiskCritical = $false
     $anyDiskWarning = $false
 
+    $rawDiskItems = @()
     if (Get-Command Get-PhysicalDisk -ErrorAction SilentlyContinue) {
         try {
             $pDisks = @(Get-PhysicalDisk | Sort-Object DeviceId -ErrorAction Stop)
             foreach ($d in $pDisks) {
-                $rawHealth = if ($d.HealthStatus) { [string]$d.HealthStatus } else { "Healthy" }
-                $opStatus  = if ($d.OperationalStatus) { ([string]$d.OperationalStatus) } else { "OK" }
-                $dHealth   = "GOOD"
-                $dHealthText = "Tot (Healthy)"
-
-                if ($rawHealth -match "Unhealthy" -or $opStatus -match "Error|Failed|Lost|Predictive" -or $smartFailureDetected) {
-                    $dHealth = "CRITICAL"
-                    $dHealthText = "NGUY HIEM: Sap hong ($rawHealth)"
-                    $anyDiskCritical = $true
-                    $hardwareAlerts += "O cung [$($d.FriendlyName)] bao loi S.M.A.R.T ($rawHealth) - Can sao luu ngay!"
-                } elseif ($rawHealth -match "Warning" -or $opStatus -match "Degraded|Stressed") {
-                    $dHealth = "WARNING"
-                    $dHealthText = "Canh bao ($rawHealth)"
-                    $anyDiskWarning = $true
-                    $hardwareAlerts += "O cung [$($d.FriendlyName)] o trang thai Canh bao ($rawHealth)"
-                }
-
-                $diskList += @{
+                $rc = $null
+                try { $rc = $d | Get-StorageReliabilityCounter -ErrorAction SilentlyContinue } catch {}
+                $rawDiskItems += @{
                     Index        = [int]$d.DeviceId
                     Model        = [string]$d.FriendlyName
-                    MediaType    = [string]$d.MediaType
+                    MediaType    = if ($d.MediaType -and $d.MediaType -ne "Unspecified") { [string]$d.MediaType } elseif ($d.FriendlyName -match "SSD|NVMe|SN\d{3}|Solid") { "SSD" } else { "HDD" }
                     SizeGB       = [math]::Round($d.Size / 1GB, 0)
                     Interface    = [string]$d.BusType
-                    SerialNumber = if ($d.SerialNumber) { $d.SerialNumber.Trim() } else { "N/A" }
-                    HealthStatus = $dHealth
-                    HealthText   = $dHealthText
+                    SerialNumber = if ($d.SerialNumber) { ([string]$d.SerialNumber).Trim() } else { "N/A" }
+                    RawHealth    = if ($d.HealthStatus) { [string]$d.HealthStatus } else { "Healthy" }
+                    OpStatus     = if ($d.OperationalStatus) { [string]$d.OperationalStatus } else { "OK" }
+                    Reliability  = $rc
                 }
             }
-            if ($diskList.Count -gt 0) { $usedPhysicalDisk = $true }
+            if ($rawDiskItems.Count -gt 0) { $usedPhysicalDisk = $true }
         } catch {}
     }
+
     if (-not $usedPhysicalDisk) {
-        # Fallback WMI chuẩn cho Windows 7 / Windows Server 2008 R2
         try {
             $wmiDisks = @(Get-WmiObject Win32_DiskDrive -ErrorAction SilentlyContinue | Sort-Object Index)
             foreach ($d in $wmiDisks) {
-                $mediaType = if ($d.Model -match "SSD|NVMe|Solid") { "SSD" } else { "HDD" }
-                $wmiStatus = if ($d.Status) { ([string]$d.Status).Trim() } else { "OK" }
-                $dHealth = "GOOD"
-                $dHealthText = "Tot (S.M.A.R.T OK)"
-
-                if ($wmiStatus -match "Pred Fail|Error|Fail" -or $smartFailureDetected) {
-                    $dHealth = "CRITICAL"
-                    $dHealthText = "NGUY HIEM: Sap hong ($wmiStatus)"
-                    $anyDiskCritical = $true
-                    $hardwareAlerts += "O cung [$($d.Model)] bao loi S.M.A.R.T ($wmiStatus) - Can kiem tra/thay the!"
-                } elseif ($wmiStatus -ne "OK") {
-                    $dHealth = "WARNING"
-                    $dHealthText = "Canh bao ($wmiStatus)"
-                    $anyDiskWarning = $true
-                }
-
-                $diskList += @{
+                $mediaType = if ($d.Model -match "SSD|NVMe|SN\d{3}|Solid") { "SSD" } else { "HDD" }
+                $rawDiskItems += @{
                     Index        = [int]$d.Index
                     Model        = [string]$d.Model
                     MediaType    = $mediaType
                     SizeGB       = [math]::Round($d.Size / 1GB, 0)
                     Interface    = [string]$d.InterfaceType
                     SerialNumber = if ($d.SerialNumber) { ([string]$d.SerialNumber).Trim() } else { "N/A" }
-                    HealthStatus = $dHealth
-                    HealthText   = $dHealthText
+                    RawHealth    = if ($d.Status) { ([string]$d.Status).Trim() } else { "OK" }
+                    OpStatus     = if ($d.Status) { ([string]$d.Status).Trim() } else { "OK" }
+                    Reliability  = $null
                 }
             }
         } catch {}
+    }
+
+    foreach ($item in $rawDiskItems) {
+        $dIdx = [int]$item.Index
+        $rc = $item.Reliability
+        $sd = Find-SmartForDisk -DiskIdx $dIdx -ModelName $item.Model
+        $evStats = if ($diskEventsByIdx.ContainsKey($dIdx)) { $diskEventsByIdx[$dIdx] } else { @{ BadBlocks = 0; IoRetries = 0; Resets = 0; NtfsErrors = 0 } }
+
+        # Tổng hợp chỉ số vật lý từ ReliabilityCounter + Raw S.M.A.R.T
+        $tempC = $null
+        if ($rc -and $rc.Temperature -gt 0 -and $rc.Temperature -lt 110) { $tempC = [int]$rc.Temperature }
+        elseif ($sd -and $null -ne $sd.TemperatureC) { $tempC = [int]$sd.TemperatureC }
+
+        $wearPct = $null
+        $lifeRemPct = $null
+        if ($rc -and $null -ne $rc.Wear -and [int]$rc.Wear -ge 0 -and [int]$rc.Wear -le 100 -and ($item.MediaType -eq "SSD" -or [int]$rc.Wear -gt 0)) {
+            $wearPct = [int]$rc.Wear
+            $lifeRemPct = 100 - $wearPct
+        } elseif ($sd -and $null -ne $sd.SsdLifeRemainingPct) {
+            $lifeRemPct = [int]$sd.SsdLifeRemainingPct
+            $wearPct = 100 - $lifeRemPct
+        }
+
+        $powerOnHours = $null
+        if ($rc -and $rc.PowerOnHours -gt 0) { $powerOnHours = [int]$rc.PowerOnHours }
+        elseif ($sd -and $sd.PowerOnHours -gt 0) { $powerOnHours = [int]$sd.PowerOnHours }
+
+        $readErr = if ($rc -and $rc.ReadErrorsTotal -gt 0) { [int]$rc.ReadErrorsTotal } else { 0 }
+        $writeErr = if ($rc -and $rc.WriteErrorsTotal -gt 0) { [int]$rc.WriteErrorsTotal } else { 0 }
+        $uncorrRead = if ($rc -and $rc.ReadErrorsUncorrected -gt 0) { [int]$rc.ReadErrorsUncorrected } else { 0 }
+        $uncorrWrite = if ($rc -and $rc.WriteErrorsUncorrected -gt 0) { [int]$rc.WriteErrorsUncorrected } else { 0 }
+
+        $reallocated = if ($sd) { [int]$sd.ReallocatedSectors } else { 0 }
+        $pending     = if ($sd) { [int]$sd.PendingSectors } else { 0 }
+        $uncorrSect  = if ($sd) { [int]$sd.UncorrectableSectors } else { 0 }
+        $crcErr      = if ($sd) { [int]$sd.CrcErrors } else { 0 }
+
+        $evBadBlocks = [int]$evStats.BadBlocks
+        $evIoRetries = [int]$evStats.IoRetries
+        $evResets    = [int]$evStats.Resets
+        $evNtfs      = [int]$evStats.NtfsErrors
+        # Gắn thêm lỗi reset/NTFS toàn cục vào ổ đang có lỗi IO hoặc Disk 0 nếu chỉ có 1 ổ
+        if ($dIdx -eq 0 -or $evIoRetries -gt 0) {
+            if ($evResets -eq 0 -and $globalDiskResets -gt 0 -and ($evIoRetries -gt 0 -or $rawDiskItems.Count -eq 1)) {
+                $evResets = $globalDiskResets
+            }
+            if ($evNtfs -eq 0 -and $globalNtfsErrors -gt 0 -and ($evIoRetries -gt 0 -or $dIdx -eq 0)) {
+                $evNtfs = $globalNtfsErrors
+            }
+        }
+
+        # Đánh giá chi tiết từng nguyên nhân lỗi cụ thể (Bằng chứng thuyết phục để thay ổ/cáp)
+        $issues = @()
+        $dHealth = "GOOD"
+
+        $isPredictFail = $false
+        if ($item.RawHealth -match "Unhealthy|Pred Fail|Fail|Error" -or $item.OpStatus -match "Error|Failed|Lost|Predictive") { $isPredictFail = $true }
+        if ($anyGlobalSmartFail -and $rawDiskItems.Count -eq 1) { $isPredictFail = $true }
+        if ($sd -and $smartFailByInstance.ContainsKey($sd.InstanceName)) { $isPredictFail = $true }
+
+        if ($isPredictFail) {
+            $dHealth = "CRITICAL"
+            $issues += "S.M.A.R.T bao loi du doan sap hong ($($item.RawHealth)) - Nguy co mat du lieu!"
+        }
+        if ($reallocated -gt 0) {
+            if ($reallocated -ge 10) { $dHealth = "CRITICAL" } elseif ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "Phat hien $reallocated Bad Sector da phai thay the (S.M.A.R.T ID 05) - Mat dia dang hong dan"
+        }
+        if ($pending -gt 0) {
+            if ($pending -ge 5) { $dHealth = "CRITICAL" } elseif ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "Co $pending Sector loi dang cho xu ly (S.M.A.R.T ID C5) - Rat de gay treo may / mat du lieu"
+        }
+        if ($uncorrSect -gt 0 -or $uncorrRead -gt 0 -or $uncorrWrite -gt 0) {
+            $dHealth = "CRITICAL"
+            $totalUnc = $uncorrSect + $uncorrRead + $uncorrWrite
+            $issues += "Co $totalUnc loi doc/ghi Sector khong the sua chua (Uncorrectable Error ID C6)"
+        }
+        if ($evBadBlocks -gt 0) {
+            if ($evBadBlocks -ge 3) { $dHealth = "CRITICAL" } elseif ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "Windows ghi nhan $evBadBlocks loi Bad Block vat ly (Event ID 7) trong 30 ngay qua"
+        }
+        if ($evIoRetries -ge 3) {
+            if ($evIoRetries -ge 20) { $dHealth = "CRITICAL" } elseif ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "Windows ghi nhan $evIoRetries lan loi doc/ghi bi thu lai tren Disk $dIdx (Event ID 153/51) trong 30 ngay qua"
+        }
+        if ($evResets -ge 5) {
+            if ($evResets -ge 20) { $dHealth = "CRITICAL" } elseif ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "O dia/cong SATA bi treo va Reset $evResets lan (Event ID 129) trong 30 ngay - Nguyen nhan gay do/treo may"
+        }
+        if ($evNtfs -gt 0) {
+            if ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "He thong phat hien $evNtfs loi hong cau truc tep NTFS (Event ID 55) trong 30 ngay qua"
+        }
+        if ($null -ne $wearPct -and $wearPct -ge 70) {
+            if ($wearPct -ge 85) { $dHealth = "CRITICAL" } elseif ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "SSD da hao mon ${wearPct}% (Tuoi tho NAND chi con ${lifeRemPct}%) - Can len ke hoach thay o moi"
+        }
+        if ($null -ne $tempC -and $tempC -ge 55) {
+            if ($tempC -ge 65) { $dHealth = "CRITICAL" } elseif ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "Nhiet do o cung qua cao: ${tempC}C (Nguong an toan < 55C) - Can kiem tra tan nhiet"
+        }
+        if ($crcErr -ge 10) {
+            if ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "Phat hien $crcErr loi truyen du lieu cap SATA (CRC Error ID C7) - Can kiem tra/thay day cap SATA"
+        }
+        if ($null -ne $powerOnHours -and $powerOnHours -ge 35000) {
+            $yrs = [math]::Round($powerOnHours / 8760.0, 1)
+            if ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "O cung da chay ${powerOnHours} gio (~${yrs} nam hoat dong lien tuc) - Do ben co hoc da giam"
+        }
+        if (($readErr -gt 0 -or $writeErr -gt 0) -and $uncorrRead -eq 0 -and $uncorrWrite -eq 0) {
+            if ($dHealth -eq "GOOD") { $dHealth = "WARNING" }
+            $issues += "Ghi nhan $readErr loi doc / $writeErr loi ghi tren bo dem phan cung"
+        }
+
+        if ($dHealth -eq "CRITICAL") {
+            $anyDiskCritical = $true
+            $dHealthText = if ($issues.Count -gt 0) { "NGUY HIEM: $($issues[0])" } else { "NGUY HIEM: O cung co dau hieu sap hong!" }
+            $hardwareAlerts += "O cung [Disk $dIdx - $($item.Model)]: $($issues -join '; ')"
+        } elseif ($dHealth -eq "WARNING") {
+            $anyDiskWarning = $true
+            $dHealthText = if ($issues.Count -gt 0) { "Canh bao: $($issues[0])" } else { "Canh bao ($($item.RawHealth))" }
+            $hardwareAlerts += "O cung [Disk $dIdx - $($item.Model)]: $($issues -join '; ')"
+        } else {
+            $goodParts = @()
+            if ($null -ne $lifeRemPct) { $goodParts += "Tuoi tho ${lifeRemPct}%" }
+            if ($null -ne $tempC) { $goodParts += "${tempC}C" }
+            if ($null -ne $powerOnHours) { $goodParts += "${powerOnHours}h" }
+            $dHealthText = if ($goodParts.Count -gt 0) { "Tot ($($goodParts -join ' • ') • 0 loi)" } else { "Tot (S.M.A.R.T OK • 0 loi EventLog)" }
+        }
+
+        $diskList += @{
+            Index                = $dIdx
+            Model                = $item.Model
+            MediaType            = $item.MediaType
+            SizeGB               = $item.SizeGB
+            Interface            = $item.Interface
+            SerialNumber         = $item.SerialNumber
+            HealthStatus         = $dHealth
+            HealthText           = $dHealthText
+            TemperatureC         = $tempC
+            WearPercent          = $wearPct
+            LifeRemainingPercent = $lifeRemPct
+            PowerOnHours         = $powerOnHours
+            ReadErrors           = $readErr
+            WriteErrors          = $writeErr
+            ReallocatedSectors   = $reallocated
+            PendingSectors       = $pending
+            UncorrectableSectors = $uncorrSect
+            CrcErrors            = $crcErr
+            EventBadBlocks       = $evBadBlocks
+            EventIoRetries       = $evIoRetries
+            EventDiskResets      = $evResets
+            EventNtfsErrors      = $evNtfs
+            HealthIssues         = $issues
+        }
     }
 
     # 3. Quét Dung lượng & Sức khỏe các phân vùng ổ đĩa (C:, D:, E:...)

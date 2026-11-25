@@ -515,6 +515,30 @@ const AssetList = () => {
             ? `Tuổi thọ ${bat.healthPercent ?? 'N/A'}% (Chai ${bat.wearLevelPercent ?? 'N/A'}%)${bat.cycleCount ? ` - ${bat.cycleCount} lần sạc` : ''}`
             : "Không có (PC)";
 
+        const diskCompsForExcel = comps.filter((c: any) => c.type === 'HARD_DISK');
+        const diskDiagSummary = diskCompsForExcel.length > 0
+            ? diskCompsForExcel.map((dc: any) => {
+                const ds = dc.specs || {};
+                const parts: string[] = [];
+                if (ds.temperatureC != null) parts.push(`${ds.temperatureC}°C`);
+                if (ds.lifeRemainingPercent != null) parts.push(`Tuổi thọ SSD ${ds.lifeRemainingPercent}%`);
+                if (ds.powerOnHours != null) parts.push(`${ds.powerOnHours}h`);
+                if ((ds.reallocatedSectors || 0) > 0) parts.push(`BadSector(05): ${ds.reallocatedSectors}`);
+                if ((ds.pendingSectors || 0) > 0) parts.push(`Pending(C5): ${ds.pendingSectors}`);
+                if ((ds.uncorrectableSectors || 0) > 0) parts.push(`Uncorr(C6): ${ds.uncorrectableSectors}`);
+                if ((ds.crcErrors || 0) > 0) parts.push(`Lỗi cáp SATA(C7): ${ds.crcErrors}`);
+                if ((ds.eventBadBlocks || 0) > 0) parts.push(`EventLog BadBlock: ${ds.eventBadBlocks}`);
+                if ((ds.eventIoRetries || 0) > 0) parts.push(`IO Retry: ${ds.eventIoRetries}`);
+                if ((ds.eventDiskResets || 0) > 0) parts.push(`Reset: ${ds.eventDiskResets}`);
+                if ((ds.eventNtfsErrors || 0) > 0) parts.push(`NTFS: ${ds.eventNtfsErrors}`);
+                const issueStr = Array.isArray(ds.healthIssues) && ds.healthIssues.length > 0
+                    ? ` => ${ds.healthIssues.join('; ')}`
+                    : '';
+                const st = ds.healthStatus === 'CRITICAL' ? '[NGUY HIỂM]' : ds.healthStatus === 'WARNING' ? '[CẢNH BÁO]' : '[TỐT]';
+                return `${st} ${dc.name}${parts.length > 0 ? ` (${parts.join(', ')})` : ''}${issueStr}`;
+            }).join(" | ")
+            : (specs.hardwareHealth?.diskText || "Chưa có dữ liệu");
+
         return {
             "STT": idx + 1,
             "Tên Thiết Bị": item.name || "",
@@ -528,6 +552,7 @@ const AssetList = () => {
             "CPU": specs.cpu || "",
             "RAM": specs.ram || "",
             "Ổ Cứng": specs.disk || "",
+            "Chẩn đoán Ổ cứng (Chi tiết lỗi)": diskDiagSummary,
             "Pin Laptop (Tuổi thọ / Lần sạc)": batSummary,
             "Màn Hình": monitors || "Không có",
             "Thiết Bị Ngoại Vi": peripherals || "Không có",
@@ -554,6 +579,8 @@ const AssetList = () => {
       { wch: 28 },
       { wch: 10 },
       { wch: 24 },
+      { wch: 44 },
+      { wch: 28 },
       { wch: 28 },
       { wch: 28 },
       { wch: 12 },
@@ -712,21 +739,127 @@ const AssetList = () => {
           const parsedRamGB = parseInt(String(ram || '0'), 10) || 0;
           const diskComps = (record.components || []).filter((c: any) => c.type === 'HARD_DISK');
           const hasFaultyDisk = diskComps.some((d: any) => d.status === 'FAULTY' || d.specs?.healthStatus === 'CRITICAL');
+          const hasWarningDisk = diskComps.some((d: any) => d.specs?.healthStatus === 'WARNING');
           const isLowRam = parsedRamGB > 0 && parsedRamGB <= 4;
 
           const hwHealth = rawHealth || {
-              overallStatus: record.status === 'BROKEN' || hasFaultyDisk ? 'CRITICAL' : (record.status === 'REPAIR' || isLowRam ? 'WARNING' : 'GOOD'),
+              overallStatus: record.status === 'BROKEN' || hasFaultyDisk ? 'CRITICAL' : (record.status === 'REPAIR' || hasWarningDisk || isLowRam ? 'WARNING' : 'GOOD'),
               overallText: record.status === 'BROKEN' ? 'Thiết bị đang báo hỏng' : (isLowRam ? 'RAM thấp (<= 4GB - Khuyên nâng cấp)' : 'Phần cứng hoạt động Tốt'),
               cpu: cpu ? { status: 'GOOD', statusText: 'Hoạt động ổn định', loadPercent: null, cores: null, threads: null } : null,
               ram: ram ? { status: isLowRam ? 'WARNING' : 'GOOD', statusText: isLowRam ? `Dung lượng thấp (${ram})` : `Tốt (${ram})`, totalGB: parsedRamGB || null } : null,
-              diskStatus: hasFaultyDisk ? 'CRITICAL' : 'GOOD',
-              diskText: hasFaultyDisk ? 'Phát hiện lỗi ổ cứng!' : (disk ? `Tốt (${disk})` : 'Chưa ghi nhận'),
+              diskStatus: hasFaultyDisk ? 'CRITICAL' : (hasWarningDisk ? 'WARNING' : 'GOOD'),
+              diskText: hasFaultyDisk ? 'Phát hiện lỗi ổ cứng!' : (hasWarningDisk ? 'Ổ cứng có cảnh báo!' : (disk ? `Tốt (${disk})` : 'Chưa ghi nhận')),
               logicalVolumes: [],
               alerts: isLowRam ? [`Máy chỉ có ${ram} RAM, có thể chậm khi mở nhiều ứng dụng`] : [],
               isFallback: true,
           };
 
           const batInfo = hwHealth?.battery?.hasBattery ? hwHealth.battery : null;
+
+          const renderDiskDiagnosticCard = (dc: any) => {
+              const ds = dc.specs || {};
+              const isCrit = dc.status === 'FAULTY' || ds.healthStatus === 'CRITICAL';
+              const isWarn = !isCrit && ds.healthStatus === 'WARNING';
+              const evTotal = (ds.eventBadBlocks || 0) + (ds.eventIoRetries || 0) + (ds.eventDiskResets || 0) + (ds.eventNtfsErrors || 0);
+              const badTotal = (ds.reallocatedSectors || 0) + (ds.pendingSectors || 0) + (ds.uncorrectableSectors || 0);
+              const issues: string[] = Array.isArray(ds.healthIssues) ? ds.healthIssues : [];
+
+              return (
+                  <div
+                      key={dc.id}
+                      className={`p-2 rounded border text-[11px] space-y-1 ${
+                          isCrit
+                              ? 'bg-red-50/90 border-red-200'
+                              : isWarn
+                              ? 'bg-amber-50/90 border-amber-200'
+                              : 'bg-slate-50 border-slate-200'
+                      }`}
+                  >
+                      <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-slate-800 truncate" title={dc.name}>
+                              💾 {dc.name} ({ds.sizeGB || '?'}GB {ds.type || ''})
+                          </span>
+                          <Tag
+                              color={isCrit ? 'error' : isWarn ? 'warning' : 'success'}
+                              className="m-0 text-[10px] shrink-0"
+                          >
+                              {isCrit ? '🚨 Lỗi nặng' : isWarn ? '⚠️ Cảnh báo' : '✓ Tốt'}
+                          </Tag>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-600">
+                          {ds.temperatureC != null && (
+                              <span className={`px-1.5 py-0.5 rounded bg-white border ${ds.temperatureC >= 55 ? 'text-red-600 border-red-200 font-semibold' : ''}`}>
+                                  🌡️ {ds.temperatureC}°C
+                              </span>
+                          )}
+                          {ds.lifeRemainingPercent != null && (
+                              <span className={`px-1.5 py-0.5 rounded bg-white border ${ds.lifeRemainingPercent <= 20 ? 'text-red-600 border-red-200 font-bold' : ds.lifeRemainingPercent <= 50 ? 'text-amber-600 border-amber-200 font-semibold' : 'text-emerald-700'}`}>
+                                  ❤️ Tuổi thọ SSD: {ds.lifeRemainingPercent}%
+                              </span>
+                          )}
+                          {ds.powerOnHours != null && (
+                              <span className="px-1.5 py-0.5 rounded bg-white border">
+                                  ⏱️ {Number(ds.powerOnHours).toLocaleString()} giờ ({(Number(ds.powerOnHours) / 8760).toFixed(1)} năm)
+                              </span>
+                          )}
+                          {badTotal > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-300 font-bold">
+                                  💥 Bad Sector: 05={ds.reallocatedSectors || 0} / C5={ds.pendingSectors || 0} / C6={ds.uncorrectableSectors || 0}
+                              </span>
+                          )}
+                          {(ds.crcErrors || 0) > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
+                                  🔌 Lỗi cáp SATA (ID C7): {ds.crcErrors}
+                              </span>
+                          )}
+                          {evTotal > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-300 font-semibold">
+                                  📋 EventLog 30 ngày:
+                                  {(ds.eventBadBlocks || 0) > 0 ? ` ${ds.eventBadBlocks} BadBlock` : ''}
+                                  {(ds.eventIoRetries || 0) > 0 ? ` ${ds.eventIoRetries} IO-Retry` : ''}
+                                  {(ds.eventDiskResets || 0) > 0 ? ` ${ds.eventDiskResets} Reset` : ''}
+                                  {(ds.eventNtfsErrors || 0) > 0 ? ` ${ds.eventNtfsErrors} NTFS` : ''}
+                              </span>
+                          )}
+                      </div>
+
+                      {issues.length > 0 && (
+                          <div className="pt-1 border-t border-red-200/70 space-y-0.5 text-[11px] text-red-700 font-medium">
+                              {issues.map((iss: string, i: number) => (
+                                  <div key={i}>• {iss}</div>
+                              ))}
+                          </div>
+                      )}
+                  </div>
+              );
+          };
+
+          const diskPopoverContent = (
+              <div className="text-xs min-w-[300px] max-w-[400px] space-y-2">
+                  <div className="font-bold border-b pb-1 text-slate-800 flex items-center justify-between gap-2">
+                      <span>🔍 Chẩn đoán Chi tiết Ổ cứng (S.M.A.R.T & EventLog 30 ngày)</span>
+                  </div>
+                  {diskComps.length > 0 ? (
+                      <div className="space-y-1.5">{diskComps.map(renderDiskDiagnosticCard)}</div>
+                  ) : (
+                      <div className="text-gray-400 italic">Chưa có dữ liệu chi tiết từng ổ đĩa (cần chạy bản Agent mới).</div>
+                  )}
+                  {Array.isArray(hwHealth.logicalVolumes) && hwHealth.logicalVolumes.length > 0 && (
+                      <div className="pt-1 border-t space-y-0.5 text-[11px]">
+                          <div className="text-gray-400">Dung lượng các phân vùng:</div>
+                          {hwHealth.logicalVolumes.map((v: any, idx: number) => (
+                              <div key={idx} className="flex justify-between">
+                                  <span className="font-mono font-semibold">Ổ {v.drive}</span>
+                                  <span className={v.status === 'CRITICAL' ? 'text-red-600 font-bold' : v.status === 'WARNING' ? 'text-amber-600' : 'text-emerald-700'}>
+                                      Trống {v.freeGB}/{v.totalGB} GB ({v.usedPercent}%)
+                                  </span>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          );
 
           const batteryPopoverContent = batInfo ? (
               <div className="text-xs min-w-[240px] space-y-1.5">
@@ -770,7 +903,7 @@ const AssetList = () => {
           ) : null;
 
           const healthPopoverContent = (
-              <div className="text-xs min-w-[260px] max-w-[340px] space-y-1.5">
+              <div className="text-xs min-w-[300px] max-w-[400px] space-y-1.5">
                   <div className="font-bold border-b pb-1 text-blue-700">
                       🩺 Chẩn đoán Sức khỏe CPU / RAM / Ổ cứng {batInfo ? '/ Pin' : ''}
                   </div>
@@ -787,7 +920,10 @@ const AssetList = () => {
                           : `${ram || 'N/A'} (${hwHealth.ram?.statusText || 'Ổn định'})`}
                   </div>
                   <div>
-                      • <b>Ổ cứng (S.M.A.R.T):</b> {hwHealth.diskText || 'Tốt (S.M.A.R.T OK)'}
+                      • <b>Ổ cứng (S.M.A.R.T & EventLog):</b>{' '}
+                      <span className={hwHealth.diskStatus === 'CRITICAL' ? 'text-red-600 font-bold' : hwHealth.diskStatus === 'WARNING' ? 'text-amber-600 font-semibold' : 'text-emerald-700'}>
+                          {hwHealth.diskText || 'Tốt (S.M.A.R.T OK)'}
+                      </span>
                   </div>
                   {batInfo && (
                       <div>
@@ -799,15 +935,8 @@ const AssetList = () => {
                       </div>
                   )}
                   {diskComps.length > 0 && (
-                      <div className="pl-2 text-[11px] text-gray-500 space-y-0.5">
-                          {diskComps.map((dc: any) => (
-                              <div key={dc.id} className="flex justify-between gap-2">
-                                  <span className="truncate">{dc.name} ({dc.specs?.sizeGB}GB {dc.specs?.type})</span>
-                                  <span className={dc.specs?.healthStatus === 'CRITICAL' ? 'text-red-600 font-bold' : 'text-emerald-600 font-medium'}>
-                                      {dc.specs?.healthStatus === 'CRITICAL' ? 'Sắp hỏng!' : '✓ Tốt'}
-                                  </span>
-                              </div>
-                          ))}
+                      <div className="pt-1 space-y-1.5">
+                          {diskComps.map(renderDiskDiagnosticCard)}
                       </div>
                   )}
                   {Array.isArray(hwHealth.logicalVolumes) && hwHealth.logicalVolumes.length > 0 && (
@@ -872,7 +1001,16 @@ const AssetList = () => {
                     </Popover>
                 </div>
 
-                {disk && <div className="truncate text-slate-500 flex items-center gap-1.5" title={disk}><span>💾</span> {disk}</div>}
+                {disk && (
+                    <Popover content={diskPopoverContent} title={null} placement="top">
+                        <div className="truncate text-slate-500 flex items-center gap-1.5 cursor-help hover:text-blue-600 transition-colors" title="Di chuột để xem chẩn đoán chi tiết từng ổ cứng">
+                            <span>💾</span>
+                            <span className="truncate">{disk}</span>
+                            {hasFaultyDisk && <Tag color="error" className="m-0 text-[9px] leading-tight px-1 shrink-0">Lỗi ổ!</Tag>}
+                            {!hasFaultyDisk && hasWarningDisk && <Tag color="warning" className="m-0 text-[9px] leading-tight px-1 shrink-0">Cảnh báo</Tag>}
+                        </div>
+                    </Popover>
+                )}
                 
                 {record._count?.softwares ? (
                     <div 

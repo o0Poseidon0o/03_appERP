@@ -622,31 +622,109 @@ const AssetQrPublicPage: React.FC = () => {
                 {specs.disk || 'N/A'}
               </div>
               {disks.length > 0 && (
-                <div className="text-[11px] text-gray-500 mt-1 space-y-1">
-                  {disks.map((d: any) => (
-                    <div key={d.id} className="flex items-center justify-between gap-1">
-                      <span>
-                        • {d.name} ({d.specs?.sizeGB}GB {d.specs?.type}) - SN:{' '}
-                        <span className="font-mono">{d.serialNumber || 'N/A'}</span>
-                      </span>
-                      <Tag
-                        color={
-                          d.specs?.healthStatus === 'CRITICAL'
-                            ? 'error'
-                            : d.specs?.healthStatus === 'WARNING'
-                            ? 'warning'
-                            : 'green'
-                        }
-                        className="m-0 text-[10px]"
+                <div className="text-[11px] text-gray-600 mt-1.5 space-y-2">
+                  {disks.map((d: any) => {
+                    const ds = d.specs || {};
+                    const isCrit = d.status === 'FAULTY' || ds.healthStatus === 'CRITICAL';
+                    const isWarn = !isCrit && ds.healthStatus === 'WARNING';
+                    const badTotal =
+                      (ds.reallocatedSectors || 0) +
+                      (ds.pendingSectors || 0) +
+                      (ds.uncorrectableSectors || 0);
+                    const evTotal =
+                      (ds.eventBadBlocks || 0) +
+                      (ds.eventIoRetries || 0) +
+                      (ds.eventDiskResets || 0) +
+                      (ds.eventNtfsErrors || 0);
+                    const issues: string[] = Array.isArray(ds.healthIssues) ? ds.healthIssues : [];
+
+                    return (
+                      <div
+                        key={d.id}
+                        className={`p-2 rounded border ${
+                          isCrit
+                            ? 'bg-red-50/90 border-red-200'
+                            : isWarn
+                            ? 'bg-amber-50/90 border-amber-200'
+                            : 'bg-white border-slate-200'
+                        }`}
                       >
-                        {d.specs?.healthStatus === 'CRITICAL'
-                          ? 'Sắp hỏng!'
-                          : d.specs?.healthStatus === 'WARNING'
-                          ? 'Cảnh báo'
-                          : 'Tốt'}
-                      </Tag>
-                    </div>
-                  ))}
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-semibold text-slate-800">
+                            • {d.name} ({ds.sizeGB}GB {ds.type}) - SN:{' '}
+                            <span className="font-mono font-normal text-gray-500">
+                              {d.serialNumber || 'N/A'}
+                            </span>
+                          </span>
+                          <Tag
+                            color={isCrit ? 'error' : isWarn ? 'warning' : 'green'}
+                            className="m-0 text-[10px] shrink-0"
+                          >
+                            {isCrit ? '🚨 Lỗi nặng!' : isWarn ? '⚠️ Cảnh báo' : '✓ Tốt'}
+                          </Tag>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5 mt-1 text-[10px] text-slate-600">
+                          {ds.temperatureC != null && (
+                            <span
+                              className={`px-1.5 py-0.5 rounded bg-slate-50 border ${
+                                ds.temperatureC >= 55 ? 'text-red-600 border-red-200 font-bold' : ''
+                              }`}
+                            >
+                              🌡️ {ds.temperatureC}°C
+                            </span>
+                          )}
+                          {ds.lifeRemainingPercent != null && (
+                            <span
+                              className={`px-1.5 py-0.5 rounded bg-slate-50 border ${
+                                ds.lifeRemainingPercent <= 20
+                                  ? 'text-red-600 border-red-200 font-bold'
+                                  : ds.lifeRemainingPercent <= 50
+                                  ? 'text-amber-600 border-amber-200 font-semibold'
+                                  : 'text-emerald-700'
+                              }`}
+                            >
+                              ❤️ Tuổi thọ SSD: {ds.lifeRemainingPercent}%
+                            </span>
+                          )}
+                          {ds.powerOnHours != null && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-50 border">
+                              ⏱️ {Number(ds.powerOnHours).toLocaleString()} giờ (
+                              {(Number(ds.powerOnHours) / 8760).toFixed(1)} năm)
+                            </span>
+                          )}
+                          {badTotal > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-300 font-bold">
+                              💥 Bad Sector: 05={ds.reallocatedSectors || 0} / C5=
+                              {ds.pendingSectors || 0} / C6={ds.uncorrectableSectors || 0}
+                            </span>
+                          )}
+                          {(ds.crcErrors || 0) > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
+                              🔌 Lỗi cáp SATA (ID C7): {ds.crcErrors}
+                            </span>
+                          )}
+                          {evTotal > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-300 font-semibold">
+                              📋 EventLog 30 ngày:
+                              {(ds.eventBadBlocks || 0) > 0 ? ` ${ds.eventBadBlocks} BadBlock` : ''}
+                              {(ds.eventIoRetries || 0) > 0 ? ` ${ds.eventIoRetries} IO-Retry` : ''}
+                              {(ds.eventDiskResets || 0) > 0 ? ` ${ds.eventDiskResets} Reset` : ''}
+                              {(ds.eventNtfsErrors || 0) > 0 ? ` ${ds.eventNtfsErrors} NTFS` : ''}
+                            </span>
+                          )}
+                        </div>
+
+                        {issues.length > 0 && (
+                          <div className="mt-1.5 pt-1 border-t border-red-200/70 space-y-0.5 text-[11px] text-red-700 font-medium">
+                            {issues.map((iss: string, i: number) => (
+                              <div key={i}>• {iss}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {Array.isArray(hwHealth?.logicalVolumes) &&

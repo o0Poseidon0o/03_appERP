@@ -239,6 +239,36 @@ const Dashboard = () => {
     const users =
       item.users?.map((u: any) => u.fullName).join(' & ') || item.domainUser || 'Chưa cấp phát';
 
+    const diskDiagDetails = comps
+      .filter((c) => c.type === 'HARD_DISK')
+      .map((dc) => {
+        const ds = dc.specs || {};
+        const metrics: string[] = [];
+        if (ds.temperatureC != null) metrics.push(`${ds.temperatureC}°C`);
+        if (ds.lifeRemainingPercent != null) metrics.push(`Tuổi thọ SSD ${ds.lifeRemainingPercent}%`);
+        if (ds.powerOnHours != null) metrics.push(`${ds.powerOnHours}h`);
+        if ((ds.reallocatedSectors || 0) > 0) metrics.push(`BadSector(05): ${ds.reallocatedSectors}`);
+        if ((ds.pendingSectors || 0) > 0) metrics.push(`Pending(C5): ${ds.pendingSectors}`);
+        if ((ds.uncorrectableSectors || 0) > 0) metrics.push(`Uncorr(C6): ${ds.uncorrectableSectors}`);
+        if ((ds.crcErrors || 0) > 0) metrics.push(`Lỗi cáp SATA(C7): ${ds.crcErrors}`);
+        if ((ds.eventBadBlocks || 0) > 0) metrics.push(`EventLog BadBlock: ${ds.eventBadBlocks}`);
+        if ((ds.eventIoRetries || 0) > 0) metrics.push(`IO Retry: ${ds.eventIoRetries}`);
+        if ((ds.eventDiskResets || 0) > 0) metrics.push(`Reset: ${ds.eventDiskResets}`);
+        if ((ds.eventNtfsErrors || 0) > 0) metrics.push(`NTFS: ${ds.eventNtfsErrors}`);
+        const issueTxt =
+          Array.isArray(ds.healthIssues) && ds.healthIssues.length > 0
+            ? ` => ${ds.healthIssues.join('; ')}`
+            : '';
+        const st =
+          ds.healthStatus === 'CRITICAL'
+            ? '[NGUY HIỂM]'
+            : ds.healthStatus === 'WARNING'
+            ? '[CẢNH BÁO]'
+            : '[TỐT]';
+        return `${st} ${dc.name}${metrics.length > 0 ? ` (${metrics.join(', ')})` : ''}${issueTxt}`;
+      })
+      .join(' | ');
+
     return {
       STT: idx + 1,
       'Nhà máy': getAssetFactoryName(item),
@@ -256,6 +286,7 @@ const Dashboard = () => {
       RAM: specs.ram || '',
       'Chi tiết khe RAM': ramSticks,
       'Ổ cứng': specs.disk || '',
+      'Chẩn đoán Ổ cứng (Chi tiết lỗi)': diskDiagDetails || specs.hardwareHealth?.diskText || 'Tốt',
       'Pin Laptop (Tuổi thọ / Lần sạc)': specs.hardwareHealth?.battery?.hasBattery
         ? `Tuổi thọ ${specs.hardwareHealth.battery.healthPercent ?? 'N/A'}% (Chai ${specs.hardwareHealth.battery.wearLevelPercent ?? 'N/A'}%)${specs.hardwareHealth.battery.cycleCount ? ` - ${specs.hardwareHealth.battery.cycleCount} lần sạc` : ''}`
         : 'Không có (PC)',
@@ -678,10 +709,52 @@ const Dashboard = () => {
             ),
         },
         {
-          title: 'Chi tiết cảnh báo Sức khỏe',
+          title: 'Chi tiết cảnh báo & Bằng chứng lỗi',
           dataIndex: 'healthSummary',
           key: 'healthSummary',
-          render: (t: string) => <span className="text-xs text-slate-700">{t}</span>,
+          render: (t: string, r: any) => {
+            const parts = String(t || '')
+              .split('; ')
+              .filter(Boolean);
+            const faultyDisks = (r.components || []).filter(
+              (c: any) =>
+                c.type === 'HARD_DISK' &&
+                (c.status === 'FAULTY' ||
+                  c.specs?.healthStatus === 'CRITICAL' ||
+                  c.specs?.healthStatus === 'WARNING')
+            );
+            return (
+              <div className="text-xs text-slate-700 space-y-1">
+                {faultyDisks.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {faultyDisks.map((d: any) => {
+                      const ds = d.specs || {};
+                      return (
+                        <Tag
+                          key={d.id}
+                          color={ds.healthStatus === 'CRITICAL' ? 'error' : 'warning'}
+                          className="m-0 text-[10px]"
+                        >
+                          💾 {d.name}
+                          {ds.temperatureC != null ? ` • ${ds.temperatureC}°C` : ''}
+                          {ds.lifeRemainingPercent != null ? ` • SSD ${ds.lifeRemainingPercent}%` : ''}
+                        </Tag>
+                      );
+                    })}
+                  </div>
+                )}
+                {parts.length > 1 ? (
+                  <ul className="m-0 pl-4 space-y-0.5 list-disc">
+                    {parts.map((p, idx) => (
+                      <li key={idx}>{p}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span>{t}</span>
+                )}
+              </div>
+            );
+          },
         },
       ];
     }

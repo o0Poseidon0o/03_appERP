@@ -61,6 +61,21 @@ interface AgentPayload {
     SerialNumber: string;
     HealthStatus?: string;
     HealthText?: string;
+    TemperatureC?: number | null;
+    WearPercent?: number | null;
+    LifeRemainingPercent?: number | null;
+    PowerOnHours?: number | null;
+    ReadErrors?: number;
+    WriteErrors?: number;
+    ReallocatedSectors?: number;
+    PendingSectors?: number;
+    UncorrectableSectors?: number;
+    CrcErrors?: number;
+    EventBadBlocks?: number;
+    EventIoRetries?: number;
+    EventDiskResets?: number;
+    EventNtfsErrors?: number;
+    HealthIssues?: string[];
   }>;
   
   software: Array<{
@@ -406,6 +421,21 @@ export const syncAssetAgent = async (req: Request, res: Response, next: NextFunc
                     index: d.Index,
                     healthStatus: d.HealthStatus || "GOOD",
                     healthText: d.HealthText || "Tốt (S.M.A.R.T OK)",
+                    temperatureC: d.TemperatureC ?? null,
+                    wearPercent: d.WearPercent ?? null,
+                    lifeRemainingPercent: d.LifeRemainingPercent ?? null,
+                    powerOnHours: d.PowerOnHours ?? null,
+                    readErrors: d.ReadErrors ?? 0,
+                    writeErrors: d.WriteErrors ?? 0,
+                    reallocatedSectors: d.ReallocatedSectors ?? 0,
+                    pendingSectors: d.PendingSectors ?? 0,
+                    uncorrectableSectors: d.UncorrectableSectors ?? 0,
+                    crcErrors: d.CrcErrors ?? 0,
+                    eventBadBlocks: d.EventBadBlocks ?? 0,
+                    eventIoRetries: d.EventIoRetries ?? 0,
+                    eventDiskResets: d.EventDiskResets ?? 0,
+                    eventNtfsErrors: d.EventNtfsErrors ?? 0,
+                    healthIssues: Array.isArray(d.HealthIssues) ? d.HealthIssues : [],
                 },
             }));
             await tx.assetComponent.createMany({ data: diskComponents });
