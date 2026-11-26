@@ -451,8 +451,8 @@ Else
     gpuInfo = "[]"
 End If
 
-' --- 9. O CUNG (CHAN DOAN CHUYEN SAU 3 TANG: WMI + RAW S.M.A.R.T + WINDOWS EVENT LOG 30 NGAY) ---
-WScript.Echo "[6/8] Quet o cung & chan doan S.M.A.R.T + EventLog..."
+' --- 9. O CUNG (CHAN DOAN 100% PHAN CUNG S.M.A.R.T - KHONG DUNG EVENTLOG) ---
+WScript.Echo "[6/8] Quet o cung & chan doan S.M.A.R.T phan cung..."
 Dim diskArr()
 Dim diskCount, anyDiskCritical, anyDiskWarning
 Dim hwAlertArr(), hwAlertCount
@@ -477,28 +477,7 @@ Function SmartRaw32(arr, idx)
     On Error GoTo 0
 End Function
 
-' Helper: Extract first integer immediately after a keyword (e.g. "Harddisk", "Disk ", "RaidPort")
-Function ExtractNumAfter(txt, kw)
-    ExtractNumAfter = -1
-    Dim p, i, ch, numStr
-    p = InStr(1, txt, kw, 1)
-    If p > 0 Then
-        i = p + Len(kw)
-        numStr = ""
-        Do While i <= Len(txt)
-            ch = Mid(txt, i, 1)
-            If ch >= "0" And ch <= "9" Then
-                numStr = numStr & ch
-            Else
-                Exit Do
-            End If
-            i = i + 1
-        Loop
-        If Len(numStr) > 0 Then ExtractNumAfter = CInt(numStr)
-    End If
-End Function
-
-' Tang 2: Thu thap Raw S.M.A.R.T tu root\wmi (can quyen Admin/SYSTEM, neu khong co se bo qua an toan)
+' Thu thap Raw S.M.A.R.T truc tiep tu chip o cung qua root\wmi (can quyen Admin/SYSTEM)
 Dim smartPnpList(), smartDataList(), smartFailDict, smartCount
 smartCount = 0
 Set smartFailDict = CreateObject("Scripting.Dictionary")
@@ -536,47 +515,6 @@ If wmiOK Then
     On Error GoTo 0
 End If
 
-' Tang 3: Quet Windows System Event Log 30 ngay gan nhat (Hoat dong KHONG CAN QUYEN ADMIN!)
-' ID 7 = Bad Block, 153/51 = IO Retry, 129/11 = Disk/Port Reset, 55 = NTFS Corruption
-Dim evBadBlocks, evIoRetries, evResets, evNtfs
-Set evBadBlocks = CreateObject("Scripting.Dictionary")
-Set evIoRetries = CreateObject("Scripting.Dictionary")
-Set evResets = CreateObject("Scripting.Dictionary")
-Set evNtfs = CreateObject("Scripting.Dictionary")
-
-If wmiOK Then
-    On Error Resume Next
-    Dim dt30, wmiDate30, colEvt, objEvt, evCode, evMsg, evDiskIdx, evSrc
-    dt30 = DateAdd("d", -30, Now)
-    wmiDate30 = Year(dt30) & Right("0" & Month(dt30), 2) & Right("0" & Day(dt30), 2) & "000000.000000+000"
-    Set colEvt = objWMI.ExecQuery("SELECT EventCode, SourceName, Message FROM Win32_NTLogEvent WHERE Logfile='System' AND TimeGenerated >= '" & wmiDate30 & "' AND (EventCode=7 OR EventCode=11 OR EventCode=51 OR EventCode=55 OR EventCode=129 OR EventCode=153)")
-    If Err.Number = 0 Then
-        For Each objEvt In colEvt
-            evCode = CInt(objEvt.EventCode)
-            evSrc = LCase(S(objEvt.SourceName))
-            evMsg = S(objEvt.Message)
-            If InStr(evSrc, "disk") > 0 Or InStr(evSrc, "ahci") > 0 Or InStr(evSrc, "atapi") > 0 Or InStr(evSrc, "iastor") > 0 Or InStr(evSrc, "nvme") > 0 Or InStr(evSrc, "ntfs") > 0 Or InStr(evSrc, "partmgr") > 0 Then
-                evDiskIdx = ExtractNumAfter(evMsg, "Harddisk")
-                If evDiskIdx < 0 Then evDiskIdx = ExtractNumAfter(evMsg, "Disk ")
-                If evDiskIdx < 0 Then evDiskIdx = ExtractNumAfter(evMsg, "RaidPort")
-                If evDiskIdx < 0 Then evDiskIdx = 0
-
-                If evCode = 7 Then
-                    evBadBlocks(evDiskIdx) = evBadBlocks(evDiskIdx) + 1
-                ElseIf evCode = 153 Or evCode = 51 Then
-                    evIoRetries(evDiskIdx) = evIoRetries(evDiskIdx) + 1
-                ElseIf evCode = 129 Or evCode = 11 Then
-                    evResets(evDiskIdx) = evResets(evDiskIdx) + 1
-                ElseIf evCode = 55 Then
-                    evNtfs(evDiskIdx) = evNtfs(evDiskIdx) + 1
-                End If
-            End If
-        Next
-    End If
-    Err.Clear
-    On Error GoTo 0
-End If
-
 If wmiOK Then
     On Error Resume Next
     Dim colDisk, objDisk
@@ -594,13 +532,13 @@ If wmiOK Then
             dMediaType = "SSD"
         End If
 
-        ' Chi so chuan doan chi tiet tung o dia
-        Dim dTemp, dWear, dLife, dHours, dRealloc, dPending, dUncorr, dCrc
-        dTemp = -1: dWear = -1: dLife = -1: dHours = -1
-        dRealloc = -1: dPending = -1: dUncorr = -1: dCrc = -1
+        ' Chi so S.M.A.R.T phan cung tung o dia
+        Dim dTemp, dWear, dLife, dHours, dCycles, dRealloc, dPending, dUncorr, dRepUncorr, dCrc, dSpinRetry
+        dTemp = -1: dWear = -1: dLife = -1: dHours = -1: dCycles = -1
+        dRealloc = 0: dPending = 0: dUncorr = 0: dRepUncorr = 0: dCrc = 0: dSpinRetry = 0
 
         ' Khop du lieu S.M.A.R.T voi o dia nay
-        Dim sIdx, matchedSmartIdx, sfKey, predictFail
+        Dim sIdx, matchedSmartIdx, sfKey, predictFail, dSmartSup, dSmartSrc
         matchedSmartIdx = -1
         predictFail = False
         For Each sfKey In smartFailDict.Keys
@@ -618,10 +556,14 @@ If wmiOK Then
             matchedSmartIdx = dIdx
         End If
 
+        dSmartSup = False
+        dSmartSrc = "WMI-Basic"
         If matchedSmartIdx >= 0 Then
             Dim vs, off, attrId, attrCur, attrRaw
             vs = smartDataList(matchedSmartIdx)
             If IsArray(vs) Then
+                dSmartSup = True
+                dSmartSrc = "SMART"
                 For off = 2 To UBound(vs) - 11 Step 12
                     attrId = CInt(vs(off))
                     If attrId > 0 Then
@@ -629,6 +571,12 @@ If wmiOK Then
                         attrRaw = SmartRaw32(vs, off + 5)
                         If attrId = 5 Then
                             dRealloc = CLng(attrRaw)
+                        ElseIf attrId = 10 Then
+                            dSpinRetry = CLng(attrRaw)
+                        ElseIf attrId = 12 Then
+                            dCycles = CLng(attrRaw)
+                        ElseIf attrId = 187 Then
+                            dRepUncorr = CLng(attrRaw)
                         ElseIf attrId = 197 Then
                             dPending = CLng(attrRaw)
                         ElseIf attrId = 198 Then
@@ -641,8 +589,8 @@ If wmiOK Then
                             Dim tVal
                             tVal = CInt(vs(off + 5))
                             If tVal > 5 And tVal < 110 And dTemp < 0 Then dTemp = tVal
-                        ElseIf attrId = 231 Or attrId = 233 Then
-                            If attrCur >= 0 And attrCur <= 100 And dLife < 0 Then
+                        ElseIf attrId = 231 Or attrId = 233 Or attrId = 202 Or attrId = 169 Then
+                            If attrCur > 0 And attrCur <= 100 And dLife < 0 Then
                                 dLife = attrCur
                                 dWear = 100 - attrCur
                             End If
@@ -652,26 +600,21 @@ If wmiOK Then
             End If
         End If
 
-        ' Lay so loi Windows Event Log (30 ngay) cho o dia nay
-        Dim dEvBad, dEvRetry, dEvReset, dEvNtfs
-        dEvBad = 0: dEvRetry = 0: dEvReset = 0: dEvNtfs = 0
-        If evBadBlocks.Exists(dIdx) Then dEvBad = CInt(evBadBlocks(dIdx))
-        If evIoRetries.Exists(dIdx) Then dEvRetry = CInt(evIoRetries(dIdx))
-        If evResets.Exists(dIdx) Then dEvReset = CInt(evResets(dIdx))
-        If evNtfs.Exists(dIdx) Then dEvNtfs = CInt(evNtfs(dIdx))
+        Dim dTotalUncorr
+        dTotalUncorr = dUncorr + dRepUncorr
 
-        ' Tong hop danh sach bang chung loi cu the (HealthIssues)
+        ' Tong hop bang chung loi 100% tu S.M.A.R.T phan cung (Khong dung EventLog)
         Dim dIssues(), dIssueCnt
         dIssueCnt = 0
         dHealth = "GOOD"
-        dHealthText = "Tot (S.M.A.R.T & EventLog OK)"
+        dHealthText = "Tot (S.M.A.R.T OK)"
 
         Dim dStatus
         dStatus = S(objDisk.Status)
         If predictFail Or InStr(LCase(dStatus), "fail") > 0 Or InStr(LCase(dStatus), "error") > 0 Or InStr(LCase(dStatus), "pred") > 0 Then
             dHealth = "CRITICAL"
             ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "S.M.A.R.T bao nguy co hong o cung (" & dStatus & ") - Can sao luu du lieu ngay!"
+            dIssues(dIssueCnt) = "Firmware S.M.A.R.T bao nguy co sap hong (" & dStatus & ") - Can sao luu du lieu ngay!"
             dIssueCnt = dIssueCnt + 1
         ElseIf dStatus <> "OK" And Len(dStatus) > 0 Then
             If dHealth <> "CRITICAL" Then dHealth = "WARNING"
@@ -687,78 +630,100 @@ If wmiOK Then
                 dHealth = "WARNING"
             End If
             ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "Phat hien " & dRealloc & " Bad Sector da phai thay the (S.M.A.R.T ID 05) - Mat du lieu nguy hiem!"
+            dIssues(dIssueCnt) = "Phat hien " & dRealloc & " Bad Sector vat ly da phai thay the (S.M.A.R.T ID 05)"
             dIssueCnt = dIssueCnt + 1
         End If
         If dPending > 0 Then
             dHealth = "CRITICAL"
             ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "Co " & dPending & " Sector cho xu ly loi doc (Pending Sector ID C5) - O dang hong be mat!"
+            dIssues(dIssueCnt) = "Co " & dPending & " Sector loi doc dang cho xu ly (Pending Sector ID C5) - Be mat dia dang hong!"
             dIssueCnt = dIssueCnt + 1
         End If
-        If dUncorr > 0 Then
+        If dTotalUncorr > 0 Then
             dHealth = "CRITICAL"
             ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "Co " & dUncorr & " Sector loi khong the phuc hoi (Uncorrectable ID C6) - Can thay o ngay!"
+            dIssues(dIssueCnt) = "Co " & dTotalUncorr & " loi Sector khong the phuc hoi (Uncorrectable ID C6/BB) - Nguy co mat du lieu!"
             dIssueCnt = dIssueCnt + 1
         End If
-        If dCrc > 0 Then
+        If dSpinRetry > 0 Then
             If dHealth <> "CRITICAL" Then dHealth = "WARNING"
             ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "Loi truyen du lieu cap SATA/Mainboard (CRC ID C7: " & dCrc & " lan) - Kiem tra/thay cap SATA!"
+            dIssues(dIssueCnt) = "Mo-to quay dia co " & dSpinRetry & " lan thu lai khoi dong (Spin Retry ID 0A)"
+            dIssueCnt = dIssueCnt + 1
+        End If
+        If dCrc >= 10 Then
+            If dHealth <> "CRITICAL" Then dHealth = "WARNING"
+            ReDim Preserve dIssues(dIssueCnt)
+            dIssues(dIssueCnt) = "Loi truyen du lieu cap SATA / cong Mainboard (CRC ID C7: " & dCrc & " lan) - Kiem tra/thay cap SATA"
             dIssueCnt = dIssueCnt + 1
         End If
         If dLife >= 0 And dLife <= 20 Then
             dHealth = "CRITICAL"
             ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "SSD sap het tuoi tho (Con " & dLife & "%, da hao mon " & dWear & "%) - Can thay the!"
+            dIssues(dIssueCnt) = "SSD sap het tuoi tho NAND (Con " & dLife & "%, da hao mon " & dWear & "%) - Can thay o moi!"
             dIssueCnt = dIssueCnt + 1
         ElseIf dLife >= 0 And dLife <= 50 Then
             If dHealth <> "CRITICAL" Then dHealth = "WARNING"
             ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "SSD da hao mon " & dWear & "% (Tuoi tho con " & dLife & "%)"
+            dIssues(dIssueCnt) = "SSD da hao mon " & dWear & "% (Tuoi tho NAND con " & dLife & "%)"
             dIssueCnt = dIssueCnt + 1
         End If
-        If dTemp >= 55 Then
+        If dTemp >= 65 Then
+            dHealth = "CRITICAL"
+            ReDim Preserve dIssues(dIssueCnt)
+            dIssues(dIssueCnt) = "Nhiet do o cung qua cao (" & dTemp & "C) - Nguy hiem, kiem tra tan nhiet ngay!"
+            dIssueCnt = dIssueCnt + 1
+        ElseIf dTemp >= 55 Then
             If dHealth <> "CRITICAL" Then dHealth = "WARNING"
             ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "Nhiet do o cung qua cao (" & dTemp & "C) - Kiem tra tan nhiet/quat!"
+            dIssues(dIssueCnt) = "Nhiet do o cung cao (" & dTemp & "C) - Kiem tra tan nhiet/quat"
+            dIssueCnt = dIssueCnt + 1
+        End If
+        If dHours >= 40000 Then
+            If dHealth <> "CRITICAL" Then dHealth = "WARNING"
+            ReDim Preserve dIssues(dIssueCnt)
+            dIssues(dIssueCnt) = "O cung da chay " & dHours & " gio - Do ben co hoc da giam"
             dIssueCnt = dIssueCnt + 1
         End If
 
-        If dEvBad > 0 Then
-            dHealth = "CRITICAL"
-            ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "Windows ghi nhan " & dEvBad & " loi Bad Block vat ly (Event ID 7, 30 ngay) - O cung dang hong!"
-            dIssueCnt = dIssueCnt + 1
-        End If
-        If dEvNtfs > 0 Then
-            dHealth = "CRITICAL"
-            ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "He thong tap tin NTFS bao hong cau truc " & dEvNtfs & " lan (Event ID 55, 30 ngay)"
-            dIssueCnt = dIssueCnt + 1
-        End If
-        If dEvRetry >= 10 Then
-            dHealth = "CRITICAL"
-            ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "Windows ghi nhan " & dEvRetry & " lan doc/ghi o cung that bai phai thu lai (Event ID 153/51, 30 ngay) - Gay treo/lag may!"
-            dIssueCnt = dIssueCnt + 1
-        ElseIf dEvRetry > 0 Then
-            If dHealth <> "CRITICAL" Then dHealth = "WARNING"
-            ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "Co " & dEvRetry & " lan doc/ghi o cung bi tre/thu lai (Event ID 153/51, 30 ngay)"
-            dIssueCnt = dIssueCnt + 1
-        End If
-        If dEvReset >= 5 Then
-            dHealth = "CRITICAL"
-            ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "O cung/cong SATA bi treo va Reset " & dEvReset & " lan (Event ID 129/11, 30 ngay) - Kiem tra cap SATA hoac thay o!"
-            dIssueCnt = dIssueCnt + 1
-        ElseIf dEvReset > 0 Then
-            If dHealth <> "CRITICAL" Then dHealth = "WARNING"
-            ReDim Preserve dIssues(dIssueCnt)
-            dIssues(dIssueCnt) = "Co " & dEvReset & " lan Reset o cung/cong SATA (Event ID 129/11, 30 ngay)"
-            dIssueCnt = dIssueCnt + 1
+        ' Tinh % Suc khoe kieu CrystalDiskInfo (chi tinh khi doc duoc S.M.A.R.T)
+        Dim dScore, jHealthPct, jSmartSup
+        jHealthPct = "null"
+        If dSmartSup Then
+            jSmartSup = "true"
+            dScore = 100
+            If dLife >= 0 And dLife < dScore Then dScore = dLife
+            If predictFail And dScore > 10 Then dScore = 10
+            If dTotalUncorr > 0 Then
+                Dim dedUnc
+                dedUnc = 20 + (dTotalUncorr * 5)
+                If dedUnc > 70 Then dedUnc = 70
+                dScore = dScore - dedUnc
+            End If
+            If dPending > 0 Then
+                Dim dedPen
+                dedPen = 15 + (dPending * 5)
+                If dedPen > 60 Then dedPen = 60
+                dScore = dScore - dedPen
+            End If
+            If dRealloc > 0 Then
+                Dim dedRea
+                dedRea = dRealloc * 3
+                If dedRea > 50 Then dedRea = 50
+                dScore = dScore - dedRea
+            End If
+            If dSpinRetry > 0 Then
+                Dim dedSp
+                dedSp = dSpinRetry * 5
+                If dedSp > 25 Then dedSp = 25
+                dScore = dScore - dedSp
+            End If
+            If dCrc >= 10 Then dScore = dScore - 5
+            If dScore < 0 Then dScore = 0
+            If dScore > 100 Then dScore = 100
+            jHealthPct = CStr(dScore)
+        Else
+            jSmartSup = "false"
         End If
 
         If dHealth = "CRITICAL" Then
@@ -781,6 +746,12 @@ If wmiOK Then
             ReDim Preserve hwAlertArr(hwAlertCount)
             hwAlertArr(hwAlertCount) = "O Disk " & dIdx & " (" & dModel & "): " & dIssues(0)
             hwAlertCount = hwAlertCount + 1
+        Else
+            If dSmartSup Then
+                dHealthText = "Tot (Suc khoe " & jHealthPct & "% - 0 Bad Sector)"
+            Else
+                dHealthText = "Tot (WMI OK - Can quyen Admin/SYSTEM de doc S.M.A.R.T)"
+            End If
         End If
 
         Dim dIssuesJson, di
@@ -794,20 +765,17 @@ If wmiOK Then
             dIssuesJson = "[" & JoinJson(escapedIssues) & "]"
         End If
 
-        Dim jTemp, jWear, jLife, jHours, jRealloc, jPending, jUncorr, jCrc
+        Dim jTemp, jWear, jLife, jHours, jCycles
         jTemp = "null": If dTemp >= 0 Then jTemp = CStr(dTemp)
         jWear = "null": If dWear >= 0 Then jWear = CStr(dWear)
         jLife = "null": If dLife >= 0 Then jLife = CStr(dLife)
         jHours = "null": If dHours >= 0 Then jHours = CStr(dHours)
-        jRealloc = "null": If dRealloc >= 0 Then jRealloc = CStr(dRealloc)
-        jPending = "null": If dPending >= 0 Then jPending = CStr(dPending)
-        jUncorr = "null": If dUncorr >= 0 Then jUncorr = CStr(dUncorr)
-        jCrc = "null": If dCrc >= 0 Then jCrc = CStr(dCrc)
+        jCycles = "null": If dCycles >= 0 Then jCycles = CStr(dCycles)
 
         Dim dSerial
         dSerial = Trim(S(objDisk.SerialNumber))
         If Len(dSerial) = 0 Then dSerial = "N/A"
-        diskArr(diskCount) = "{""Index"":" & dIdx & ",""Model"":""" & EscJson(dModel) & """,""MediaType"":""" & dMediaType & """,""SizeGB"":" & dSizeGB & ",""Interface"":""" & EscJson(S(objDisk.InterfaceType)) & """,""SerialNumber"":""" & EscJson(dSerial) & """,""HealthStatus"":""" & dHealth & """,""HealthText"":""" & EscJson(dHealthText) & """,""TemperatureC"":" & jTemp & ",""WearPercent"":" & jWear & ",""LifeRemainingPercent"":" & jLife & ",""PowerOnHours"":" & jHours & ",""ReadErrors"":null,""WriteErrors"":null,""ReallocatedSectors"":" & jRealloc & ",""PendingSectors"":" & jPending & ",""UncorrectableSectors"":" & jUncorr & ",""CrcErrors"":" & jCrc & ",""EventBadBlocks"":" & dEvBad & ",""EventIoRetries"":" & dEvRetry & ",""EventDiskResets"":" & dEvReset & ",""EventNtfsErrors"":" & dEvNtfs & ",""HealthIssues"":" & dIssuesJson & "}"
+        diskArr(diskCount) = "{""Index"":" & dIdx & ",""Model"":""" & EscJson(dModel) & """,""MediaType"":""" & dMediaType & """,""SizeGB"":" & dSizeGB & ",""Interface"":""" & EscJson(S(objDisk.InterfaceType)) & """,""SerialNumber"":""" & EscJson(dSerial) & """,""HealthStatus"":""" & dHealth & """,""HealthText"":""" & EscJson(dHealthText) & """,""HealthPercent"":" & jHealthPct & ",""SmartSupported"":" & jSmartSup & ",""SmartSource"":""" & dSmartSrc & """,""TemperatureC"":" & jTemp & ",""WearPercent"":" & jWear & ",""LifeRemainingPercent"":" & jLife & ",""PowerOnHours"":" & jHours & ",""PowerCycleCount"":" & jCycles & ",""ReadErrors"":0,""WriteErrors"":0,""ReallocatedSectors"":" & dRealloc & ",""PendingSectors"":" & dPending & ",""UncorrectableSectors"":" & dTotalUncorr & ",""CrcErrors"":" & dCrc & ",""SpinRetryCount"":" & dSpinRetry & ",""HealthIssues"":" & dIssuesJson & "}"
         diskCount = diskCount + 1
     Next
     On Error GoTo 0
@@ -821,10 +789,10 @@ End If
 
 If anyDiskCritical Then
     diskHealthStatus = "CRITICAL"
-    diskHealthText = "NGUY HIEM: Phat hien loi o cung (S.M.A.R.T / EventLog)"
+    diskHealthText = "NGUY HIEM: Phat hien loi o cung (S.M.A.R.T)"
 ElseIf anyDiskWarning Then
     diskHealthStatus = "WARNING"
-    diskHealthText = "Canh bao: Phat hien dau hieu bat thuong tren o cung"
+    diskHealthText = "Canh bao S.M.A.R.T tren o cung"
 End If
 
 ' --- 9B. KIEM TRA PIN LAPTOP (TUOI THO PIN, DO CHAI & SO LAN SAC) ---

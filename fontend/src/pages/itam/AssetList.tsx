@@ -520,17 +520,16 @@ const AssetList = () => {
             ? diskCompsForExcel.map((dc: any) => {
                 const ds = dc.specs || {};
                 const parts: string[] = [];
+                if (ds.healthPercent != null) parts.push(`Sức khỏe ${ds.healthPercent}%`);
                 if (ds.temperatureC != null) parts.push(`${ds.temperatureC}°C`);
                 if (ds.lifeRemainingPercent != null) parts.push(`Tuổi thọ SSD ${ds.lifeRemainingPercent}%`);
                 if (ds.powerOnHours != null) parts.push(`${ds.powerOnHours}h`);
+                if (ds.powerCycleCount != null) parts.push(`${ds.powerCycleCount} lần bật`);
                 if ((ds.reallocatedSectors || 0) > 0) parts.push(`BadSector(05): ${ds.reallocatedSectors}`);
                 if ((ds.pendingSectors || 0) > 0) parts.push(`Pending(C5): ${ds.pendingSectors}`);
                 if ((ds.uncorrectableSectors || 0) > 0) parts.push(`Uncorr(C6): ${ds.uncorrectableSectors}`);
                 if ((ds.crcErrors || 0) > 0) parts.push(`Lỗi cáp SATA(C7): ${ds.crcErrors}`);
-                if ((ds.eventBadBlocks || 0) > 0) parts.push(`EventLog BadBlock: ${ds.eventBadBlocks}`);
-                if ((ds.eventIoRetries || 0) > 0) parts.push(`IO Retry: ${ds.eventIoRetries}`);
-                if ((ds.eventDiskResets || 0) > 0) parts.push(`Reset: ${ds.eventDiskResets}`);
-                if ((ds.eventNtfsErrors || 0) > 0) parts.push(`NTFS: ${ds.eventNtfsErrors}`);
+                if ((ds.spinRetryCount || 0) > 0) parts.push(`SpinRetry(0A): ${ds.spinRetryCount}`);
                 const issueStr = Array.isArray(ds.healthIssues) && ds.healthIssues.length > 0
                     ? ` => ${ds.healthIssues.join('; ')}`
                     : '';
@@ -760,9 +759,14 @@ const AssetList = () => {
               const ds = dc.specs || {};
               const isCrit = dc.status === 'FAULTY' || ds.healthStatus === 'CRITICAL';
               const isWarn = !isCrit && ds.healthStatus === 'WARNING';
-              const evTotal = (ds.eventBadBlocks || 0) + (ds.eventIoRetries || 0) + (ds.eventDiskResets || 0) + (ds.eventNtfsErrors || 0);
               const badTotal = (ds.reallocatedSectors || 0) + (ds.pendingSectors || 0) + (ds.uncorrectableSectors || 0);
               const issues: string[] = Array.isArray(ds.healthIssues) ? ds.healthIssues : [];
+              const hasSmartData =
+                  ds.smartSupported === true ||
+                  ds.healthPercent != null ||
+                  ds.temperatureC != null ||
+                  ds.powerOnHours != null ||
+                  ds.lifeRemainingPercent != null;
 
               return (
                   <div
@@ -783,46 +787,66 @@ const AssetList = () => {
                               color={isCrit ? 'error' : isWarn ? 'warning' : 'success'}
                               className="m-0 text-[10px] shrink-0"
                           >
-                              {isCrit ? '🚨 Lỗi nặng' : isWarn ? '⚠️ Cảnh báo' : '✓ Tốt'}
+                              {isCrit
+                                  ? `🚨 Lỗi nặng${ds.healthPercent != null ? ` (${ds.healthPercent}%)` : ''}`
+                                  : isWarn
+                                  ? `⚠️ Cảnh báo${ds.healthPercent != null ? ` (${ds.healthPercent}%)` : ''}`
+                                  : `✓ Tốt${ds.healthPercent != null ? ` (${ds.healthPercent}%)` : ''}`}
                           </Tag>
                       </div>
 
-                      <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-600">
-                          {ds.temperatureC != null && (
-                              <span className={`px-1.5 py-0.5 rounded bg-white border ${ds.temperatureC >= 55 ? 'text-red-600 border-red-200 font-semibold' : ''}`}>
-                                  🌡️ {ds.temperatureC}°C
-                              </span>
-                          )}
-                          {ds.lifeRemainingPercent != null && (
-                              <span className={`px-1.5 py-0.5 rounded bg-white border ${ds.lifeRemainingPercent <= 20 ? 'text-red-600 border-red-200 font-bold' : ds.lifeRemainingPercent <= 50 ? 'text-amber-600 border-amber-200 font-semibold' : 'text-emerald-700'}`}>
-                                  ❤️ Tuổi thọ SSD: {ds.lifeRemainingPercent}%
-                              </span>
-                          )}
-                          {ds.powerOnHours != null && (
-                              <span className="px-1.5 py-0.5 rounded bg-white border">
-                                  ⏱️ {Number(ds.powerOnHours).toLocaleString()} giờ ({(Number(ds.powerOnHours) / 8760).toFixed(1)} năm)
-                              </span>
-                          )}
-                          {badTotal > 0 && (
-                              <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-300 font-bold">
-                                  💥 Bad Sector: 05={ds.reallocatedSectors || 0} / C5={ds.pendingSectors || 0} / C6={ds.uncorrectableSectors || 0}
-                              </span>
-                          )}
-                          {(ds.crcErrors || 0) > 0 && (
-                              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
-                                  🔌 Lỗi cáp SATA (ID C7): {ds.crcErrors}
-                              </span>
-                          )}
-                          {evTotal > 0 && (
-                              <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-300 font-semibold">
-                                  📋 EventLog 30 ngày:
-                                  {(ds.eventBadBlocks || 0) > 0 ? ` ${ds.eventBadBlocks} BadBlock` : ''}
-                                  {(ds.eventIoRetries || 0) > 0 ? ` ${ds.eventIoRetries} IO-Retry` : ''}
-                                  {(ds.eventDiskResets || 0) > 0 ? ` ${ds.eventDiskResets} Reset` : ''}
-                                  {(ds.eventNtfsErrors || 0) > 0 ? ` ${ds.eventNtfsErrors} NTFS` : ''}
-                              </span>
-                          )}
-                      </div>
+                      {hasSmartData ? (
+                          <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-600">
+                              {ds.healthPercent != null && (
+                                  <span className={`px-1.5 py-0.5 rounded bg-white border font-semibold ${ds.healthPercent <= 50 ? 'text-red-600 border-red-200' : ds.healthPercent <= 80 ? 'text-amber-600 border-amber-200' : 'text-emerald-700 border-emerald-200'}`}>
+                                      💚 Sức khỏe: {ds.healthPercent}%
+                                  </span>
+                              )}
+                              {ds.temperatureC != null && (
+                                  <span className={`px-1.5 py-0.5 rounded bg-white border ${ds.temperatureC >= 55 ? 'text-red-600 border-red-200 font-semibold' : ''}`}>
+                                      🌡️ {ds.temperatureC}°C
+                                  </span>
+                              )}
+                              {ds.lifeRemainingPercent != null && (
+                                  <span className={`px-1.5 py-0.5 rounded bg-white border ${ds.lifeRemainingPercent <= 20 ? 'text-red-600 border-red-200 font-bold' : ds.lifeRemainingPercent <= 50 ? 'text-amber-600 border-amber-200 font-semibold' : 'text-emerald-700'}`}>
+                                      🔋 Tuổi thọ SSD: {ds.lifeRemainingPercent}%
+                                  </span>
+                              )}
+                              {ds.powerOnHours != null && (
+                                  <span className="px-1.5 py-0.5 rounded bg-white border">
+                                      ⏱️ {Number(ds.powerOnHours).toLocaleString()} giờ ({(Number(ds.powerOnHours) / 8760).toFixed(1)} năm)
+                                  </span>
+                              )}
+                              {ds.powerCycleCount != null && (
+                                  <span className="px-1.5 py-0.5 rounded bg-white border">
+                                      🔌 {Number(ds.powerCycleCount).toLocaleString()} lần bật
+                                  </span>
+                              )}
+                              {badTotal > 0 ? (
+                                  <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-300 font-bold">
+                                      💥 Bad Sector: 05={ds.reallocatedSectors || 0} / C5={ds.pendingSectors || 0} / C6={ds.uncorrectableSectors || 0}
+                                  </span>
+                              ) : (
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                      ✓ 0 Bad Sector
+                                  </span>
+                              )}
+                              {(ds.crcErrors || 0) > 0 && (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
+                                      🔌 Lỗi cáp SATA (ID C7): {ds.crcErrors}
+                                  </span>
+                              )}
+                              {(ds.spinRetryCount || 0) > 0 && (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-semibold">
+                                      ⚙️ Spin Retry (ID 0A): {ds.spinRetryCount}
+                                  </span>
+                              )}
+                          </div>
+                      ) : (
+                          <div className="text-[10px] text-slate-400 italic">
+                              ℹ️ Chế độ cơ bản — chạy Agent với quyền Admin/SYSTEM để đọc chi tiết chip S.M.A.R.T
+                          </div>
+                      )}
 
                       {issues.length > 0 && (
                           <div className="pt-1 border-t border-red-200/70 space-y-0.5 text-[11px] text-red-700 font-medium">
@@ -838,7 +862,7 @@ const AssetList = () => {
           const diskPopoverContent = (
               <div className="text-xs min-w-[300px] max-w-[400px] space-y-2">
                   <div className="font-bold border-b pb-1 text-slate-800 flex items-center justify-between gap-2">
-                      <span>🔍 Chẩn đoán Chi tiết Ổ cứng (S.M.A.R.T & EventLog 30 ngày)</span>
+                      <span>🔍 Chẩn đoán Phần cứng Ổ cứng (S.M.A.R.T)</span>
                   </div>
                   {diskComps.length > 0 ? (
                       <div className="space-y-1.5">{diskComps.map(renderDiskDiagnosticCard)}</div>
@@ -920,7 +944,7 @@ const AssetList = () => {
                           : `${ram || 'N/A'} (${hwHealth.ram?.statusText || 'Ổn định'})`}
                   </div>
                   <div>
-                      • <b>Ổ cứng (S.M.A.R.T & EventLog):</b>{' '}
+                      • <b>Ổ cứng (S.M.A.R.T):</b>{' '}
                       <span className={hwHealth.diskStatus === 'CRITICAL' ? 'text-red-600 font-bold' : hwHealth.diskStatus === 'WARNING' ? 'text-amber-600 font-semibold' : 'text-emerald-700'}>
                           {hwHealth.diskText || 'Tốt (S.M.A.R.T OK)'}
                       </span>

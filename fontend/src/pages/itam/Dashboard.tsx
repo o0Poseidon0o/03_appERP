@@ -244,17 +244,16 @@ const Dashboard = () => {
       .map((dc) => {
         const ds = dc.specs || {};
         const metrics: string[] = [];
+        if (ds.healthPercent != null) metrics.push(`Sức khỏe ${ds.healthPercent}%`);
         if (ds.temperatureC != null) metrics.push(`${ds.temperatureC}°C`);
         if (ds.lifeRemainingPercent != null) metrics.push(`Tuổi thọ SSD ${ds.lifeRemainingPercent}%`);
         if (ds.powerOnHours != null) metrics.push(`${ds.powerOnHours}h`);
+        if (ds.powerCycleCount != null) metrics.push(`${ds.powerCycleCount} lần bật`);
         if ((ds.reallocatedSectors || 0) > 0) metrics.push(`BadSector(05): ${ds.reallocatedSectors}`);
         if ((ds.pendingSectors || 0) > 0) metrics.push(`Pending(C5): ${ds.pendingSectors}`);
         if ((ds.uncorrectableSectors || 0) > 0) metrics.push(`Uncorr(C6): ${ds.uncorrectableSectors}`);
         if ((ds.crcErrors || 0) > 0) metrics.push(`Lỗi cáp SATA(C7): ${ds.crcErrors}`);
-        if ((ds.eventBadBlocks || 0) > 0) metrics.push(`EventLog BadBlock: ${ds.eventBadBlocks}`);
-        if ((ds.eventIoRetries || 0) > 0) metrics.push(`IO Retry: ${ds.eventIoRetries}`);
-        if ((ds.eventDiskResets || 0) > 0) metrics.push(`Reset: ${ds.eventDiskResets}`);
-        if ((ds.eventNtfsErrors || 0) > 0) metrics.push(`NTFS: ${ds.eventNtfsErrors}`);
+        if ((ds.spinRetryCount || 0) > 0) metrics.push(`SpinRetry(0A): ${ds.spinRetryCount}`);
         const issueTxt =
           Array.isArray(ds.healthIssues) && ds.healthIssues.length > 0
             ? ` => ${ds.healthIssues.join('; ')}`
@@ -736,6 +735,7 @@ const Dashboard = () => {
                           className="m-0 text-[10px]"
                         >
                           💾 {d.name}
+                          {ds.healthPercent != null ? ` • Sức khỏe ${ds.healthPercent}%` : ''}
                           {ds.temperatureC != null ? ` • ${ds.temperatureC}°C` : ''}
                           {ds.lifeRemainingPercent != null ? ` • SSD ${ds.lifeRemainingPercent}%` : ''}
                         </Tag>

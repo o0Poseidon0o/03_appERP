@@ -251,7 +251,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         }
       }
 
-      // Phân loại Sức khỏe phần cứng (S.M.A.R.T / EventLog / CPU / RAM / Ổ đĩa / Pin Laptop)
+      // Phân loại Sức khỏe phần cứng (100% S.M.A.R.T phần cứng / CPU / RAM / Ổ đĩa / Pin Laptop)
       const hwHealth = specs.hardwareHealth || null;
       const batInfo = hwHealth?.battery?.hasBattery ? hwHealth.battery : null;
       if (batInfo && (batInfo.status === "CRITICAL" || batInfo.status === "WARNING")) {
@@ -264,7 +264,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         (d: any) => d.specs?.healthStatus === "WARNING"
       );
 
-      // Thu thập chi tiết nguyên nhân lỗi cụ thể từng ổ cứng (Bad Sector, CRC cáp SATA, SSD hao mòn, EventLog 30 ngày)
+      // Thu thập chi tiết nguyên nhân lỗi S.M.A.R.T cụ thể từng ổ cứng (Bad Sector, Pending, Uncorrectable, CRC cáp SATA, SSD hao mòn)
       const diskIssueMessages: string[] = [];
       for (const dc of diskComps) {
         const ds: any = dc.specs || {};
